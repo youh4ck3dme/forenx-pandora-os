@@ -191,14 +191,18 @@ export function BookmarksPanel() {
       </div>
 
       {/* 2. Prebiehajúci prípad Card */}
-      <div className="mx-3 mt-3 rounded-xl border border-white/10 bg-white/4 backdrop-blur-md p-3 text-white shadow-lg relative overflow-hidden">
+      <div
+        onClick={() => handleNavigate("/forza/prehlad", "Prehľad")}
+        className="mx-3 mt-3 rounded-xl border border-white/10 bg-white/4 backdrop-blur-md p-3 text-white shadow-lg relative overflow-hidden cursor-pointer hover:border-amber-500/40 hover:bg-white/8 transition-all group"
+        title="Kliknutím otvoriť spis"
+      >
         <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-amber-400/90">
-          <span>Prebiehajúci prípad</span>
+          <span className="group-hover:text-amber-300 transition-colors">Prebiehajúci prípad</span>
           <span className="text-white/40 font-mono text-[9px]">
             {activeCase?.id ? activeCase.id.slice(0, 8) : "ŽIADNY"}
           </span>
         </div>
-        <p className="mt-1 text-sm font-bold text-white truncate">
+        <p className="mt-1 text-sm font-bold text-white truncate group-hover:text-amber-200 transition-colors">
           {activeCase?.name || "Žiadny prípad"}
         </p>
         <div className="mt-2.5 flex items-end justify-between">
