@@ -13,13 +13,14 @@ import {
 } from "@/components/malte/Shell";
 import { buildLegalContext, severityLabel } from "@/lib/forza/forensic";
 import { BRAND } from "@/config/brand";
+import { AdmissibilityAuditView } from "@/components/features/forensic/AdmissibilityAuditView";
 
 export default function PravnyKontextPage() {
   return <LegalScreen />;
 }
 
 function LegalScreen() {
-  const { activeCase, analysis } = useActiveCase();
+  const { activeCase, analysis, dossier } = useActiveCase();
   const legal = buildLegalContext(analysis);
 
   return (
@@ -116,6 +117,9 @@ function LegalScreen() {
             </p>
           </Card>
         ))}
+
+        <SectionTitle>Procesná prípustnosť (§ 119 a nasl. TP)</SectionTitle>
+        <AdmissibilityAuditView audit={dossier?.admissibilityAudit} />
 
         <SectionTitle>Procesné postavenie osôb</SectionTitle>
         <Card className="divide-y divide-border p-0">

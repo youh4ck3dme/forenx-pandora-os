@@ -391,6 +391,94 @@ export const ARMIVEX_CASE_DOSSIER: ForensicDossier = {
     financingConclusion:
       "Finančný mechanizmus skupiny vykazuje klasické znaky legalizácie príjmov z trestnej činnosti (pranie špinavých peňazí) podľa § 233a TZ. Zo sumy 148 500 € až 71,4 % (106 000 €) tvorili anonymné hotovostné vklady vkladané tesne pred nákupmi, s využitím techniky štiepenia (smurfing) pod limit povinnej AML identifikácie. Legálny bankový účet slúžil iba ako prechodová tranzitná stanica na premenu nelegálnej hotovosti na legálne nakúpené zbrane.",
   },
+  alternativeHypotheses: [
+    {
+      id: "AH-1",
+      title: "Finančné prostriedky boli riadnou pôžičkou",
+      scenario:
+        "Hotovostné vklady a prevod od Bark Factory s.r.o. mohli predstavovať legitímne krátkodobé financovanie legálneho obchodného skladu, nie vyvedenie alebo legalizáciu výnosov.",
+      evidence: [
+        "Existujú faktúry a deklarovaná zmluva o pôžičke od Bark Factory s.r.o.",
+        "Platby smerovali na identifikovaný bankový účet VELTRA s.r.o.",
+      ],
+      requiredTraces: [
+        "Úplná zmluva o pôžičke, splátkový kalendár a preukázaná bonita veriteľa.",
+        "Účtovné doklady o pôvode hotovosti a identifikácia vkladateľov.",
+      ],
+      rebuttal:
+        "Vyžiadať bankové výpisy, účtovníctvo a daňové priznania VELTRA aj Bark Factory; porovnať splátky a zdroj hotovosti s termínmi nákupov zbraní.",
+      probabilityScore: 38,
+    },
+    {
+      id: "AH-2",
+      title: "Osobný odber vykonala splnomocnená tretia osoba",
+      scenario:
+        "Peter Novák nemusel fyzicky prevziať zbrane; odber mohol v rámci firmy vykonať iný oprávnený zástupca bez vedomia štatutára o následnej distribúcii.",
+      evidence: [
+        "Peter Novák popiera osobnú prítomnosť v predajni.",
+        "Spis uvádza existenciu plnomocenstiev a viacerých logistických aktérov.",
+      ],
+      requiredTraces: [
+        "Originály plnomocenstiev, preberacích protokolov a porovnávacie podpisové vzory.",
+        "Kamerové záznamy alebo BTS lokalizácia z termínov odberov.",
+      ],
+      rebuttal:
+        "Vykonať písmoznalecké dokazovanie podpisov, konfrontáciu podľa § 125 TP a vyžiadať lokalizačné údaje k presne určeným odberom.",
+      probabilityScore: 61,
+    },
+  ],
+  admissibilityAudit: {
+    status: "at_risk",
+    score: 72,
+    defects: [
+      {
+        severity: "curable",
+        paragraph: "§ 125 TP",
+        description:
+          "Rozpor medzi výpoveďou Petra Nováka a Mareka Hrušku k osobnému odberu zatiaľ nebol odstránený konfrontáciou.",
+        remedyAction:
+          "Vykonať konfrontáciu obvineného a svedka k termínom, podpisom a miestu odberu; zápisnicu pripojiť ku dôkazom.",
+      },
+      {
+        severity: "formal",
+        paragraph: "§ 98 TP",
+        description:
+          "Pri evidenčnej knihe zbraní chýba úplná nadväznosť dokumentácie o zaistení.",
+        remedyAction:
+          "Doplniť odovzdávací protokol alebo vypočuť technika, ktorý s knihou manipuloval.",
+      },
+    ],
+    courtReadySummary:
+      "Kľúčové balistické a bankové dôkazy sú použiteľné, avšak osobný odber a evidencia zbraní vyžadujú doplnenie pred tým, než im súd prizná plnú dôkaznú váhu.",
+  },
+  custodyLedger: [
+    {
+      index: 0,
+      id: "CL-001",
+      traceId: "TR-01",
+      timestamp: "2026-02-06T08:30:00.000Z",
+      actor: "Europol ES-441/2026",
+      action: "SEIZURE",
+      location: "Španielsko",
+      notes: "Zaistenie Glock 19 CGDV051.",
+      payloadHash: "9f4d80e07a5bb5e037e7798f0e5035df06f1f57b09f1c3bda5192678364d9667",
+      prevHash: "GENESIS",
+      hash: "ae4ff1877d52c47a6bc3d4ad1d13a6b3f8d2c036e04a4859f5be7f2f9a8da427",
+    },
+    {
+      index: 1,
+      id: "CL-002",
+      traceId: "TR-01",
+      timestamp: "2026-02-10T11:15:00.000Z",
+      actor: "KEÚ PZ",
+      action: "ANALYSIS",
+      location: "Bratislava",
+      notes: "Balistické porovnanie a digitálny odtlačok.",
+      payloadHash: "e77f9d3ce4a7f5d2e165c860845fb6b3e1d737d05d1b11e6bb6b29fd5558e302",
+      prevHash: "ae4ff1877d52c47a6bc3d4ad1d13a6b3f8d2c036e04a4859f5be7f2f9a8da427",
+      hash: "3765d3b5e7c225bab28fbf25459d0e794e00cebc4e6d794136ec4b91fd84ce13",
+    },
+  ],
   analysisMeta: {
     promptVersion: "demo",
     model: "demo",

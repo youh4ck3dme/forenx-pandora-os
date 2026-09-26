@@ -82,7 +82,7 @@ function SubscriptionScreen() {
         <SectionTitle>Dostupné plány</SectionTitle>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          {PLANS.map((plan) => (
+          {Object.values(PLANS).map((plan) => (
             <Card key={plan.id} className="space-y-3 flex flex-col justify-between">
               <div>
                 <p className="text-sm font-bold text-foreground">{plan.name}</p>
@@ -90,7 +90,7 @@ function SubscriptionScreen() {
                   {plan.description}
                 </p>
                 <p className="text-lg font-extrabold text-foreground mt-2">
-                  {plan.price}
+                  {plan.amount ? `${plan.amount} € / mes.` : "Zadarmo"}
                 </p>
                 <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
                   {plan.features.map((f, i) => (
@@ -102,7 +102,7 @@ function SubscriptionScreen() {
                 </ul>
               </div>
               <Button
-                variant={plan.popular ? "default" : "outline"}
+                variant={plan.id === "pro" ? "default" : "outline"}
                 className="w-full mt-4"
                 onClick={() => {
                   toast.info("Aktivácia plánu prebieha prostredníctvom Stripe.");

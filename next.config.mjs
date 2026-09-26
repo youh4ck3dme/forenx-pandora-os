@@ -6,7 +6,7 @@ const __dirname = path.dirname(__filename);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export', // Potrebné pre Capacitor static build - Disabled for preview with API routes
+  output: process.env.CAPACITOR_BUILD === 'true' ? 'export' : undefined,
   trailingSlash: true,
   eslint: {
     ignoreDuringBuilds: true,

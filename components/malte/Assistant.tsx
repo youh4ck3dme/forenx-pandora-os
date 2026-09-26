@@ -37,10 +37,15 @@ import {
   Save,
   Compass,
   Sparkles,
+  BrainCircuit,
+  Link2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { LawyerTourGuide } from "./LawyerTourGuide";
 import { TruthTimestorySection } from "./TruthTimestorySection";
+import { DevilsAdvocatePanel } from "@/components/features/forensic/DevilsAdvocatePanel";
+import { AdmissibilityAuditView } from "@/components/features/forensic/AdmissibilityAuditView";
+import { CustodyLedgerViewer } from "@/components/features/forensic/CustodyLedgerViewer";
 import {
   AppHeader,
   BottomNav,
@@ -1829,6 +1834,27 @@ ${dossier.judgeReadyText.vedecke}`;
                       <Gavel className="h-3 w-3 text-amber-400" />
                       <span className="truncate">Obhajoba</span>
                     </TabsTrigger>
+                    <TabsTrigger
+                      value="devils-advocate"
+                      className="text-[11px] py-1.5 gap-1"
+                    >
+                      <BrainCircuit className="h-3 w-3 text-rose-400" />
+                      <span className="truncate">👿 Devil&apos;s Advocate</span>
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="admissibility"
+                      className="text-[11px] py-1.5 gap-1"
+                    >
+                      <Scale className="h-3 w-3 text-cyan-400" />
+                      <span className="truncate">⚖️ Procesná prípustnosť</span>
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="custody-ledger"
+                      className="text-[11px] py-1.5 gap-1"
+                    >
+                      <Link2 className="h-3 w-3 text-emerald-400" />
+                      <span className="truncate">🔗 Dôkazný Ledger</span>
+                    </TabsTrigger>
                   </TabsList>
 
                   {showTimestory ? (
@@ -1836,6 +1862,30 @@ ${dossier.judgeReadyText.vedecke}`;
                       <TruthTimestorySection />
                     </TabsContent>
                   ) : null}
+
+                  <TabsContent value="devils-advocate" className="space-y-3 m-0">
+                    <Card className="p-3.5">
+                      <DevilsAdvocatePanel
+                        hypotheses={dossier.alternativeHypotheses ?? []}
+                        onSimulate={() => {
+                          setTask("alt_devil");
+                          setMainMode("quick_tasks");
+                        }}
+                      />
+                    </Card>
+                  </TabsContent>
+
+                  <TabsContent value="admissibility" className="space-y-3 m-0">
+                    <Card className="p-3.5">
+                      <AdmissibilityAuditView audit={dossier.admissibilityAudit} />
+                    </Card>
+                  </TabsContent>
+
+                  <TabsContent value="custody-ledger" className="space-y-3 m-0">
+                    <Card className="p-3.5">
+                      <CustodyLedgerViewer entries={dossier.custodyLedger ?? []} />
+                    </Card>
+                  </TabsContent>
 
                   {/* KARTA 1: 3 OTÁZKY (SOURCE OF TRUTH ÚBOK) */}
                   <TabsContent value="otazky" className="space-y-3 m-0">

@@ -18,13 +18,16 @@ import {
   formatDate,
 } from "@/lib/forza/forensic";
 import { BRAND } from "@/config/brand";
+import { DevilsAdvocatePanel } from "@/components/features/forensic/DevilsAdvocatePanel";
+import { AdmissibilityAuditView } from "@/components/features/forensic/AdmissibilityAuditView";
+import { CustodyLedgerViewer } from "@/components/features/forensic/CustodyLedgerViewer";
 
 export default function ZbranePage() {
   return <Weapons />;
 }
 
 function Weapons() {
-  const { activeCase, analysis, refresh } = useActiveCase();
+  const { activeCase, analysis, dossier, refresh } = useActiveCase();
   const names = new Map(activeCase.entities.map((e) => [e.id, e.name]));
   const batches = detectSerialBatches(activeCase.weapons);
   const matches = analysis.weapons.filter((w) => w.europolMatch).length;
@@ -132,6 +135,13 @@ function Weapons() {
             </Card>
           </>
         ) : null}
+
+        <SectionTitle>Forenzné superzbrane</SectionTitle>
+        <Card className="space-y-5">
+          <DevilsAdvocatePanel hypotheses={dossier?.alternativeHypotheses ?? []} />
+          <AdmissibilityAuditView audit={dossier?.admissibilityAudit} />
+          <CustodyLedgerViewer entries={dossier?.custodyLedger ?? []} />
+        </Card>
       </Screen>
 
       <BottomNav />

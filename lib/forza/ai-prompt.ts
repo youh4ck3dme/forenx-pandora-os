@@ -243,6 +243,48 @@ ZÁVÄZNÝ ANALYTICKÝ RÁMEC ÚBOK — 3 VYŠETROVACIE OTÁZKY & ROZPORY
     "vedecke": "<III. Vedecké zhodnotenie stôp — pre každú stopu z evidenceStrength.traces: metóda, LR alebo '—', identifikačná sila a limit výpovednej hodnoty. Upozorni na prosecutor's fallacy, ak hrozí.>"
   },
 
+  "alternativeHypotheses": [
+    {
+      "id": "AH-1",
+      "title": "<stručný názov alternatívnej verzie>",
+      "scenario": "<alternatívny nevinný príbeh, striktne podložený spisom>",
+      "evidence": ["<stopy alebo transakcie, ktoré verzia vysvetľuje>"],
+      "requiredTraces": ["<čo musí existovať v spise, ak je verzia pravdivá>"],
+      "rebuttal": "<konkrétny procesný úkon na overenie alebo vyvrátenie>",
+      "probabilityScore": <0-100 pracovný odhad sily alternatívy, nie pravdepodobnosť viny>
+    }
+  ],
+
+  "admissibilityAudit": {
+    "status": "admissible|at_risk|inadmissible",
+    "score": <0-100>,
+    "defects": [
+      {
+        "severity": "critical|curable|formal",
+        "paragraph": "<§ TP>",
+        "description": "<konkrétna procesná vada opretá o spis>",
+        "remedyAction": "<konkrétny spôsob nápravy>"
+      }
+    ],
+    "courtReadySummary": "<stručné stanovisko o použiteľnosti dôkazov na hlavnom pojednávaní>"
+  },
+
+  "custodyLedger": [
+    {
+      "index": 0,
+      "id": "CL-001",
+      "traceId": "<ID stopy>",
+      "timestamp": "<ISO 8601>",
+      "actor": "<subjekt, ktorý manipuloval s dôkazom>",
+      "action": "SEIZURE|TRANSFER|ANALYSIS|STORAGE|COURT_SUBMISSION",
+      "location": "<miesto>",
+      "notes": "<zápis úkonu>",
+      "payloadHash": "<SHA-256 alebo NEUVEDENÉ>",
+      "prevHash": "<predchádzajúci hash alebo GENESIS>",
+      "hash": "<SHA-256 alebo NEUVEDENÉ>"
+    }
+  ],
+
 
   "investigativeAnswers": {
     "q1_buyer_seller": {

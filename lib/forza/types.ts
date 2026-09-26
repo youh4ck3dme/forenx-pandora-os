@@ -192,6 +192,9 @@ export interface ForensicDossier {
   };
   testimonyContradictions?: TestimonyContradiction[];
   financialAnalysis?: FinancialTransactionSummary;
+  alternativeHypotheses?: AlternativeHypothesis[];
+  admissibilityAudit?: AdmissibilityAuditResult;
+  custodyLedger?: CustodyLedgerEntry[];
 
   /**
    * Heuristické odhady z textu spisu (LLM) — NIE live registry/API.
@@ -309,11 +312,10 @@ export interface AlternativeHypothesis {
   id: string;
   title: string;
   scenario: string; // Celý alternatívny nevinný príbeh
-  explainedEvidence: string[]; // Ktoré podozrivé stopy/transakcie legitímne vysvetľuje
-  requiredTracesIfTrue: string[]; // Aké stopy by v spise museli existovať, ak je pravdivá
-  caseFileCheckStatus: "found" | "missing" | "unverified";
-  caseFileCheckNote: string;
-  rebuttalTest: string; // Konkrétny procesný úkon na vyvrátenie verzie
+  evidence: string[]; // Ktoré podozrivé stopy/transakcie legitímne vysvetľuje
+  requiredTraces: string[]; // Aké stopy by v spise museli existovať, ak je pravdivá
+  rebuttal: string; // Konkrétny procesný úkon na vyvrátenie verzie
+  probabilityScore: number; // 0–100; pracovný odhad, nie pravdepodobnosť viny
 }
 
 // ─── PROCESNÁ PRÍPUSTNOSŤ (§ 119 TP, OS O8) ────────────────────────
@@ -325,7 +327,7 @@ export interface AdmissibilityAuditDefect {
 }
 
 export interface AdmissibilityAuditResult {
-  overallStatus: "admissible" | "at_risk" | "inadmissible";
+  status: "admissible" | "at_risk" | "inadmissible";
   score: number; // 0-100
   defects: AdmissibilityAuditDefect[];
   courtReadySummary: string;
