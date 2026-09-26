@@ -298,18 +298,26 @@ export async function deleteCaseVault(caseId: string): Promise<void> {
   }
 }
 
+export interface DownloadedCaseDocument {
+  buffer: Buffer
+  mimeType: string
+  name: string
+  sizeBytes: number
+}
+
 /**
  * Získa dokument z trezoru (in-memory alebo cez S3 fetch).
  */
 export async function downloadCaseDocument(
   storageKey: string
-): Promise<{ buffer: Buffer; mimeType: string; name: string } | null> {
+): Promise<DownloadedCaseDocument | null> {
   const fallback = fallbackVaultStore.get(storageKey)
   if (fallback) {
     return {
       buffer: fallback.buffer,
       mimeType: fallback.mimeType,
       name: fallback.fileName,
+      sizeBytes: fallback.sizeBytes,
     }
   }
 
@@ -321,10 +329,12 @@ export async function downloadCaseDocument(
     const res = await fetch(presignedUrl)
     if (!res.ok) return null
     const arrayBuf = await res.arrayBuffer()
+    const buffer = Buffer.from(arrayBuf)
     return {
-      buffer: Buffer.from(arrayBuf),
+      buffer,
       mimeType: res.headers.get('content-type') || 'application/octet-stream',
       name: storageKey.split('/').pop() || 'document',
+      sizeBytes: buffer.length,
     }
   } catch (err) {
     console.error(`[PΛND0RΛ S3 Vault] Chyba pri sťahovaní ${storageKey}:`, err)

@@ -126,7 +126,8 @@ describe('Hetzner S3 Cloud Vault Client (forenx-vault-sk)', () => {
       expect(storageKey).toContain(sha256)
 
       const downloaded = await downloadCaseDocument(storageKey)
-      expect(downloaded?.sizeBytes ?? downloaded?.buffer.length).toBe(chunkSize)
+      expect(downloaded?.sizeBytes).toBe(chunkSize)
+      expect(downloaded?.buffer.length).toBe(chunkSize)
     })
 
     it('deletes case vault items for specific case only', async () => {
