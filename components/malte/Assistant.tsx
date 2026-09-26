@@ -959,12 +959,14 @@ export function Assistant() {
 
   // Quick tasks run
   /** Náhľad presne tých minimalizovaných dát, ktoré by odišli k poskytovateľovi AI. */
-  async function buildTaskPreview(): Promise<string> {
+  async function buildTaskPreview(
+    requestedTask: AiTask = task,
+  ): Promise<string> {
     const value = await previewAiPayload({
       data: {
         caseId: activeCase.id,
-        task,
-        ...(task === "explain_finding" ? { alertId } : {}),
+        task: requestedTask,
+        ...(requestedTask === "explain_finding" ? { alertId } : {}),
       },
     });
     return JSON.stringify(value.payload, null, 2).slice(0, 1500);
@@ -986,8 +988,24 @@ export function Assistant() {
         ? "Vyberte nález na vysvetlenie."
         : null));
 
-  async function runQuickTask() {
-    if (quickBlocked || requestLock.current) return;
+  async function runQuickTask(requestedTask: AiTask = task) {
+    const requestedReadiness = assessControlReadiness(requestedTask, {
+      entityCount: activeCase.entities?.length ?? 0,
+      transactionCount: activeCase.transactions?.length ?? 0,
+      findingCount: analysis.alerts.length,
+      eventCount: activeCase.events?.length ?? 0,
+      hasDossier: Boolean(dossier && !demoMode),
+    });
+    const requestedBlocked =
+      !hasCase
+        ? "Najprv vyberte prípad."
+        : (aiUnavailableReason(status, "chat", isOnline) ??
+          (!requestedReadiness.ready ? requestedReadiness.message : null) ??
+          (requestedTask === "explain_finding" &&
+          !analysis.alerts.some((a) => a.id === alertId)
+            ? "Vyberte nález na vysvetlenie."
+            : null));
+    if (requestedBlocked || requestLock.current) return;
     requestLock.current = true;
     setBusy(true);
     if (!isOnline) {
@@ -999,7 +1017,9 @@ export function Assistant() {
 
     let consentVersion: string | null = null;
     try {
-      consentVersion = await ensureConsent(activeCase.id, buildTaskPreview);
+      consentVersion = await ensureConsent(activeCase.id, () =>
+        buildTaskPreview(requestedTask),
+      );
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -1023,9 +1043,9 @@ export function Assistant() {
       const value = await runAiTask({
         data: {
           caseId: activeCase.id,
-          task,
+          task: requestedTask,
           consentVersion,
-          ...(task === "explain_finding" ? { alertId } : {}),
+          ...(requestedTask === "explain_finding" ? { alertId } : {}),
         },
       });
       setResult(value);
@@ -1870,6 +1890,7 @@ ${dossier.judgeReadyText.vedecke}`;
                         onSimulate={() => {
                           setTask("alt_devil");
                           setMainMode("quick_tasks");
+                          void runQuickTask("alt_devil");
                         }}
                       />
                     </Card>

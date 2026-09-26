@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, BrowserView, shell, session, protocol, net, nativeTheme, Menu, MenuItem } from 'electron'
+import { app, BrowserWindow, ipcMain, BrowserView, shell, session, protocol, net, nativeTheme, Menu, MenuItem, dialog } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -530,6 +530,81 @@ function createWindow() {
         } catch (e) {
             console.error('Screenshot failed:', e)
             return null
+        }
+    })
+
+    // Native File Dialogs (Forensic Files & Dossiers)
+    ipcMain.handle('dialog:openFile', async (_, options?: { title?: string; filters?: { name: string; extensions: string[] }[] }) => {
+        if (!mainWindow) return null
+
+        const defaultFilters = [
+            { name: 'Forensic & Case Documents', extensions: ['pdf', 'csv', 'xlsx', 'txt', 'json'] },
+            { name: 'Court PDF Documents', extensions: ['pdf'] },
+            { name: 'Data Sheets (CSV, XLSX)', extensions: ['csv', 'xlsx'] },
+            { name: 'All Files', extensions: ['*'] }
+        ]
+
+        const result = await dialog.showOpenDialog(mainWindow, {
+            title: options?.title || 'Otvoriť spis / forenzný dokument (PΛND0RΛ)',
+            properties: ['openFile'],
+            filters: options?.filters || defaultFilters
+        })
+
+        if (result.canceled || result.filePaths.length === 0) {
+            return null
+        }
+
+        const filePath = result.filePaths[0]
+        const stats = await fs.promises.stat(filePath)
+
+        return {
+            path: filePath,
+            name: path.basename(filePath),
+            size: stats.size,
+            extension: path.extname(filePath).toLowerCase().replace('.', '')
+        }
+    })
+
+    ipcMain.handle('dialog:saveFile', async (_, options?: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => {
+        if (!mainWindow) return null
+
+        const result = await dialog.showSaveDialog(mainWindow, {
+            title: options?.title || 'Uložiť export / forenznú správu (PΛND0RΛ)',
+            defaultPath: options?.defaultPath || 'pandora-forensic-report.pdf',
+            filters: options?.filters || [
+                { name: 'PDF Documents', extensions: ['pdf'] },
+                { name: 'JSON Dossier', extensions: ['json'] },
+                { name: 'All Files', extensions: ['*'] }
+            ]
+        })
+
+        if (result.canceled || !result.filePath) {
+            return null
+        }
+
+        return {
+            path: result.filePath,
+            name: path.basename(result.filePath)
+        }
+    })
+
+    // Secure File System Access IPC
+    ipcMain.handle('fs:readFileSafely', async (_, filePath: string) => {
+        if (!filePath || typeof filePath !== 'string') {
+            throw new Error('Neplatná cesta k súboru.')
+        }
+
+        const normalized = path.normalize(filePath)
+        const stats = await fs.promises.stat(normalized)
+        if (stats.size > 250 * 1024 * 1024) {
+            throw new Error('Súbor prekračuje maximálnu povolenú veľkosť 250 MB.')
+        }
+
+        const buffer = await fs.promises.readFile(normalized)
+        return {
+            name: path.basename(normalized),
+            size: stats.size,
+            data: buffer
         }
     })
 
