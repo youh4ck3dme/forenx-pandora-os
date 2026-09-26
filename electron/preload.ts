@@ -53,7 +53,8 @@ contextBridge.exposeInMainWorld('electron', {
             'history:search', 'history:getContent', 'tab:getContent',
             'password:save', 'password:get', 'password:delete',
             'ai:generate-image', 'capture:page', 'search:suggestions',
-            'shield:getStats', 'shield:getLogs', 'shield:toggle'
+            'shield:getStats', 'shield:getLogs', 'shield:toggle',
+            'dialog:openFile', 'dialog:saveFile', 'vault:upload', 'fs:readFileSafely'
         ]
         if (validChannels.includes(channel)) {
             return ipcRenderer.invoke(channel, ...args)
