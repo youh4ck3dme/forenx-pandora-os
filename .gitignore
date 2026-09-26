@@ -1,0 +1,48 @@
+node_modules/
+.next/
+out/
+dist/
+build/
+.env
+.env*.local
+*.log
+.DS_Store
+# Allow example environment file
+!.env.example
+
+# Extended ignores
+/.pnpm-store
+/dist-electron
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# AI & Tests
+.gemini/
+scratch/
+test-results/
+playwright-report/
+
+# Vercel
+.vercel
+
+# IDEs
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Capacitor
+/android/
+!/android/app/
+/ios/
+!/ios/App/
+
+# VS Code Workspace
+!*.code-workspace

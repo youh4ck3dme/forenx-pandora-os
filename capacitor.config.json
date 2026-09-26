@@ -1,0 +1,35 @@
+{
+    "appId": "com.pandora.browser",
+    "appName": "PANDORA Browser",
+    "webDir": "out",
+    "bundledWebRuntime": false,
+    "server": {
+        "url": "https://pwa-browser-editor.vercel.app",
+        "androidScheme": "https",
+        "cleartext": true
+    },
+    "plugins": {
+        "SplashScreen": {
+            "launchShowDuration": 2000,
+            "backgroundColor": "#000000",
+            "showSpinner": false
+        },
+        "StatusBar": {
+            "style": "dark",
+            "backgroundColor": "#000000"
+        },
+        "Keyboard": {
+            "resize": "body",
+            "resizeOnFullScreen": true
+        }
+    },
+    "ios": {
+        "contentInset": "automatic",
+        "scheme": "PANDORA"
+    },
+    "android": {
+        "allowMixedContent": true,
+        "captureInput": true,
+        "webContentsDebuggingEnabled": true
+    }
+}
