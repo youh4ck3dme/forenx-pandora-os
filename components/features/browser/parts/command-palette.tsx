@@ -132,7 +132,13 @@ export function CommandPalette() {
                                             key={tool.id}
                                             onSelect={() => {
                                                 if ('href' in tool && tool.href) {
-                                                    window.location.href = tool.href;
+                                                    const { activeTabId, updateTab, addTab } = useBrowserStore.getState();
+                                                    const fullUrl = typeof window !== 'undefined' ? `${window.location.origin}${tool.href}` : tool.href;
+                                                    if (activeTabId) {
+                                                        updateTab(activeTabId, { url: fullUrl, title: tool.label, isLoading: true });
+                                                    } else {
+                                                        addTab({ id: Date.now().toString(), title: tool.label, url: fullUrl, lastAccessed: Date.now(), spaceId: 'default' });
+                                                    }
                                                 } else {
                                                     openSidebarPanel(tool.id as any)
                                                 }

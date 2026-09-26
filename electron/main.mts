@@ -831,7 +831,9 @@ function switchTab(id: string) {
 
     const tab = tabs.find(t => t.id === id)
     if (tab) {
-        if (tab.view.webContents.getURL() === '') {
+        const currentUrl = tab.view.webContents.getURL()
+        // For newtab and internal forensic modules, remove native BrowserView so React iframe renders seamlessly
+        if (currentUrl === '' || currentUrl.includes('pandora://newtab') || currentUrl.includes('/forza/')) {
             mainWindow.removeBrowserView(tab.view)
         } else {
             mainWindow.setBrowserView(tab.view)
@@ -868,15 +870,14 @@ function closeTab(id: string) {
 }
 
 function updateTabUrl(id: string, url: string) {
-
     const tab = tabs.find(t => t.id === id)
     if (!tab) {
-
         createTab(id, url)
         return
     }
 
-    if (url === 'pandora://newtab') {
+    // For newtab and internal forensic modules, remove native overlay so embedded UI renders
+    if (url === 'pandora://newtab' || url.includes('/forza/')) {
         if (mainWindow) mainWindow.removeBrowserView(tab.view)
     } else {
         if (mainWindow && activeTabId === id) mainWindow.setBrowserView(tab.view)
