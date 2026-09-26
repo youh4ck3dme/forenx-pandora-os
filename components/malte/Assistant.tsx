@@ -209,7 +209,13 @@ export function Assistant() {
     quarantine: searchParams?.get("quarantine") ?? undefined,
     case: searchParams?.get("case") ?? undefined,
   };
-  const { activeCase, analysis, hasCase, revisions } = useActiveCase();
+  const {
+    activeCase,
+    analysis,
+    hasCase,
+    revisions,
+    setDossier: setSharedDossier,
+  } = useActiveCase();
   const isOnline = useOnlineStatus();
   const status = useQuery({
     queryKey: ["ai-status"],
@@ -256,6 +262,10 @@ export function Assistant() {
   const [demoMode, setDemoMode] = useState(false);
   const [isTourOpen, setIsTourOpen] = useState(false);
 
+  useEffect(() => {
+    if (dossier) setSharedDossier(dossier);
+  }, [dossier, setSharedDossier]);
+
   // Načítaj uložený dossier pre aktívny prípad. Pri zmene prípadu resetuj lokálny stav,
   // aby sa nenechal zobraziť spis predchádzajúceho prípadu.
   useEffect(() => {
@@ -289,7 +299,7 @@ export function Assistant() {
     };
   }, [activeCase.id, getForensicDossierFn]);
 
-  const showTimestory = demoMode && isDemoDossier(dossier);
+  const showTimestory = Boolean(dossier);
 
   useEffect(() => {
     if (!showTimestory && autopilotTab === "timestory") {

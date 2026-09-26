@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   ShieldCheck,
   AlertTriangle,
@@ -39,6 +39,12 @@ import { toast } from "sonner";
 import { Card } from "@/components/malte/Shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useActiveCase } from "@/hooks/useActiveCase";
+import type {
+  ForensicDossier,
+  TimelineEvent,
+} from "@/lib/forza/types";
+import type { ForensicCase } from "@/lib/forza/forensic";
 
 interface AnomalyItem {
   id: number;
@@ -512,7 +518,158 @@ Odôvodnenie: Pripisovanie medzinárodného obchodu obvinenému bez jediného za
   },
 ];
 
+function formatTimestoryDate(value: string) {
+  const parsed = new Date(value.replace(" ", "T"));
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleDateString("sk-SK", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+}
+
+function actorNames(event: string, forensicCase: ForensicCase) {
+  const matches = forensicCase.entities
+    .filter((entity) => event.toLocaleLowerCase().includes(entity.name.toLocaleLowerCase()))
+    .map((entity) => `${entity.name} (${entity.role})`);
+  return matches.length > 0 ? matches : ["Aktéri uvedení v spise"];
+}
+
+export function buildDynamicEpisodes(
+  forensicCase: ForensicCase,
+  dossier: ForensicDossier,
+): TimestoryEpisode[] {
+  const timeline: TimelineEvent[] =
+    dossier.facts.timeline.length > 0
+      ? dossier.facts.timeline
+      : forensicCase.events.map((event) => ({
+          time: event.date,
+          event: `${event.title}: ${event.detail}`,
+          source: "Evidencia prípadu",
+          chainBreak: false,
+          severity:
+            event.severity === "critical"
+              ? "critical"
+              : event.severity === "high" || event.severity === "medium"
+                ? "warning"
+                : "info",
+        }));
+
+  const sourceTimeline =
+    timeline.length > 0
+      ? timeline
+      : [
+          {
+            time: forensicCase.referenceDate,
+            event: "Spis zatiaľ neobsahuje udalosti časovej osi.",
+            source: "Doplňte udalosti alebo spustite Autopilota nad dokumentom.",
+            chainBreak: false,
+            severity: "info" as const,
+          },
+        ];
+
+  return sourceTimeline.slice(0, 12).map((event, index) => {
+    const chapterLetter = String.fromCharCode(65 + index);
+    const source = event.source || "Zdroj nie je uvedený";
+    const isBreak = event.chainBreak === true;
+    return {
+      id: index + 1,
+      chapterLetter,
+      date: formatTimestoryDate(event.time),
+      badge: `KAPITOLA ${chapterLetter} // ${isBreak ? "VYŽADUJE OVERENIE" : "UDALOSŤ SPISU"}`,
+      title: event.event,
+      caption: `Zdroj: ${source}`,
+      narratorBox: `${formatTimestoryDate(event.time)} · ${source}`,
+      soundEffect: isBreak ? "*POZOR — MEDZERA*" : "*ZÁZNAM V SPISE*",
+      dialogues: [
+        {
+          speaker: "Záznam v spise",
+          role: "Vyšetrovateľ",
+          text: event.event,
+        },
+      ],
+      comicPrompt: `${MASTER_COMIC_STYLE_ANCHOR} Scene based strictly on this documented case event: ${event.event}. Do not add people, objects, or facts absent from the source.`,
+      negativePrompt:
+        "invented persons, invented evidence, photorealistic, 3d render, blurry",
+      cameraAngle: "Dokumentárny panel podľa zdrojovej udalosti",
+      forensicAnalysis: `${event.event} (Zdroj: ${source})`,
+      debunkedLie: isBreak
+        ? `Procesná neistota: ${event.paragraph ?? "reťazec zabezpečenia alebo zdroj treba doplniť."}`
+        : "Udalosť je pracovný záznam zo spisu a vyžaduje overenie v pôvodnom dokumente.",
+      involvedActors: actorNames(event.event, forensicCase),
+      location: event.sourceRef?.label || event.source || "Miesto neuvedené",
+    };
+  });
+}
+
+export function buildDynamicAnomalies(dossier: ForensicDossier): AnomalyItem[] {
+  const contradictions = (dossier.testimonyContradictions ?? []).map(
+    (item, index) => ({
+      id: index + 1,
+      title: item.topic,
+      prosecutionClaim: item.personA.claim,
+      sourceOfClaim: item.personA.name,
+      forensicTruth: item.factualRecord,
+      keyEvidence: item.personB ? [item.personB.claim] : [],
+      proceduralAction: item.proceduralResolution,
+      proceduralParagraph: "Procesný postup zo spisu",
+      motionText: item.proceduralResolution,
+      strength:
+        item.contradictionSeverity === "critical"
+          ? ("Rozhodujúci rozpor" as const)
+          : ("Kritické pre OČTK" as const),
+    }),
+  );
+  const defects = (dossier.admissibilityAudit?.defects ?? []).map(
+    (defect, index) => ({
+      id: contradictions.length + index + 1,
+      title: defect.description,
+      prosecutionClaim: "Procesná použiteľnosť dôkazu vyžaduje preskúmanie.",
+      sourceOfClaim: defect.paragraph,
+      forensicTruth: defect.description,
+      keyEvidence: [defect.remedyAction],
+      proceduralAction: defect.remedyAction,
+      proceduralParagraph: defect.paragraph,
+      motionText: defect.remedyAction,
+      strength:
+        defect.severity === "critical"
+          ? ("Rozhodujúci rozpor" as const)
+          : ("Kritické pre OČTK" as const),
+    }),
+  );
+  const flows = (dossier.financialAnalysis?.suspiciousFlows ?? []).map(
+    (flow, index) => ({
+      id: contradictions.length + defects.length + index + 1,
+      title: `${flow.payer} → ${flow.recipient}`,
+      prosecutionClaim: flow.redFlag,
+      sourceOfClaim: `${flow.date} · ${flow.id}`,
+      forensicTruth: flow.purpose,
+      keyEvidence: [`${flow.amount.toLocaleString("sk-SK")} EUR`, flow.redFlag],
+      proceduralAction: "Overiť pôvod a účel platby v prvotných dokladoch.",
+      proceduralParagraph: "§ 119 TP",
+      motionText: `Overiť transakciu ${flow.id}: ${flow.purpose}`,
+      strength: "Kritické pre OČTK" as const,
+    }),
+  );
+  return [...contradictions, ...defects, ...flows];
+}
+
 export function TruthTimestorySection() {
+  const { activeCase, dossier } = useActiveCase();
+  const isDemo = dossier?.analysisMeta?.isDemo === true;
+  const episodes = useMemo(
+    () =>
+      isDemo || !dossier
+        ? TIMESTORY_EPISODES
+        : buildDynamicEpisodes(activeCase, dossier),
+    [activeCase, dossier, isDemo],
+  );
+  const anomalies = useMemo(
+    () => (isDemo || !dossier ? ANOMALIES_DATA : buildDynamicAnomalies(dossier)),
+    [dossier, isDemo],
+  );
+  const caseTitle = dossier?.caseTitle || activeCase.name;
   const [activeEpisodeId, setActiveEpisodeId] = useState<number>(1);
   const [expandedAnomalyId, setExpandedAnomalyId] = useState<number | null>(1);
   const [filterStrength, setFilterStrength] = useState<string>("all");
@@ -525,6 +682,12 @@ export function TruthTimestorySection() {
   const [brokenImages, setBrokenImages] = useState<Record<number, boolean>>({});
   const [isPlaying, setIsPlaying] = useState(false);
   const [playProgress, setPlayProgress] = useState(0);
+
+  useEffect(() => {
+    if (!episodes.some((episode) => episode.id === activeEpisodeId)) {
+      setActiveEpisodeId(episodes[0]?.id ?? 1);
+    }
+  }, [activeEpisodeId, episodes]);
 
   useEffect(() => {
     if (!isPlaying) {
@@ -540,7 +703,7 @@ export function TruthTimestorySection() {
       setPlayProgress((prev) => {
         if (prev >= 100) {
           setActiveEpisodeId((curr) =>
-            curr >= TIMESTORY_EPISODES.length ? 1 : curr + 1,
+            curr >= episodes.length ? 1 : curr + 1,
           );
           return 0;
         }
@@ -577,8 +740,7 @@ export function TruthTimestorySection() {
   }
 
   const currentEpisode: TimestoryEpisode =
-    TIMESTORY_EPISODES.find((e) => e.id === activeEpisodeId) ??
-    TIMESTORY_EPISODES[0]!;
+    episodes.find((e) => e.id === activeEpisodeId) ?? episodes[0]!;
 
   // Krátky prechod pri prepnutí kapitoly — vizuálna spätná väzba.
   const [switching, setSwitching] = useState(false);
@@ -590,8 +752,8 @@ export function TruthTimestorySection() {
 
   const filteredAnomalies =
     filterStrength === "all"
-      ? ANOMALIES_DATA
-      : ANOMALIES_DATA.filter((a) => a.strength === filterStrength);
+      ? anomalies
+      : anomalies.filter((a) => a.strength === filterStrength);
 
   function handleCopyPrompt(episode: TimestoryEpisode) {
     const text = `/* COMIC PANEL PROMPT — EPISODE ${episode.id} (${episode.chapterLetter}) */
@@ -633,7 +795,7 @@ MASTER STYLE ANCHOR:
 ${MASTER_COMIC_STYLE_ANCHOR}
 
 --------------------------------------------------------------
-${TIMESTORY_EPISODES.map(
+${episodes.map(
   (ep) => `EPIZÓDA ${ep.id} // KAPITOLA ${ep.chapterLetter}: ${ep.title}
 DÁTUM & MIESTO: ${ep.date} | ${ep.location}
 SFX ONOMATOPOEIA: ${ep.soundEffect}
@@ -694,21 +856,18 @@ ${ep.dialogues.map((d) => `  • ${d.speaker} (${d.role}): "${d.text}"`).join("\
                 FRANK MILLER NOIR STÝL
               </Badge>
               <Badge className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-black uppercase animate-pulse">
-                SYNTETICKÁ UKÁŽKA — FIKTÍVNE ÚDAJE
+                {isDemo
+                  ? "SYNTETICKÁ UKÁŽKA — FIKTÍVNE ÚDAJE"
+                  : "PRACOVNÁ REKONŠTRUKCIA Z AKTÍVNEHO SPISU"}
               </Badge>
             </div>
             <h3 className="text-lg sm:text-2xl font-black text-foreground tracking-tight flex items-center gap-2">
-              <span>Kauza Armivex & Peter Novák: Priebeh od A po Z</span>
+              <span>{caseTitle}: Priebeh od A po Z</span>
             </h3>
             <p className="text-xs text-muted-foreground max-w-3xl leading-relaxed">
-              Syntetická ukážka — vymyslené osoby, firmy a sumy. Rekonštrukcia
-              modelového spisu{" "}
-              <strong className="text-foreground">
-                PPZ-51/UBOK-PZ-ST-2025
-              </strong>{" "}
-              zostavená formou surového grafického komiksu. Úplná dekonštrukcia
-              policajnej tézy o „organizátorovi Novákovi“ podložená dôkazmi,
-              zvukovými efektmi a promptami pre generovanie scén.
+              {isDemo
+                ? "Syntetická ukážka — vymyslené osoby, firmy a sumy."
+                : "Pracovný storyboard zostavený iba z udalostí, zistení a zdrojov aktívneho spisu. Pred použitím v konaní overte každý údaj proti originálu."}
             </p>
           </div>
 
@@ -757,39 +916,20 @@ ${ep.dialogues.map((d) => `  • ${d.speaker} (${d.role}): "${d.text}"`).join("\
 
         {/* 3 HLAVNÉ PILIERE PRAVDY */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-3.5 relative z-10">
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3 space-y-1">
-            <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-xs">
-              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-              1. Žiadny osobný odber v Žiline
+          {episodes.slice(0, 3).map((episode, index) => (
+            <div
+              key={episode.id}
+              className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-1"
+            >
+              <div className="flex items-center gap-1.5 text-primary font-bold text-xs">
+                {index === 0 ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <FileSearch className="h-3.5 w-3.5 shrink-0" />}
+                {index + 1}. {episode.title}
+              </div>
+              <p className="text-[11px] text-foreground/80 leading-snug">
+                {episode.forensicAnalysis}
+              </p>
             </div>
-            <p className="text-[11px] text-foreground/80 leading-snug">
-              Dokladmi fyzicky disponovala skupina (Koval, Bahna, Ľubo). K
-              podpisom v knihe chýba grafológia (§ 142 TP) a Novákov mobil v
-              Žiline nikdy nebol.
-            </p>
-          </div>
-          <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-3 space-y-1">
-            <div className="flex items-center gap-1.5 text-cyan-400 font-bold text-xs">
-              <Car className="h-3.5 w-3.5 shrink-0" />
-              2. Nočná logistika Denisa Kovala
-            </div>
-            <p className="text-[11px] text-foreground/80 leading-snug">
-              Fyzické prevozy zbraní z kufrov BMW 7 bez dokladov na nočných
-              odpočívadlách D1 (Livinské Opatovce) vykonával výhradne Dimitri
-              Koval s Tkáčom.
-            </p>
-          </div>
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-1">
-            <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs">
-              <Zap className="h-3.5 w-3.5 shrink-0" />
-              3. Dôkaz rozpadu dôvery (Jar 2025)
-            </div>
-            <p className="text-[11px] text-foreground/80 leading-snug">
-              Novák si strhol nezaplatenú mzdu a vypol telefón. Člen gangu
-              neodpája kontakt a nekradne vlastným šéfom — išlo o útek pred
-              nátlakom skupiny.
-            </p>
-          </div>
+          ))}
         </div>
       </div>
 
@@ -844,7 +984,7 @@ ${ep.dialogues.map((d) => `  • ${d.speaker} (${d.role}): "${d.text}"`).join("\
 
           {/* Rýchly zoznam všetkých promptov s kopírovaním */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-1">
-            {TIMESTORY_EPISODES.map((ep) => (
+            {episodes.map((ep) => (
               <div
                 key={ep.id}
                 className="rounded-lg border border-border/80 bg-muted/20 p-2.5 space-y-1.5 flex flex-col justify-between"
@@ -904,7 +1044,7 @@ ${ep.dialogues.map((d) => `  • ${d.speaker} (${d.role}): "${d.text}"`).join("\
 
           {/* Navigačná lišta kapitol A-F */}
           <div className="flex items-center gap-1 bg-muted/40 p-1 rounded-xl border border-border/70">
-            {TIMESTORY_EPISODES.map((ep) => (
+            {episodes.map((ep) => (
               <button
                 key={ep.id}
                 onClick={() => setActiveEpisodeId(ep.id)}
@@ -1110,7 +1250,7 @@ ${ep.dialogues.map((d) => `  • ${d.speaker} (${d.role}): "${d.text}"`).join("\
                   >
                     ← Kapitola{" "}
                     {
-                      TIMESTORY_EPISODES[Math.max(0, activeEpisodeId - 2)]
+                      episodes[Math.max(0, activeEpisodeId - 2)]
                         ?.chapterLetter
                     }
                   </Button>
@@ -1142,18 +1282,18 @@ ${ep.dialogues.map((d) => `  • ${d.speaker} (${d.role}): "${d.text}"`).join("\
                     variant="outline"
                     size="sm"
                     className="text-xs h-8 gap-1 cursor-pointer font-bold"
-                    disabled={activeEpisodeId >= TIMESTORY_EPISODES.length}
+                    disabled={activeEpisodeId >= episodes.length}
                     onClick={() => {
                       setIsPlaying(false);
                       setActiveEpisodeId((prev) =>
-                        Math.min(TIMESTORY_EPISODES.length, prev + 1),
+                        Math.min(episodes.length, prev + 1),
                       );
                     }}
                   >
                     Kapitola{" "}
                     {
-                      TIMESTORY_EPISODES[
-                        Math.min(TIMESTORY_EPISODES.length - 1, activeEpisodeId)
+                      episodes[
+                        Math.min(episodes.length - 1, activeEpisodeId)
                       ]?.chapterLetter
                     }{" "}
                     →
@@ -1290,7 +1430,7 @@ ${ep.dialogues.map((d) => `  • ${d.speaker} (${d.role}): "${d.text}"`).join("\
                     : "bg-muted text-muted-foreground hover:bg-muted/80"
                 }`}
               >
-                {f === "all" ? "Všetky (6)" : f}
+                {f === "all" ? `Všetky (${anomalies.length})` : f}
               </button>
             ))}
           </div>
@@ -1472,7 +1612,29 @@ ${ep.dialogues.map((d) => `  • ${d.speaker} (${d.role}): "${d.text}"`).join("\
       </Card>
 
       {/* ═══ SEKCIA 3: GEOGRAFICKÁ MAPA TRÁS & FORENZNÉ POROVNANIE POHYBU ═══ */}
-      <Card className="space-y-4 p-4 sm:p-5 border-border/80 bg-card/95 shadow-xl">
+      {!isDemo ? (
+        <Card className="space-y-3 p-4 sm:p-5 border-border/80 bg-card/95 shadow-xl">
+          <div className="flex items-center gap-2">
+            <Route className="h-4 w-4 text-cyan-400" />
+            <h4 className="text-sm font-black">Trasy a miesta v aktívnom spise</h4>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Tento spis neobsahuje predpripravenú mapu. Miesta a trasy uvádzané
+            v časovej osi sú zobrazené výlučne podľa zdrojov jednotlivých udalostí.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {[...new Set(episodes.map((episode) => episode.location))]
+              .filter((location) => location !== "Miesto neuvedené")
+              .map((location) => (
+                <Badge key={location} variant="outline" className="text-[10px]">
+                  <MapPin className="mr-1 h-3 w-3 text-cyan-400" />
+                  {location}
+                </Badge>
+              ))}
+          </div>
+        </Card>
+      ) : null}
+      <Card className={`space-y-4 p-4 sm:p-5 border-border/80 bg-card/95 shadow-xl ${isDemo ? "" : "hidden"}`}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/60 pb-3">
           <div className="space-y-0.5">
             <div className="flex items-center gap-2">
@@ -1766,7 +1928,7 @@ ${ep.dialogues.map((d) => `  • ${d.speaker} (${d.role}): "${d.text}"`).join("\
                     Tlačová zostava: Vizuálna dôkazná príloha pre súd
                   </h3>
                   <p className="text-xs text-muted-foreground font-mono">
-                    ČVS: PPZ-51/ÚBOK-PZ-ST-2025 // Zrekonštruovaný dej od A po Z
+                    {dossier?.caseId ?? activeCase.id} // Zrekonštruovaný dej od A po Z
                   </p>
                 </div>
               </div>
@@ -1795,21 +1957,22 @@ ${ep.dialogues.map((d) => `  • ${d.speaker} (${d.role}): "${d.text}"`).join("\
               {/* Formálna hlavička podania */}
               <div className="border-b-2 border-foreground/20 pb-4 text-center space-y-1">
                 <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block">
-                  SYNTETICKÁ UKÁŽKA — FIKTÍVNE ÚDAJE • DEMONŠTRATÍVNY STORYBOARD
+                  {isDemo
+                    ? "SYNTETICKÁ UKÁŽKA — FIKTÍVNE ÚDAJE • DEMONŠTRATÍVNY STORYBOARD"
+                    : "PRACOVNÝ STORYBOARD Z AKTÍVNEHO SPISU • VYŽADUJE OVERENIE ZDROJOV"}
                 </span>
                 <h2 className="text-xl font-black uppercase tracking-tight">
-                  Kauza ARMIVEX & Peter Novák: Priebeh od A po Z
+                  {caseTitle}: Priebeh od A po Z
                 </h2>
                 <p className="text-xs text-muted-foreground max-w-2xl mx-auto">
-                  Rekonštrukcia vyšetrovacieho spisu vyvracajúca tvrdenie o
-                  organizátorskej úlohe obv. Petra Nováka a preukazujúca reálnu
-                  trasu zbraní organizovanú Dimitrim Kovalom.
+                  Pracovná rekonštrukcia založená na udalostiach a zisteniach
+                  aktuálneho dosiéru; nejde o samostatný dôkaz ani znalecký posudok.
                 </p>
               </div>
 
               {/* Všetkých 6 kapitol v tlačovom zobrazení */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {TIMESTORY_EPISODES.map((ep) => (
+                {episodes.map((ep) => (
                   <div
                     key={ep.id}
                     className="border-2 border-border/80 rounded-xl p-3.5 space-y-2.5 bg-muted/10 break-inside-avoid"
@@ -1878,7 +2041,7 @@ ${ep.dialogues.map((d) => `  • ${d.speaker} (${d.role}): "${d.text}"`).join("\
                 <span>
                   Doložka pravdivosti a dôkaznej nemennosti podľa § 119 TP
                 </span>
-                <span>SHA-256 HASH: 8f9b2c...e41d8a · PPZ-51-UBOK-2025</span>
+                <span>Identifikátor spisu: {dossier?.caseId ?? activeCase.id}</span>
               </div>
             </div>
           </div>

@@ -38,6 +38,7 @@ vi.mock("@/hooks/useActiveCase", () => ({
     analysis: { alerts: [] },
     hasCase: true,
     revisions: {},
+    setDossier: vi.fn(),
   }),
 }));
 vi.mock("@/hooks/useOnlineStatus", () => ({
