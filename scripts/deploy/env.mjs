@@ -46,7 +46,10 @@ export const REQUIRED = [
   "S3_SECRET_ACCESS_KEY",
 ];
 
-/** Aspoň jeden z Mistral kľúčov (chat/analysis majú prednosť pred spoločným). */
+/**
+ * Mistral: spoločný MISTRAL_API_KEY, alebo OBA dedikované kľúče. Runtime ich nemieša —
+ * chat číta len _CHAT, analýza/OCR len _ANALYSIS (spoločný kľúč je fallback pre oba).
+ */
 export const MISTRAL_ANY = ["MISTRAL_API_KEY", "MISTRAL_API_KEY_CHAT", "MISTRAL_API_KEY_ANALYSIS"];
 
 /** Premenné, ktoré kód číta, hoci v šablóne nie sú. */
@@ -97,6 +100,12 @@ export function checkEnv(env, keys) {
   }
   if (!MISTRAL_ANY.some(has)) {
     problems.push({ level: "error", key: MISTRAL_ANY.join(" | "), issue: "nie je nastavený žiadny Mistral kľúč" });
+  } else if (!has("MISTRAL_API_KEY")) {
+    for (const key of ["MISTRAL_API_KEY_CHAT", "MISTRAL_API_KEY_ANALYSIS"]) {
+      if (!has(key)) {
+        problems.push({ level: "error", key, issue: "bez MISTRAL_API_KEY treba oba dedikované kľúče (chat aj analýza)" });
+      }
+    }
   }
   for (const [key, value] of env) {
     if (value && PLACEHOLDER.test(value)) {
@@ -157,7 +166,7 @@ function printTemplate(keys) {
       console.log(`${key}=${required}`);
     }
   }
-  console.log(`\n# Mistral: nastav aspoň jeden z ${MISTRAL_ANY.join(", ")}.`);
+  console.log("\n# Mistral: MISTRAL_API_KEY, alebo oba MISTRAL_API_KEY_CHAT a MISTRAL_API_KEY_ANALYSIS.");
   console.log(`# Nenastavuj: ${FORBIDDEN_IN_PRODUCTION.join(", ")}.`);
 }
 

@@ -14,7 +14,7 @@ function validEnv(): Map<string, string> {
   env.set("NEXT_PUBLIC_BASE_URL", "https://pandora.whoiswho.at");
   env.set("NEXT_PUBLIC_SUPABASE_URL", "https://abc.supabase.co");
   env.set("SUPABASE_URL", "https://abc.supabase.co");
-  env.set("MISTRAL_API_KEY_CHAT", "k1");
+  env.set("MISTRAL_API_KEY", "k1");
   return env;
 }
 
@@ -49,10 +49,24 @@ describe("deploy env helper", () => {
     expect(checkEnv(validEnv(), exampleKeys()).filter((p) => p.level === "error")).toEqual([]);
   });
 
+  it("requires the shared Mistral key or both dedicated keys", () => {
+    const onlyChat = validEnv();
+    onlyChat.delete("MISTRAL_API_KEY");
+    onlyChat.set("MISTRAL_API_KEY_CHAT", "k-chat");
+    const errors = checkEnv(onlyChat, exampleKeys()).filter((p) => p.level === "error").map((p) => p.key);
+    expect(errors).toEqual(["MISTRAL_API_KEY_ANALYSIS"]);
+
+    const both = validEnv();
+    both.delete("MISTRAL_API_KEY");
+    both.set("MISTRAL_API_KEY_CHAT", "k-chat");
+    both.set("MISTRAL_API_KEY_ANALYSIS", "k-analysis");
+    expect(checkEnv(both, exampleKeys()).filter((p) => p.level === "error")).toEqual([]);
+  });
+
   it("reports missing, placeholder, leaked and forbidden values without echoing them", () => {
     const env = validEnv();
     env.delete("S3_SECRET_ACCESS_KEY");
-    env.delete("MISTRAL_API_KEY_CHAT");
+    env.delete("MISTRAL_API_KEY");
     env.set("SUPABASE_SERVICE_ROLE_KEY", "your-service-role-key");
     env.set("NEXT_PUBLIC_STRIPE_SECRET_KEY", "leak-marker-9f3a2c");
     env.set("VAULT_FALLBACK_SECRET", "x".repeat(40));
