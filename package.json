@@ -19,7 +19,9 @@
     "test:e2e:ui": "playwright test --ui",
     "audit": "node scripts/audit.mjs",
     "audit:ast": "node scripts/ci/ast-guard.mjs",
-    "ci:guard": "node scripts/ci/ast-guard.mjs lib/ai && vitest run"
+    "ci:guard": "node scripts/ci/ast-guard.mjs lib/ai && vitest run",
+    "verify:desktop-security": "npx vitest run electron/__tests__/ && npx tsc -p electron/tsconfig.json --noEmit",
+    "verify:production": "npx tsc --noEmit && npm run build && npx tsc --noEmit && npm run verify:desktop-security && npx vitest run"
   },
   "main": "dist-electron/main.mjs",
   "build": {

@@ -12,9 +12,14 @@ import { streamText } from 'ai'
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 import type { AppUpdater } from 'electron-updater';
+import { configureWebTabsSession, createIsolatedBrowserView } from './browser-view-factory.js'
+import { openExternalRequestSchema, readEvidenceChunkRequestSchema, selectEvidenceRequestSchema } from './ipc-contract.js'
+import { validateExternalUrl } from './network-security.js'
+import { VaultTokenManager } from './vault-token-manager.js'
 
 autoUpdater.autoDownload = false
 autoUpdater.autoInstallOnAppQuit = true
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=2048')
 
 // Necessary for ESM in Electron
 const __filename = fileURLToPath(import.meta.url)
@@ -24,6 +29,7 @@ let mainWindow: BrowserWindow | null = null
 let splashWindow: BrowserWindow | null = null
 let historyManager: HistoryManager | null = null
 let passwordManager: PasswordManager | null = null
+const vaultTokens = new VaultTokenManager()
 
 let adBlocker: ElectronBlocker | null = null
 
@@ -161,8 +167,13 @@ if (process.defaultApp) {
     app.setAsDefaultProtocolClient('pandora')
 }
 
-ipcMain.on('shell:openExternal', (_, url) => {
-    shell.openExternal(url)
+ipcMain.handle('system:open-external-safe', async (_event, payload: unknown) => {
+    const parsed = openExternalRequestSchema.safeParse(payload)
+    if (!parsed.success) return { ok: false, code: 'VALIDATION_ERROR' }
+    const validation = validateExternalUrl(parsed.data.url)
+    if (!validation.ok) return { ok: false, code: 'SECURITY_POLICY_VIOLATION' }
+    await shell.openExternal(validation.url)
+    return { ok: true }
 })
 
 const gotTheLock = app.requestSingleInstanceLock()
@@ -225,6 +236,10 @@ if (!gotTheLock) {
 
     // Create window when ready
     app.whenReady().then(async () => {
+        session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => {
+            callback(false)
+        })
+        configureWebTabsSession()
         createSplashWindow()
 
         await setupAdBlocker()
@@ -274,6 +289,9 @@ function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
+            sandbox: true,
+            webSecurity: true,
+            allowRunningInsecureContent: false,
             preload: path.join(__dirname, 'preload.js'),
         },
         titleBarStyle: 'hiddenInset',
@@ -281,6 +299,7 @@ function createWindow() {
         show: false,
         icon: path.join(__dirname, '../public/apple-icon.png')
     })
+    const mainWindowWebContentsId = mainWindow.webContents.id
 
     // Clear cache and service workers on startup to prevent hijacking from old projects
     session.defaultSession.clearCache()
@@ -330,6 +349,11 @@ function createWindow() {
         mainWindow?.show()
     })
 
+    mainWindow.once('closed', () => {
+        vaultTokens.revokeOwner(mainWindowWebContentsId)
+        mainWindow = null
+    })
+
     // Window Resize Handler
     mainWindow.on('resize', () => {
         if (!mainWindow) return
@@ -342,11 +366,8 @@ function createWindow() {
     })
 
     // Permission Handler
-    session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-        const url = webContents.getURL()
-
-        // Approve by default for seamless usage, should implementation UI for this later
-        callback(true)
+    session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
+        callback(false)
     })
 
     // IPC Handlers
@@ -565,6 +586,41 @@ function createWindow() {
         }
     })
 
+    ipcMain.handle('vault:select-evidence', async (event, payload: unknown) => {
+        if (!mainWindow) return { ok: false, code: 'WINDOW_UNAVAILABLE' }
+        const parsed = selectEvidenceRequestSchema.safeParse(payload)
+        if (!parsed.success) return { ok: false, code: 'VALIDATION_ERROR' }
+        const result = await dialog.showOpenDialog(mainWindow, {
+            title: 'Zaistiť dôkaz do spisu',
+            properties: ['openFile', 'multiSelections'],
+            filters: [
+                { name: 'Forenzné dokumenty', extensions: ['pdf', 'csv', 'xlsx', 'docx', 'png', 'jpg', 'heic'] },
+            ],
+        })
+        if (result.canceled) return { ok: true, files: [] }
+        try {
+            const files = await Promise.all(
+                result.filePaths.map((filePath) =>
+                    vaultTokens.register(filePath, parsed.data.caseId, event.sender.id),
+                ),
+            )
+            return { ok: true, files }
+        } catch {
+            return { ok: false, code: 'FILE_REGISTRATION_FAILED' }
+        }
+    })
+
+    ipcMain.handle('vault:read-chunk', async (event, payload: unknown) => {
+        const parsed = readEvidenceChunkRequestSchema.safeParse(payload)
+        if (!parsed.success) return { ok: false, code: 'VALIDATION_ERROR' }
+        return vaultTokens.read(
+            parsed.data.tokenId,
+            event.sender.id,
+            parsed.data.offset,
+            parsed.data.length,
+        )
+    })
+
     ipcMain.handle('dialog:saveFile', async (_, options?: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => {
         if (!mainWindow) return null
 
@@ -585,26 +641,6 @@ function createWindow() {
         return {
             path: result.filePath,
             name: path.basename(result.filePath)
-        }
-    })
-
-    // Secure File System Access IPC
-    ipcMain.handle('fs:readFileSafely', async (_, filePath: string) => {
-        if (!filePath || typeof filePath !== 'string') {
-            throw new Error('Neplatná cesta k súboru.')
-        }
-
-        const normalized = path.normalize(filePath)
-        const stats = await fs.promises.stat(normalized)
-        if (stats.size > 250 * 1024 * 1024) {
-            throw new Error('Súbor prekračuje maximálnu povolenú veľkosť 250 MB.')
-        }
-
-        const buffer = await fs.promises.readFile(normalized)
-        return {
-            name: path.basename(normalized),
-            size: stats.size,
-            data: buffer
         }
     })
 
@@ -747,14 +783,7 @@ function createWindow() {
 function createTab(id: string, url: string) {
     if (!mainWindow) return
 
-    const view = new BrowserView({
-        webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-            sandbox: true,
-            preload: path.join(__dirname, 'preload.js'),
-        }
-    })
+    const view = createIsolatedBrowserView()
 
     mainWindow.setBrowserView(view)
 
@@ -886,6 +915,7 @@ function updateTabUrl(id: string, url: string) {
 }
 
 app.on('window-all-closed', () => {
+    if (mainWindow) vaultTokens.revokeOwner(mainWindow.webContents.id)
     if (process.platform !== 'darwin') app.quit()
 })
 

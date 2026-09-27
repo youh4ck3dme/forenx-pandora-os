@@ -406,7 +406,7 @@ export function ShieldPanel() {
                     </div>
 
                     <button
-                        onClick={() => (window as any).electron?.send('shell:openExternal', log.url)}
+                        onClick={() => void window.forenxDesktop?.openExternalSafely(log.url)}
                         className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded transition-all"
                     >
                         <ExternalLink className="w-3 h-3 text-white/40" />

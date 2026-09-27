@@ -1,12 +1,26 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+const forenxDesktop = {
+    openExternalSafely: async (url: string) => {
+        return ipcRenderer.invoke('system:open-external-safe', { url })
+    },
+    selectEvidenceFiles: async (caseId: string) => {
+        return ipcRenderer.invoke('vault:select-evidence', { caseId })
+    },
+    readEvidenceChunk: async (tokenId: string, offset: number, length: number) => {
+        return ipcRenderer.invoke('vault:read-chunk', { tokenId, offset, length })
+    },
+}
+
+contextBridge.exposeInMainWorld('forenxDesktop', forenxDesktop)
+
 contextBridge.exposeInMainWorld('electron', {
     send: (channel: string, data: any) => {
         const validChannels = [
             'tab:create', 'tab:switch', 'tab:close', 'tab:update',
             'reader:toggle', 'devtools:toggle', 'capture:page',
             'nav:back', 'nav:forward', 'nav:reload',
-            'ai:chat', 'shell:openExternal'
+            'ai:chat'
         ]
         if (validChannels.includes(channel)) {
             ipcRenderer.send(channel, data)
@@ -54,7 +68,7 @@ contextBridge.exposeInMainWorld('electron', {
             'password:save', 'password:get', 'password:delete',
             'ai:generate-image', 'capture:page', 'search:suggestions',
             'shield:getStats', 'shield:getLogs', 'shield:toggle',
-            'dialog:openFile', 'dialog:saveFile', 'vault:upload', 'fs:readFileSafely'
+            'dialog:openFile', 'dialog:saveFile', 'vault:upload'
         ]
         if (validChannels.includes(channel)) {
             return ipcRenderer.invoke(channel, ...args)
