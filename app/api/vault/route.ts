@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { uploadCaseDocument, getPresignedDossierUrl } from "@/lib/storage/s3-vault";
+import {
+  uploadCaseDocument,
+  getPresignedDossierUrl,
+  isS3Configured,
+} from "@/lib/storage/s3-vault";
 import {
   CaseIdSchema,
   Sha256HashSchema,
@@ -13,6 +17,8 @@ import {
 
 export const maxDuration = 300; // 300 s limit pre veľké súbory
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const preferredRegion = "fra1";
 
 const MAX_FILE_SIZE_BYTES = 250 * 1024 * 1024; // 250 MB limit
 
@@ -25,10 +31,22 @@ const QueryParamSchema = z.object({
 // In-memory runtime registry of uploaded evidence items (synchronized with S3 and Supabase)
 const inMemoryEvidenceStore = new Map<string, ForensicEvidenceItem[]>();
 
+function rejectUnconfiguredProductionVault(): NextResponse | undefined {
+  if (process.env.NODE_ENV === "production" && !isS3Configured()) {
+    return NextResponse.json(
+      { error: "Evidence Vault nie je nakonfigurovaný pre produkčné S3 úložisko." },
+      { status: 503 },
+    );
+  }
+}
+
 /**
  * GET /api/vault?caseId=... alebo ?storageKey=...&action=presign
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const unavailable = rejectUnconfiguredProductionVault();
+  if (unavailable) return unavailable;
+
   const { searchParams } = new URL(request.url);
   const rawCaseId = searchParams.get("caseId");
   const rawStorageKey = searchParams.get("storageKey");
@@ -79,8 +97,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  * POST /api/vault -> Prijme súbor, nezávisle overí SHA-256 hash, uloží do Hetzner S3 a vráti evidenciu
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const unavailable = rejectUnconfiguredProductionVault();
+  if (unavailable) return unavailable;
+
   try {
-    const formData = await request.formData();
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch {
+      return NextResponse.json(
+        { error: "Požiadavka musí obsahovať multipart/form-data alebo application/x-www-form-urlencoded telo." },
+        { status: 400 },
+      );
+    }
     const file = formData.get("file");
     const rawCaseId = formData.get("caseId");
     const rawClientHash = formData.get("clientSha256");

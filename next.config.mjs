@@ -6,7 +6,9 @@ const __dirname = path.dirname(__filename);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: process.env.CAPACITOR_BUILD === 'true' ? 'export' : undefined,
+  output: process.env.CAPACITOR_BUILD === 'true' 
+    ? 'export' 
+    : (process.env.STANDALONE === 'true' || process.env.NEXT_OUTPUT === 'standalone' ? 'standalone' : undefined),
   trailingSlash: true,
   eslint: {
     ignoreDuringBuilds: true,

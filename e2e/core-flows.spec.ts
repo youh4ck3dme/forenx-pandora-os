@@ -10,7 +10,7 @@ test.describe('PΛND0RΛ Browser Core Flows', () => {
     test('should navigate to new tab', async ({ page }) => {
         await page.goto('/', { waitUntil: 'domcontentloaded' });
         const url = page.url();
-        expect(url).toContain('localhost');
+        expect(url).toMatch(/localhost|vercel\.app|whoiswho\.at/);
     });
 
     test('should open Forge editor panel', async ({ page }) => {

@@ -65,11 +65,15 @@ export default function RegisterPage() {
             const userId = new Uint8Array(16);
             crypto.getRandomValues(userId);
 
+            const effectiveRpId =
+              process.env.NEXT_PUBLIC_RP_ID ||
+              (window.location.hostname.endsWith("whoiswho.at") ? "whoiswho.at" : window.location.hostname);
+
             const createOptions: PublicKeyCredentialCreationOptions = {
               challenge,
               rp: {
-                name: "PANDORA Browser",
-                id: window.location.hostname,
+                name: process.env.NEXT_PUBLIC_RP_NAME || "PANDORA Browser",
+                id: effectiveRpId,
               },
               user: {
                 id: userId,
@@ -139,8 +143,8 @@ export default function RegisterPage() {
     <div className="relative min-h-svh w-full overflow-hidden">
       <GL hovering={false} />
 
-      <div className="absolute inset-0 z-[1] pointer-events-none">
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/50" />
+      <div className="absolute inset-0 z-1 pointer-events-none">
+        <div className="absolute inset-0 bg-linear-to-t from-black via-transparent to-black/50" />
       </div>
 
       <div className="relative z-10 flex flex-col items-center justify-center min-h-svh px-6">
@@ -154,7 +158,7 @@ export default function RegisterPage() {
 
         <div className="flex items-center gap-3 mb-8">
           <div className="relative">
-            <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-purple-500/30 to-blue-500/30 opacity-50" />
+            <div className="absolute -inset-1 rounded-full bg-linear-to-r from-purple-500/30 to-blue-500/30 opacity-50" />
             <PandoraLogo size={48} className="relative" />
           </div>
           <div className="flex flex-col">
@@ -206,7 +210,7 @@ export default function RegisterPage() {
 
                   <button
                     type="submit"
-                    className="w-full py-2.5 bg-gradient-to-r from-purple-600 via-blue-500 to-cyan-400 text-white font-bold text-sm rounded-xl hover:opacity-90 transition-opacity"
+                    className="w-full py-2.5 bg-linear-to-r from-purple-600 via-blue-500 to-cyan-400 text-white font-bold text-sm rounded-xl hover:opacity-90 transition-opacity"
                   >
                     Continue
                   </button>
@@ -236,7 +240,7 @@ export default function RegisterPage() {
 
                 <div className="flex flex-col items-center py-5">
                   <div className="relative mb-4">
-                    <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-purple-500/30 to-blue-500/30 opacity-50" />
+                    <div className="absolute -inset-1 rounded-full bg-linear-to-r from-purple-500/30 to-blue-500/30 opacity-50" />
                     <div className="relative w-16 h-16 rounded-full bg-black/50 border-2 border-purple-500/50 flex items-center justify-center">
                       <Fingerprint className="w-8 h-8 text-purple-400" />
                     </div>
@@ -257,7 +261,7 @@ export default function RegisterPage() {
                   <button
                     onClick={handleBiometricSetup}
                     disabled={isLoading}
-                    className="w-full py-2.5 bg-gradient-to-r from-purple-600 via-blue-500 to-cyan-400 text-white font-bold text-sm rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="w-full py-2.5 bg-linear-to-r from-purple-600 via-blue-500 to-cyan-400 text-white font-bold text-sm rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {isLoading ? (
                       <>
@@ -297,7 +301,7 @@ export default function RegisterPage() {
 
                 <Link
                   href="/browser"
-                  className="w-full py-2.5 bg-gradient-to-r from-purple-600 via-blue-500 to-cyan-400 text-white font-bold text-sm rounded-xl hover:opacity-90 transition-opacity text-center"
+                  className="w-full py-2.5 bg-linear-to-r from-purple-600 via-blue-500 to-cyan-400 text-white font-bold text-sm rounded-xl hover:opacity-90 transition-opacity text-center"
                 >
                   Launch Browser
                 </Link>

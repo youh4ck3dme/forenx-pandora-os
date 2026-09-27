@@ -1,7 +1,7 @@
 "use client";
 
 import { AddPanel, RelationForm } from "@/components/malte/CaseForms";
-import { EmptyState } from "@/components/malte/EmptyState";
+import { EmptyState, ForzaModuleSkeleton } from "@/components/malte/EmptyState";
 import { useActiveCase } from "@/hooks/useActiveCase";
 import { useState } from "react";
 import Link from "next/link";
@@ -32,7 +32,7 @@ export default function VztahyPage() {
 }
 
 function Relations() {
-  const { activeCase, analysis, refresh } = useActiveCase();
+  const { activeCase, analysis, refresh, loading } = useActiveCase();
   const byId = new Map(analysis.entities.map((e) => [e.entity.id, e]));
   const { state } = useCaseStore();
   const [target, setTarget] = useState<DetectorTarget | null>(null);
@@ -46,6 +46,16 @@ function Relations() {
   );
   const visibleIds = new Set(visible.map((e) => e.entity.id));
 
+  if (loading) {
+    return (
+      <PhoneFrame>
+        <AppHeader title="Vzťahy" />
+        <Screen><ForzaModuleSkeleton /></Screen>
+        <BottomNav />
+      </PhoneFrame>
+    );
+  }
+
   if (!focus) {
     return (
       <PhoneFrame>
@@ -54,6 +64,7 @@ function Relations() {
           <EmptyState
             title="Zatiaľ žiadne subjekty"
             detail="Pridajte subjekty v sekcii Prípady a vzťahová mapa sa vytvorí automaticky."
+            action={<Button asChild size="sm"><Link href="/forza/pripady">Otvoriť prípady</Link></Button>}
           />
         </Screen>
         <BottomNav />

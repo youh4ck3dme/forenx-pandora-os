@@ -9,6 +9,8 @@
     "dev": "next dev",
     "lint": "next lint",
     "start": "next start",
+    "build:vps": "cross-env STANDALONE=true next build",
+    "start:vps": "node .next/standalone/server.js",
     "cap:build": "next build && npx cap sync",
     "cap:ios": "next build && npx cap sync ios && npx cap open ios",
     "cap:android": "next build && npx cap sync android && npx cap open android",
@@ -21,7 +23,10 @@
     "audit:ast": "node scripts/ci/ast-guard.mjs",
     "ci:guard": "node scripts/ci/ast-guard.mjs lib/ai && vitest run",
     "verify:desktop-security": "npx vitest run electron/__tests__/ && npx tsc -p electron/tsconfig.json --noEmit",
-    "verify:production": "npx tsc --noEmit && npm run build && npx tsc --noEmit && npm run verify:desktop-security && npx vitest run"
+    "verify:web": "npx tsc --noEmit && npm run build && npx vitest run",
+    "verify:vercel-env": "node scripts/vercel-preflight.mjs",
+    "verify:production": "npx tsc --noEmit && npm run build && npx tsc --noEmit && npm run verify:desktop-security && npx vitest run",
+    "verify:vercel-deploy": "npm run verify:vercel-env -- --strict && npm run verify:production"
   },
   "main": "dist-electron/main.mjs",
   "build": {

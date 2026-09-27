@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { SearchX } from "lucide-react";
 import type { ReactNode } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function EmptyState({
   icon: Icon = SearchX,
@@ -27,6 +28,17 @@ export function EmptyState({
         </p>
       ) : null}
       {action ? <div className="pt-2">{action}</div> : null}
+    </div>
+  );
+}
+
+export function ForzaModuleSkeleton() {
+  return (
+    <div className="space-y-4" role="status" aria-label="Načítavam obsah prípadu">
+      <Skeleton className="h-11 w-full rounded-xl" />
+      <Skeleton className="h-24 w-full rounded-xl" />
+      <Skeleton className="h-24 w-full rounded-xl" />
+      <span className="sr-only">Načítavam obsah prípadu…</span>
     </div>
   );
 }

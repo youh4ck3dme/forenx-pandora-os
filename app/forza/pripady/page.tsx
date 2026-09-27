@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, FolderPlus, Sparkles } from "lucide-react";
+import { CheckCircle2, FolderPlus, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import {
   AppHeader,
@@ -44,11 +44,11 @@ export default function PripadyPage() {
       setActiveCaseId(id);
       toast.success("Ukážkový prípad so syntetickými dátami bol vytvorený.");
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Ukážku sa nepodarilo vytvoriť.",
-      );
+      const message =
+        error instanceof Error ? error.message : "Ukážku sa nepodarilo vytvoriť.";
+      toast.error(message, {
+        action: { label: "Skúsiť znova", onClick: () => void handleCreateDemo() },
+      });
     } finally {
       setBusy(false);
     }
@@ -108,7 +108,8 @@ export default function PripadyPage() {
             disabled={busy}
             onClick={handleCreateDemo}
           >
-            Vytvoriť ukážkový prípad
+            {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden /> : null}
+            {busy ? "Vytváram…" : "Vytvoriť ukážkový prípad"}
           </Button>
         </Card>
 
@@ -153,6 +154,7 @@ export default function PripadyPage() {
                   title="Duplikovať prípad"
                   aria-label={`Duplikovať prípad ${item.name}`}
                   className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                  disabled={busy}
                   onClick={async () => {
                     setBusy(true);
                     try {
@@ -165,14 +167,22 @@ export default function PripadyPage() {
                       refresh();
                       setActiveCaseId(newId);
                       toast.success(`Prípad "${item.name}" bol duplikovaný.`);
-                    } catch (e) {
-                      toast.error("Duplikovanie prípadu zlyhalo.");
+                    } catch (error) {
+                      const message =
+                        error instanceof Error
+                          ? error.message
+                          : "Duplikovanie prípadu zlyhalo.";
+                      toast.error(message);
                     } finally {
                       setBusy(false);
                     }
                   }}
                 >
-                  <FolderPlus className="h-3.5 w-3.5" />
+                  {busy ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  ) : (
+                    <FolderPlus className="h-3.5 w-3.5" aria-hidden />
+                  )}
                 </Button>
                 <DeleteRecordButton
                   type="case"

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -36,9 +36,11 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function useSubmit(onSaved: () => void) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const submitting = useRef(false);
 
   async function run(action: () => Promise<unknown>, successMessage: string) {
-    if (busy) return;
+    if (submitting.current) return;
+    submitting.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -49,8 +51,11 @@ function useSubmit(onSaved: () => void) {
       const message =
         cause instanceof Error ? cause.message : "Uloženie zlyhalo.";
       setError(message);
-      toast.error(message);
+      toast.error(message, {
+        action: { label: "Skúsiť znova", onClick: () => void run(action, successMessage) },
+      });
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
@@ -82,6 +87,7 @@ function FormFooter({
             type="button"
             variant="ghost"
             className="flex-1"
+            disabled={busy}
             onClick={onCancel}
           >
             Zrušiť

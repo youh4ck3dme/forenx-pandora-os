@@ -1,6 +1,7 @@
 import type React from "react";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Toaster } from "sonner";
 import "./globals.css";
 import { ServiceWorkerRegistration } from "@/components/core/providers/service-worker-registration";
 
@@ -80,6 +81,7 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         {children}
+        <Toaster richColors position="top-right" />
         <ServiceWorkerRegistration />
       </body>
     </html>
