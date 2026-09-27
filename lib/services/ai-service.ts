@@ -185,6 +185,8 @@ export async function generateCompletionStream(
   }
 }
 
+const MAX_BUFFER_LINE_LENGTH = 1_048_576; // 1 MB limit na riadok proti Buffer Bomb
+
 /**
  * Deterministický SSE parser ošetrujúci TCP fragmentáciu, viacriadkové správy a token [DONE].
  * Podporuje ako Mistral/OpenAI choices, tak aj Google Gemini candidates!
@@ -195,7 +197,7 @@ export async function readSseStream(
   signal?: AbortSignal
 ): Promise<Result<void, AppError>> {
   const reader = stream.getReader();
-  const decoder = new TextDecoder("utf-8");
+  const decoder = new TextDecoder("utf-8", { fatal: false });
   let buffer = "";
 
   try {
@@ -209,7 +211,17 @@ export async function readSseStream(
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
+
+      if (buffer.length > MAX_BUFFER_LINE_LENGTH) {
+        await reader.cancel();
+        return err({
+          kind: "StreamCorrupted",
+          message: "Prekročený bezpečnostný limit dĺžky bufferu (Buffer Overflow Protection).",
+          rawChunk: buffer.slice(0, 256),
+        });
+      }
+
+      const lines = buffer.split(/\r?\n/);
       buffer = lines.pop() ?? ""; // Ponechá neúplný fragment v bufferi
 
       for (const line of lines) {
