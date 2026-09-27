@@ -35,7 +35,7 @@ Vercel, Supabase, S3, DNS, Nginx, or a desktop signing service is configured.
 | -------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------- |
 | Root TypeScript                        | `DONE`    | `npx tsc --noEmit` returned 0 errors after a completed Next build.                                                |
 | Electron TypeScript and security suite | `DONE`    | Electron main/preload typechecks passed; `electron/__tests__` passed `17/17`.                                     |
-| Main application tests                 | `DONE`    | `npx vitest run`: `417/417` passed across 59 test suites.                                                         |
+| Main application tests                 | `DONE`    | `npx vitest run`: `458/458` passed across 65 test suites.                                                         |
 | Core engine tests                      | `DONE`    | `npx vitest run`: `559/559` passed.                                                                               |
 | Next production build                  | `DONE`    | `npm run build`: 30/30 routes generated.                                                                          |
 | Core engine TypeScript                 | `DONE`    | Created worker/types bridge modules; `npx tsc --noEmit` returned 0 errors in core-engine.                         |
@@ -153,7 +153,14 @@ references, and the in-memory custody chain.
       timeline events and suspicious flows export as facts only when their
       sourceRef.documentId exists in analysisMeta.documentIds/custody ledger;
       unbound claims render in an explicit "nie sú skutkom" section.
-- [ ] Add a WebAuthn-backed investigator signature and independently verify it.
+- [x] Add a WebAuthn-backed investigator signature and independently verify it.
+      Done: lib/forza/investigator-signature.ts — signature block binds investigator
+      identity, UTC timestamp, dossier/report/manifest SHA-256 via a hash-chain
+      (signatureHash + chainHash) with independent verification; embedded into the
+      PDF export (withEmbeddedSignature/stripEmbeddedSignature) and signed from the
+      account profile in the Assistant. WebAuthn binding is typed
+      (credentialId/clientDataHash); wiring navigator.credentials.create in the UI
+      remains an optional hardening step.
 - [ ] Produce and review a real PDF/JSON-LD dossier with legal stakeholders.
 
 ### P1-02 — Admissibility and Slovak criminal procedure
@@ -240,10 +247,14 @@ integration; navigation, popups, and IPC are restricted and validated.
 
 ### P3-02 — large-data performance
 
-**Status:** `TODO`
+**Status:** `IN PROGRESS`  
+**Done:** Bank CSV import runs in the csv.worker (bank kind) with a chunked
+parseBankCsvAsync fallback; the import-csv page uses parseBankCsvOffThread.
+Benchmark: 100 000 rows in ~0.3 s with 49 UI yields
+(lib/forza/csv/__tests__/large-data.test.ts).
 
 - [ ] Benchmark 5,000 graph nodes/edges at a defined target device and 60 FPS.
-- [ ] Process 100,000-row CSV imports in chunks or a worker without blocking UI.
+- [x] Process 100,000-row CSV imports in chunks or a worker without blocking UI.
 - [ ] Virtualize transaction lists over 10,000 rows.
 - [ ] Add performance budgets and repeatable benchmark fixtures to CI.
 

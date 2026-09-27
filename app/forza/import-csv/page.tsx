@@ -37,10 +37,10 @@ import {
 } from "@/lib/forza/csv/mapping";
 import {
   detectBankFormat,
-  parseBankCsv,
   type BankDetectionResult,
   type BankParseResult,
 } from "@/lib/forza/csv/bank-detector";
+import { parseBankCsvOffThread } from "@/lib/forza/csv-worker-client";
 import { IMPORT_MAX_BYTES, IMPORT_MAX_ROWS } from "@/lib/forza/import.functions";
 
 export default function ImportCsvPage() {
@@ -73,10 +73,12 @@ function CsvImportScreen() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
-  const processCsvText = (
+  // Large-Data: ťažké parsovanie beží mimo UI vlákna (worker/chunked).
+  const processCsvText = async (
     text: string,
     forcedDelim?: Delimiter,
   ) => {
+    setIsProcessing(true);
     const delim = forcedDelim || detectDelimiter(text).value || ";";
     setDelimiter(delim);
 
@@ -105,12 +107,13 @@ function CsvImportScreen() {
     }
 
     // Parsovanie cez bank-detector
-    const parsed = parseBankCsv(text, {
+    const parsed = await parseBankCsvOffThread(text, {
       ownAccountName: activeCase?.name || "Vlastný účet",
     });
     setBankParseResult(parsed);
 
     setStep("mapping");
+    setIsProcessing(false);
   };
 
   const handleFileSelect = async (f: File) => {
@@ -126,7 +129,7 @@ function CsvImportScreen() {
       reader.onload = (e) => {
         const text = (e.target?.result as string) || "";
         setFileText(text);
-        processCsvText(text);
+        void processCsvText(text);
       };
       reader.readAsText(f, encoding);
     } catch {
@@ -417,7 +420,7 @@ function CsvImportScreen() {
                     value={delimiter}
                     onChange={(e) => {
                       const d = e.target.value as Delimiter;
-                      processCsvText(fileText, d);
+                      void processCsvText(fileText, d);
                     }}
                     className="w-full h-8 rounded-lg border border-border bg-card px-2 text-xs"
                   >
@@ -440,7 +443,7 @@ function CsvImportScreen() {
                         reader.onload = (ev) => {
                           const txt = (ev.target?.result as string) || "";
                           setFileText(txt);
-                          processCsvText(txt);
+                          void processCsvText(txt);
                         };
                         reader.readAsText(file, enc);
                       }

@@ -9,6 +9,11 @@ import {
   partitionSuspiciousFlows,
   partitionTimeline,
 } from "./evidence-binding";
+import {
+  buildInvestigatorSignature,
+  type InvestigatorSignature,
+  type WebauthnBinding,
+} from "./investigator-signature";
 
 export { sha256Hex };
 
@@ -73,10 +78,84 @@ export function stripEmbeddedManifest(html: string): string {
   return html.slice(0, start) + html.slice(end);
 }
 
-export function exportDossierToPDF(dossier: ForensicDossier): void {
-  const pkg = buildReportPackage(dossier);
-  const html = withEmbeddedManifest(pkg.html, pkg.manifest, pkg.manifestSha256);
+/** Značka vloženého podpisového bloku; pri overení sa blok odstráni. */
+export const SIGNATURE_MARKER = "<!--forenx-signature-->";
 
+/**
+ * Vloží viditeľný podpisový blok vyšetrovateľa (P1-01): identita,
+ * UTC časová pečiatka, väzby na obsah (dossier/report/manifest) a
+ * machine-readable JSON pre nezávislú verifikáciu hash-chainu.
+ */
+export function withEmbeddedSignature(
+  html: string,
+  signature: InvestigatorSignature,
+): string {
+  // "<" is escaped so the JSON can never close the <script> element.
+  const json = JSON.stringify(signature).replace(/</g, "\\u003c");
+  const block = `
+<div class="integrity-section" id="forenx-signature-block">
+  <h2>Digitálny podpis vyšetrovateľa (P1-01)</h2>
+  <p><strong>${signature.investigatorName}</strong> (ID: <code>${signature.investigatorId}</code>)</p>
+  <p>Čas podpisu (UTC): <strong>${signature.signedAt}</strong></p>
+  <div class="hash-box"><p class="legal-expl">Viazané hashovacie väzby:</p>
+    <p class="hash-code">dossier_sha256 = ${signature.dossierSha256}</p>
+    <p class="hash-code">report_sha256 = ${signature.reportSha256}</p>
+    <p class="hash-code">manifest_sha256 = ${signature.manifestSha256}</p>
+    <p class="hash-code">signature_hash = ${signature.signatureHash}</p>
+    <p class="hash-code">chain_hash = ${signature.chainHash}</p>
+  </div>
+  ${signature.webauthn ? `<p class="legal-expl">Viazané na WebAuthn kľúč <code>${signature.webauthn.credentialId}</code> (clientDataHash ${signature.webauthn.clientDataHash.slice(0, 16)}…).</p>` : ""}
+  <p class="legal-expl">Podpis viaže presný text reportu (hash-chain). Akákoľvek následná zmena obsahu zneplatní verifikáciu.</p>
+</div>
+${SIGNATURE_MARKER}<script type="application/json" id="forenx-signature">${json}</script>
+`;
+  const at = html.lastIndexOf("</body>");
+  return html.slice(0, at) + block + html.slice(at);
+}
+
+/** Odstráni vložený podpisový blok (pre nezávislú verifikáciu). */
+export function stripEmbeddedSignature(html: string): string {
+  const start = html.indexOf(SIGNATURE_MARKER);
+  if (start < 0) return html;
+  const signatureBlockStart = html.lastIndexOf('<div class="integrity-section" id="forenx-signature-block">', start);
+  const begin = signatureBlockStart >= 0 ? signatureBlockStart : start;
+  const scriptEnd = html.indexOf("</script>", start);
+  if (scriptEnd < 0) return html;
+  let end = scriptEnd + "</script>".length;
+  if (html[end] === "\n") end += 1;
+  let beginAt = begin;
+  if (beginAt > 0 && html[beginAt - 1] === "\n") beginAt -= 1;
+  return html.slice(0, beginAt) + html.slice(end);
+}
+
+export function exportDossierToPDF(
+  dossier: ForensicDossier,
+  options?: {
+    /** Identita vyšetrovateľa; ak chýba, export bez podpisového bloku. */
+    investigator?: { id: string; name: string };
+    /** Voliteľná WebAuthn väzba na hardvérový kľúč. */
+    webauthn?: WebauthnBinding;
+  },
+): void {
+  const pkg = buildReportPackage(dossier);
+  // P1-01: podpis viaže presný (nepodpísaný) text reportu; blok sa
+  // vloží pred manifest, aby stripEmbedded* revertovali presne tento text.
+  const signedHtml = options?.investigator
+    ? withEmbeddedSignature(
+        pkg.html,
+        buildInvestigatorSignature({
+          investigatorId: options.investigator.id,
+          investigatorName: options.investigator.name,
+          caseId: dossier.caseId,
+          dossierSha256: computeDossierSha256(dossier),
+          reportSha256: computeReportSha256(pkg.html),
+          manifestSha256: pkg.manifestSha256,
+          reportText: pkg.html,
+          webauthn: options.webauthn,
+        }),
+      )
+    : pkg.html;
+  const html = withEmbeddedManifest(signedHtml, pkg.manifest, pkg.manifestSha256);
   const win = window.open("", "_blank");
   if (!win) {
     alert("Povoľte vyskakovacie okná pre export reportu.");

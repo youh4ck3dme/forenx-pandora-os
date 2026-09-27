@@ -87,6 +87,7 @@ import type { ForensicDossier, BulkFileItem } from "@/lib/types";
 import { formatSourceRef } from "@/lib/types";
 import { exportDossierToPDF } from "@/lib/export-pdf";
 import { logCaseAccess } from "@/lib/forza/access-audit";
+import { useAccountProfile } from "@/lib/hooks/useAccountProfile";
 import { upsertTransaction } from "@/lib/case-data";
 import { ARMIVEX_CROSS_CONTRADICTIONS } from "@/lib/cross-contradictions";
 import { ARMIVEX_CASE_DOSSIER } from "@/lib/demo-dossier";
@@ -767,15 +768,27 @@ export function Assistant() {
   const text = output?.summary ?? output?.explanation ?? "";
   const suggestions = useMemo(() => output?.suggestions ?? [], [output]);
 
+  const profile = useAccountProfile();
+
   const handleExportPDF = useCallback(() => {
     if (!dossier) return;
     // P1-04: export citlivého spisu sa nezmeniteľne zaznamená do auditného ledgeri.
     void logCaseAccess(dossier.caseId, "export");
-    exportDossierToPDF(dossier);
-    toast.success(
+    // P1-01: export podpíše vyšetrovateľ (identita z profilu), ak je profil vyplnený.
+    exportDossierToPDF(
+      dossier,
+      profile.data?.fullName
+        ? {
+            investigator: {
+              id: profile.data?.email || profile.data.fullName,
+              name: profile.data.fullName,
+            },
+          }
+        : undefined,
+    );    toast.success(
       "AI pracovná analýza (A4) so SHA-256 pečaťou bola pripravená na tlač/stiahnutie.",
     );
-  }, [dossier]);
+  }, [dossier, profile.data?.fullName, profile.data?.email]);
 
   const handleRetryFailedChunks = useCallback(async () => {
     if (!dossier?.analysisMeta || !lastAutopilotDocumentText) {

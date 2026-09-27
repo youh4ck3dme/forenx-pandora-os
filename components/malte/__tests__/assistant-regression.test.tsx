@@ -306,6 +306,8 @@ describe("Assistant regression: rendered UI with mocked server boundary", () => 
           analysisStatus: "demo",
         }),
       }),
+      // P1-01: druhý argument (investigator) je pri demo exporte undefined.
+      undefined,
     );
   });
 

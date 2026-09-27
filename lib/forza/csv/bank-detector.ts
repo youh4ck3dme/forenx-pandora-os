@@ -737,6 +737,113 @@ export type BankParseOptions = {
 /**
  * Rozparsuje bankový CSV výpis, automaticky deteguje banku a vráti normalizované transakcie.
  */
+/**
+ * Kontext spracovania riadka — zdieľa ho synchrónna aj chunked (async) verzia.
+ */
+export type BankRowContext = {
+  mapping: ColumnMapping;
+  detectedBank: BankDetectionResult | null;
+  ownAccount: string;
+  defaultCurrency: string;
+};
+
+/**
+ * Spracuje jeden riadok bankového výpisu; vracia transakciu alebo chybu.
+ */
+export function processBankRow(
+  raw: string[],
+  sourceRow: number,
+  ctx: BankRowContext,
+): {
+  transaction: NormalizedBankTransaction | null;
+  error: { sourceRow: number; reasons: string[]; raw: string[] } | null;
+} {
+  const { mapping, detectedBank, ownAccount, defaultCurrency } = ctx;
+  const reasons: string[] = [];
+
+// Dátum
+const rawDate = mapping.date >= 0 ? (raw[mapping.date] ?? "").trim() : "";
+const date = normalizeDate(rawDate);
+if (!date) {
+  reasons.push(`Neplatný formát dátumu: "${rawDate || "—"}"`);
+}
+
+// Suma
+const rawAmount =
+  mapping.amount >= 0 ? (raw[mapping.amount] ?? "").trim() : "";
+const amountCents = normalizeAmountToCents(rawAmount);
+const amount = amountCents !== null ? amountCents / 100 : null;
+if (amountCents === null || amount === null) {
+  reasons.push(`Suma sa nedá prečítať: "${rawAmount || "—"}"`);
+} else if (amountCents === 0) {
+  reasons.push("Suma transakcie je nula.");
+}
+
+// Mena
+let currency = defaultCurrency;
+if (mapping.currency >= 0) {
+  const parsedCurr = extractCurrency(raw[mapping.currency] ?? "");
+  if (parsedCurr) currency = parsedCurr;
+} else if (rawAmount) {
+  const extracted = extractCurrency(rawAmount);
+  if (extracted) currency = extracted;
+}
+
+// Protiúčet a názov
+const counterparty =
+  mapping.counterpartyFrom >= 0
+    ? (raw[mapping.counterpartyFrom] ?? "").trim()
+    : mapping.counterpartyTo >= 0
+      ? (raw[mapping.counterpartyTo] ?? "").trim()
+      : "";
+
+const counterpartyName =
+  detectedBank?.matchedIndices.counterpartyName !== undefined &&
+  detectedBank.matchedIndices.counterpartyName >= 0
+    ? (raw[detectedBank.matchedIndices.counterpartyName] ?? "").trim()
+    : counterparty;
+
+const description =
+  mapping.description >= 0
+    ? (raw[mapping.description] ?? "").trim()
+    : "";
+
+if (reasons.length > 0 || !date || amount === null || amountCents === null) {
+  return { transaction: null, error: { sourceRow, reasons, raw } };
+}
+
+// Určenie smeru platby (od koho -> komu)
+const partner = counterpartyName || counterparty || "Neznámy partner";
+let from = ownAccount;
+let to = partner;
+
+if (amount > 0) {
+  // Prichádzajúca platba
+  from = partner;
+  to = ownAccount;
+} else {
+  // Odchádzajúca platba
+  from = ownAccount;
+  to = partner;
+}
+
+  const transaction: NormalizedBankTransaction = {
+    sourceRow,
+    date,
+    amount,
+    amountCents,
+    currency,
+    from,
+    to,
+    counterparty,
+    counterpartyName,
+    description,
+    method: "transfer",
+    raw,
+  };
+  return { transaction, error: null };
+}
+
 export function parseBankCsv(
   csvText: string,
   options?: BankParseOptions,
@@ -772,92 +879,91 @@ export function parseBankCsv(
   const transactions: NormalizedBankTransaction[] = [];
   const errors: { sourceRow: number; reasons: string[]; raw: string[] }[] = [];
 
+  const ctx: BankRowContext = { mapping, detectedBank, ownAccount, defaultCurrency };
+
   for (let i = 1; i < rows.length; i++) {
-    const raw = rows[i]!;
-    const sourceRow = i + 1;
-    const reasons: string[] = [];
+    const { transaction, error } = processBankRow(rows[i]!, i + 1, ctx);
+    if (transaction) transactions.push(transaction);
+    if (error) errors.push(error);
+  }
 
-    // Dátum
-    const rawDate = mapping.date >= 0 ? (raw[mapping.date] ?? "").trim() : "";
-    const date = normalizeDate(rawDate);
-    if (!date) {
-      reasons.push(`Neplatný formát dátumu: "${rawDate || "—"}"`);
+  return {
+    detectedBank,
+    transactions,
+    errors,
+    totalCount: rows.length - 1,
+    validCount: transactions.length,
+  };
+}
+
+/**
+ * P0-03/Large-Data: chunked asynchrónne spracovanie bankového CSV.
+ *
+ * Medzi chunkmi (default 1 000 riadkov) sa vráti riadenie event loopu,
+ * takže UI vlákno pri veľkých súboroch (10 000+ riadkov) nezamrzne.
+ * Výsledok je identický so synchrónnym parseBankCsv (rovnaký
+ * processBankRow), čo zaručuje parity test.
+ */
+export type BankParseAsyncOptions = BankParseOptions & {
+  /** Počet riadkov spracovaných medzi dvoma yieldmi (default 1 000). */
+  chunkSize?: number;
+  /** Injektovateľné vrátenie riadenia (testy); default setTimeout(0). */
+  yieldControl?: () => Promise<void>;
+};
+
+async function yieldToEventLoop(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+export async function parseBankCsvAsync(
+  csvText: string,
+  options?: BankParseAsyncOptions,
+): Promise<BankParseResult> {
+  const text = stripBom(csvText || "");
+  const delim = detectDelimiter(text).value ?? ";";
+  const rows = parseDelimited(text, delim);
+
+  if (rows.length < 2) {
+    return {
+      detectedBank: null,
+      transactions: [],
+      errors: [
+        {
+          sourceRow: 1,
+          reasons: ["Súbor neobsahuje dostatok riadkov."],
+          raw: [],
+        },
+      ],
+      totalCount: 0,
+      validCount: 0,
+    };
+  }
+
+  const headers = rows[0]!;
+  const detectedBank = detectBankFormat(headers, rows.slice(1, 10));
+  const mapping = detectedBank ? detectedBank.mapping : { ...EMPTY_MAPPING };
+  const ctx: BankRowContext = {
+    mapping,
+    detectedBank,
+    ownAccount: options?.ownAccountName || "Vlastný účet",
+    defaultCurrency:
+      options?.defaultCurrency || detectedBank?.defaultCurrency || "EUR",
+  };
+
+  const chunkSize = Math.max(1, options?.chunkSize ?? 1_000);
+  const yieldControl = options?.yieldControl ?? yieldToEventLoop;
+  const transactions: NormalizedBankTransaction[] = [];
+  const errors: { sourceRow: number; reasons: string[]; raw: string[] }[] = [];
+
+  for (let i = 1; i < rows.length; ) {
+    const end = Math.min(rows.length, i + chunkSize);
+    for (; i < end; i += 1) {
+      const { transaction, error } = processBankRow(rows[i]!, i + 1, ctx);
+      if (transaction) transactions.push(transaction);
+      if (error) errors.push(error);
     }
-
-    // Suma
-    const rawAmount =
-      mapping.amount >= 0 ? (raw[mapping.amount] ?? "").trim() : "";
-    const amountCents = normalizeAmountToCents(rawAmount);
-    const amount = amountCents !== null ? amountCents / 100 : null;
-    if (amountCents === null || amount === null) {
-      reasons.push(`Suma sa nedá prečítať: "${rawAmount || "—"}"`);
-    } else if (amountCents === 0) {
-      reasons.push("Suma transakcie je nula.");
-    }
-
-    // Mena
-    let currency = defaultCurrency;
-    if (mapping.currency >= 0) {
-      const parsedCurr = extractCurrency(raw[mapping.currency] ?? "");
-      if (parsedCurr) currency = parsedCurr;
-    } else if (rawAmount) {
-      const extracted = extractCurrency(rawAmount);
-      if (extracted) currency = extracted;
-    }
-
-    // Protiúčet a názov
-    const counterparty =
-      mapping.counterpartyFrom >= 0
-        ? (raw[mapping.counterpartyFrom] ?? "").trim()
-        : mapping.counterpartyTo >= 0
-          ? (raw[mapping.counterpartyTo] ?? "").trim()
-          : "";
-
-    const counterpartyName =
-      detectedBank?.matchedIndices.counterpartyName !== undefined &&
-      detectedBank.matchedIndices.counterpartyName >= 0
-        ? (raw[detectedBank.matchedIndices.counterpartyName] ?? "").trim()
-        : counterparty;
-
-    const description =
-      mapping.description >= 0
-        ? (raw[mapping.description] ?? "").trim()
-        : "";
-
-    if (reasons.length > 0 || !date || amount === null || amountCents === null) {
-      errors.push({ sourceRow, reasons, raw });
-      continue;
-    }
-
-    // Určenie smeru platby (od koho -> komu)
-    const partner = counterpartyName || counterparty || "Neznámy partner";
-    let from = ownAccount;
-    let to = partner;
-
-    if (amount > 0) {
-      // Prichádzajúca platba
-      from = partner;
-      to = ownAccount;
-    } else {
-      // Odchádzajúca platba
-      from = ownAccount;
-      to = partner;
-    }
-
-    transactions.push({
-      sourceRow,
-      date,
-      amount,
-      amountCents,
-      currency,
-      from,
-      to,
-      counterparty,
-      counterpartyName,
-      description,
-      method: "transfer",
-      raw,
-    });
+    // Medzi chunkmi vraciame riadenie — UI vlákno dýcha.
+    if (i < rows.length) await yieldControl();
   }
 
   return {
