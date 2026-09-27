@@ -23,20 +23,25 @@ import { AdmissibilityAuditView } from "@/components/features/forensic/Admissibi
 import { CustodyLedgerViewer } from "@/components/features/forensic/CustodyLedgerViewer";
 import { EmptyState, ForzaModuleSkeleton } from "@/components/malte/EmptyState";
 import { Button } from "@/components/ui/button";
-import { collectCustodyEvidenceIds } from "@/lib/forza/evidence-binding";
 
 export default function ZbranePage() {
   return <Weapons />;
 }
 
 function Weapons() {
-  const { activeCase, analysis, dossier, refresh, loading } = useActiveCase();
+  const {
+    activeCase,
+    analysis,
+    dossier,
+    refresh,
+    loading,
+    trustedEvidenceIds,
+    trustedEvidenceError,
+  } = useActiveCase();
   const names = new Map(activeCase.entities.map((e) => [e.id, e.name]));
   const batches = detectSerialBatches(activeCase.weapons);
   const matches = analysis.weapons.filter((w) => w.europolMatch).length;
-  const knownEvidence = dossier
-    ? collectCustodyEvidenceIds(dossier)
-    : new Set<string>();
+  const knownEvidence = new Set(trustedEvidenceIds);
 
   if (loading) {
     return (
@@ -162,6 +167,11 @@ function Weapons() {
 
         <SectionTitle>Forenzné superzbrane</SectionTitle>
         <Card className="space-y-5">
+          {trustedEvidenceError ? (
+            <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-200">
+              {trustedEvidenceError} Hypotézy a audit zostanú neoverené.
+            </p>
+          ) : null}
           <DevilsAdvocatePanel
             hypotheses={dossier?.alternativeHypotheses ?? []}
             knownEvidence={knownEvidence}

@@ -34,18 +34,6 @@ export function collectEvidenceIds(dossier: ForensicDossier): Set<string> {
   return ids;
 }
 
-/** Evidence IDs, not custody-entry IDs, eligible for binding legal conclusions. */
-export function collectCustodyEvidenceIds(
-  dossier: ForensicDossier,
-): Set<string> {
-  const ids = new Set<string>();
-  for (const entry of dossier.custodyLedger ?? []) {
-    const traceId = entry.traceId?.trim();
-    if (traceId) ids.add(traceId);
-  }
-  return ids;
-}
-
 /** Overí, či sa tvrdenie viaže na známy immutable dôkaz. */
 export function isBoundToEvidence(
   sourceRef: SourceRef | undefined | null,
@@ -66,6 +54,23 @@ export function isValidEvidenceReference(
     (Number.isInteger(sourceRef?.page) && (sourceRef?.page ?? 0) > 0) ||
     Boolean(paragraph && !/^§\s*\d/u.test(paragraph));
   return Boolean(evidenceId && knownEvidence.has(evidenceId) && hasLocator);
+}
+
+export function resolveEvidenceReference(
+  sourceRef: HypothesisSourceRef | undefined | null,
+  aliasToEvidenceId: ReadonlyMap<string, string>,
+): HypothesisSourceRef | null {
+  if (
+    !sourceRef ||
+    !isValidEvidenceReference(sourceRef, new Set(aliasToEvidenceId.keys()))
+  ) {
+    return null;
+  }
+  const evidenceId = sourceRef.evidenceId.trim();
+  const resolvedEvidenceId = aliasToEvidenceId.get(evidenceId);
+  return resolvedEvidenceId
+    ? { ...sourceRef, evidenceId: resolvedEvidenceId }
+    : null;
 }
 
 function hasValidEvidenceReferences(

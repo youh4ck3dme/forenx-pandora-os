@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { ARMIVEX_CASE_DOSSIER } from "../demo-dossier";
 import {
   collectEvidenceIds,
-  collectCustodyEvidenceIds,
   isBoundToEvidence,
   isValidEvidenceReference,
+  resolveEvidenceReference,
   partitionAdmissibilityAudit,
   partitionAlternativeHypotheses,
   partitionSuspiciousFlows,
@@ -104,13 +104,9 @@ describe("collectEvidenceIds (P1-01)", () => {
       },
     ];
     const ids = collectEvidenceIds(base);
-    const custodyEvidenceIds = collectCustodyEvidenceIds(base);
     expect(ids.has(KNOWN_DOC)).toBe(true);
     expect(ids.has("trace-abc")).toBe(true);
     expect(ids.has("entry-1")).toBe(false);
-    expect(custodyEvidenceIds.has("trace-abc")).toBe(true);
-    expect(custodyEvidenceIds.has("entry-1")).toBe(false);
-    expect(custodyEvidenceIds.has(KNOWN_DOC)).toBe(false);
     expect(ids.has("   ")).toBe(false);
   });
 });
@@ -151,6 +147,25 @@ describe("evidence references for legal conclusions", () => {
         known,
       ),
     ).toBe(false);
+  });
+
+  it("resolves only known ledger aliases to persistent evidence IDs", () => {
+    const aliases = new Map([["E1", "persistent-evidence-1"]]);
+    expect(
+      resolveEvidenceReference(
+        { evidenceId: "E1", page: 3 },
+        aliases,
+      ),
+    ).toEqual({ evidenceId: "persistent-evidence-1", page: 3 });
+    expect(
+      resolveEvidenceReference(
+        { evidenceId: "E2", page: 3 },
+        aliases,
+      ),
+    ).toBeNull();
+    expect(
+      resolveEvidenceReference({ evidenceId: "E1" }, aliases),
+    ).toBeNull();
   });
 
   it("partitions hypotheses and audit claims fail-closed", () => {
@@ -219,7 +234,7 @@ describe("partition (P1-01)", () => {
 
 describe("export gate — bez opory nie fakt (P1-01)", () => {
   const dossier = dossierWith([boundEvent, unboundEvent]);
-  const html = buildReportHTML(dossier);
+  const html = buildReportHTML(dossier, new Set([KNOWN_DOC]));
 
   const chronologyStart = html.indexOf("<h2>Chronológia skutkov");
   const unboundStart = html.indexOf("<h2>Nezdrojované okolnosti");
@@ -279,14 +294,14 @@ describe("export gate — bez opory nie fakt (P1-01)", () => {
       ],
       financingConclusion: "Testovací záver",
     };
-    const cleanHtml = buildReportHTML(clean);
+    const cleanHtml = buildReportHTML(clean, new Set([KNOWN_DOC]));
     expect(cleanHtml).not.toContain("Nezdrojované okolnosti");
     expect(cleanHtml).not.toContain("Toky bez viazania na dôkaz");
   });
 
   it("exportuje hypotézy a § 119 posúdenie bez väzby výhradne ako neoverené", () => {
     const dossier = dossierWith([boundEvent]);
-    const html = buildReportHTML(dossier);
+    const html = buildReportHTML(dossier, new Set([KNOWN_DOC]));
     const unverifiedStart = html.indexOf(
       "<h2>Neoverené tvrdenia (nie sú skutkom)</h2>",
     );
@@ -302,6 +317,17 @@ describe("export gate — bez opory nie fakt (P1-01)", () => {
     );
   });
 
+  it("nepovažuje AI custodyLedger ID za dôveryhodné bez authoritative ID zo servera", () => {
+    const dossier = dossierWith([boundEvent]);
+    dossier.alternativeHypotheses![0]!.sourceReferences = [
+      { evidenceId: KNOWN_DOC, page: 3 },
+    ];
+    const html = buildReportHTML(dossier);
+    expect(html).not.toContain("Alternatívne hypotézy viazané na dôkazy");
+    expect(html).toContain("Neoverené tvrdenia (nie sú skutkom)");
+    expect(html).toContain("Finančné prostriedky boli riadnou pôžičkou");
+  });
+
   it("zdrojovaný audit a hypotéza sa objavia v samostatných overených sekciách", () => {
     const dossier = dossierWith([boundEvent]);
     dossier.alternativeHypotheses![0]!.sourceReferences = [
@@ -312,7 +338,7 @@ describe("export gate — bez opory nie fakt (P1-01)", () => {
     ];
     dossier.admissibilityAudit!.defects[0]!.sourceEvidenceId = KNOWN_DOC;
     dossier.admissibilityAudit!.defects[0]!.sourcePage = 10;
-    const html = buildReportHTML(dossier);
+    const html = buildReportHTML(dossier, new Set([KNOWN_DOC]));
     expect(html).toContain("Alternatívne hypotézy viazané na dôkazy");
     expect(html).toContain("Audit procesnej prípustnosti (§ 119 TP)");
     expect(html).toContain("Finančné prostriedky boli riadnou pôžičkou");

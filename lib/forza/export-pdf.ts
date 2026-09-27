@@ -8,7 +8,6 @@ import { buildReportManifest, type ReportManifest } from "./provenance/report-ma
 import {
   partitionAdmissibilityAudit,
   partitionAlternativeHypotheses,
-  collectCustodyEvidenceIds,
   partitionSuspiciousFlows,
   partitionTimeline,
 } from "./evidence-binding";
@@ -32,12 +31,15 @@ export function computeDossierSha256(dossier: ForensicDossier): string {
  * Report + reprodukovateľný manifest. `report_sha256` viaže presný HTML text,
  * `content_sha256` kanonický obsah dossieru.
  */
-export function buildReportPackage(dossier: ForensicDossier): {
+export function buildReportPackage(
+  dossier: ForensicDossier,
+  trustedEvidenceIds?: ReadonlySet<string>,
+): {
   html: string;
   manifest: ReportManifest;
   manifestSha256: string;
 } {
-  const html = buildReportHTML(dossier);
+  const html = buildReportHTML(dossier, trustedEvidenceIds);
   const meta = dossier.analysisMeta;
   const { manifest, manifestSha256 } = buildReportManifest({
     subjectId: dossier.caseId,
@@ -138,9 +140,11 @@ export function exportDossierToPDF(
     investigator?: { id: string; name: string };
     /** Voliteľná WebAuthn väzba na hardvérový kľúč. */
     webauthn?: WebauthnBinding;
+    /** IDs loaded from the authenticated, persistent evidence_items ledger. */
+    trustedEvidenceIds?: ReadonlySet<string>;
   },
 ): void {
-  const pkg = buildReportPackage(dossier);
+  const pkg = buildReportPackage(dossier, options?.trustedEvidenceIds);
   // P1-01: podpis viaže presný (nepodpísaný) text reportu; blok sa
   // vloží pred manifest, aby stripEmbedded* revertovali presne tento text.
   const signedHtml = options?.investigator
@@ -174,7 +178,10 @@ export function exportDossierToPDF(
   }, 500);
 }
 
-export function buildReportHTML(d: ForensicDossier): string {
+export function buildReportHTML(
+  d: ForensicDossier,
+  trustedEvidenceIds: ReadonlySet<string> = new Set<string>(),
+): string {
   const dossierHash = computeDossierSha256(d);
 
   // P1-01: faktom je iba udalosť viazaná na immutable dôkaz.
@@ -387,14 +394,13 @@ export function buildReportHTML(d: ForensicDossier): string {
   </div>`
     : "";
 
-  const knownEvidence = collectCustodyEvidenceIds(d);
   const hypotheses = partitionAlternativeHypotheses(
     d.alternativeHypotheses,
-    knownEvidence,
+    trustedEvidenceIds,
   );
   const admissibility = partitionAdmissibilityAudit(
     d.admissibilityAudit,
-    knownEvidence,
+    trustedEvidenceIds,
   );
   const sourceLabel = (ref: {
     evidenceId: string;
