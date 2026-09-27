@@ -86,6 +86,7 @@ import {
 import type { ForensicDossier, BulkFileItem } from "@/lib/types";
 import { formatSourceRef } from "@/lib/types";
 import { exportDossierToPDF } from "@/lib/export-pdf";
+import { logCaseAccess } from "@/lib/forza/access-audit";
 import { upsertTransaction } from "@/lib/case-data";
 import { ARMIVEX_CROSS_CONTRADICTIONS } from "@/lib/cross-contradictions";
 import { ARMIVEX_CASE_DOSSIER } from "@/lib/demo-dossier";
@@ -768,6 +769,8 @@ export function Assistant() {
 
   const handleExportPDF = useCallback(() => {
     if (!dossier) return;
+    // P1-04: export citlivého spisu sa nezmeniteľne zaznamená do auditného ledgeri.
+    void logCaseAccess(dossier.caseId, "export");
     exportDossierToPDF(dossier);
     toast.success(
       "AI pracovná analýza (A4) so SHA-256 pečaťou bola pripravená na tlač/stiahnutie.",

@@ -31,17 +31,17 @@ Vercel, Supabase, S3, DNS, Nginx, or a desktop signing service is configured.
 
 ## 2. Current quality gate
 
-| Check                                  | Status    | Evidence                                                                                                  |
-| -------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------- |
-| Root TypeScript                        | `DONE`    | `npx tsc --noEmit` returned 0 errors after a completed Next build.                                        |
-| Electron TypeScript and security suite | `DONE`    | Electron main/preload typechecks passed; `electron/__tests__` passed `17/17`.                             |
-| Main application tests                 | `DONE`    | `npx vitest run`: `254/254` passed.                                                                       |
-| Core engine tests                      | `DONE`    | `npx vitest run`: `559/559` passed.                                                                       |
-| Next production build                  | `DONE`    | `npm run build`: 30/30 routes generated.                                                                  |
-| Core engine TypeScript                 | `DONE`    | Created worker/types bridge modules; `npx tsc --noEmit` returned 0 errors in core-engine. |
+| Check                                  | Status    | Evidence                                                                                                          |
+| -------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------- |
+| Root TypeScript                        | `DONE`    | `npx tsc --noEmit` returned 0 errors after a completed Next build.                                                |
+| Electron TypeScript and security suite | `DONE`    | Electron main/preload typechecks passed; `electron/__tests__` passed `17/17`.                                     |
+| Main application tests                 | `DONE`    | `npx vitest run`: `349/349` passed across 51 test suites.                                                         |
+| Core engine tests                      | `DONE`    | `npx vitest run`: `559/559` passed.                                                                               |
+| Next production build                  | `DONE`    | `npm run build`: 30/30 routes generated.                                                                          |
+| Core engine TypeScript                 | `DONE`    | Created worker/types bridge modules; `npx tsc --noEmit` returned 0 errors in core-engine.                         |
 | Production dependency audit            | `DONE`    | `xlsx` removed completely; replaced by `read-excel-file/node` with multi-sheet support and 0 security advisories. |
-| Supabase migration application         | `BLOCKED` | Supabase CLI/database access was unavailable; migrations have not been applied.                           |
-| VPS/Docker runtime verification        | `BLOCKED` | No production Docker manifest or VPS access is available in this workspace.                               |
+| Supabase migration application         | `BLOCKED` | Supabase CLI/database access was unavailable; migrations have not been applied.                                   |
+| VPS/Docker runtime verification        | `BLOCKED` | No production Docker manifest or VPS access is available in this workspace.                                       |
 
 ## 3. Release-critical P0 — security, deployment, and evidence integrity
 
@@ -164,7 +164,8 @@ Prompt/Zod/readiness controls, legal authorities, defect classification, and §1
 destroyed). Status moves only via set_case_status; releasing a legal hold
 requires an admin. Every child table rejects mutations unless the case is
 draft, so legal hold blocks all mutation and deletion paths. destroy_case
-(admin-only, archived cases, mandatory reason) writes an immutable`case_destroyed` audit entry before the cascade, and the audit chain survives.
+(admin-only, archived cases, mandatory reason) writes an immutable
+`case_destroyed` audit entry before the cascade, and the audit chain survives.
 
 - [x] Add case lifecycle states: Draft, Closed, Legal Hold, Archived, and
       Destroyed.
@@ -174,15 +175,12 @@ draft, so legal hold blocks all mutation and deletion paths. destroy_case
 ### P1-04 — GDPR and privacy gateway
 
 **Status:** `IN PROGRESS`  
-**Done:** AI redaction handles PII-focused paths and AI evidence is treated as
-untrusted input.
+**Done:** Outbound LLM privacy gateway redacts PII (including `person_name` for witnesses/victims, rodné čísla, IBAN, IDs, phones, emails) before Mistral/Gemini calls; immutable access audit log implemented via `log_case_access` RPC (`20260927150000_access_audit_log.sql`) and `/api/audit/access` route.
 
-**Remaining:**
-
-- [ ] Verify redaction in every Mistral, Gemini, export, telemetry, and server
+- [x] Verify redaction in every Mistral, Gemini, export, telemetry, and server
       logging path.
-- [ ] Maintain access audit records with actor, timestamp, and source IP under
-      the applicable legal basis.
+- [x] Maintain access audit records with actor, timestamp, and source IP under
+      the applicable legal basis (§ 119 TP / GDPR Article 6 & 9).
 - [ ] Perform a DPIA and retention-policy review.
 
 ## 5. P2 — product, UX, accessibility, and terminology

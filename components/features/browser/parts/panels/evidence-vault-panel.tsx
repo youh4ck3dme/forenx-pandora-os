@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
+import { logCaseAccess } from "@/lib/forza/access-audit";
 import {
   Upload,
   ShieldCheck,
@@ -242,6 +243,8 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
   // ─── ON-DEMAND SŤAHOVANIE CEZ FRESH PRESIGNED URL (Flaw 4) ────────
   const handleDownload = useCallback(async (storageKey: string, fileName: string) => {
     setDownloadingKey(storageKey);
+    // P1-04: zobrazenie citliveho dokazu sa nezmenitelne zaznamena do auditneho ledgeri.
+    void logCaseAccess(effectiveCaseId, "view");
     try {
       const res = await fetch(`/api/vault?storageKey=${encodeURIComponent(storageKey)}&action=presign`);
       if (!res.ok) {
