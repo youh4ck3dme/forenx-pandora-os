@@ -191,9 +191,9 @@ const instructions: Record<AiTask, string> = {
   normalize_descriptions:
     'Navrhni normalizovaný tvar popisov platieb a možné zhody protistrán na kontrolu používateľom. Nič nespájaj automaticky. Vráť JSON {"suggestions": [{"transaction": string, "normalized": string, "counterparty": string, "confidence": "low"|"medium"|"high"}], "unverified": string[]}.',
   alt_devil:
-    'ROLE: Forenzný oponent ("Devil\'s Advocate"). Rozbi tunelové videnie vyšetrovania. Ak v <data> sú stopy/transakcie/nálezy, vygeneruj minimálne 2 plnohodnotné alternatívne hypotézy s oporou v dátach (nevymýšľaj nové entity ani transakcie). Pri každej hypotéze uveď sourceReferences: aspoň jeden {evidenceId, page alebo paragraph}; evidenceId musí byť presné existujúce ID v <data>, locator musí označovať konkrétnu stranu alebo odsek. Ak taký odkaz nemožno doložiť, hypotézu označ v unverified a nepriraď jej sourceReferences. Pre každú uveď explainedEvidence, requiredTracesIfTrue a rebuttalTest. Vráť JSON: {"hypotheses": [{"id": string, "title": string, "scenario": string, "sourceReferences": [{"evidenceId": string, "page"?: number, "paragraph"?: string}], "explainedEvidence": string[], "requiredTracesIfTrue": string[], "rebuttalTest": string}], "unverified": string[], "cited": string[]}.',
+    'ROLE: Forenzný oponent ("Devil\'s Advocate"). Rozbi tunelové videnie vyšetrovania. Ak v <data> sú stopy/transakcie/nálezy, vygeneruj minimálne 2 plnohodnotné alternatívne hypotézy s oporou v dátach (nevymýšľaj nové entity ani transakcie). Pri každej hypotéze uveď sourceReferences: aspoň jeden {evidenceId, page alebo paragraph}; evidenceId musí byť VÝHRADNE ID dôkazu z <data>.evidence (E1, E2 …) — ID entít (S…) ani transakcií (T…) nie sú dôkazy; locator musí označovať konkrétnu stranu alebo odsek. Hypotéza bez takejto väzby sa nezobrazí ako nález. Ak taký odkaz nemožno doložiť, hypotézu označ v unverified a nepriraď jej sourceReferences. Pre každú uveď explainedEvidence, requiredTracesIfTrue a rebuttalTest. Vráť JSON: {"hypotheses": [{"id": string, "title": string, "scenario": string, "sourceReferences": [{"evidenceId": string, "page"?: number, "paragraph"?: string}], "explainedEvidence": string[], "requiredTracesIfTrue": string[], "rebuttalTest": string}], "unverified": string[], "cited": string[]}.',
   admiss_audit:
-    'ROLE: Procesný audítor trestného konania (TP SR č. 301/2005 Z. z. § 119 a nasl.). Skontroluj zákonnosť a procesnú prípustnosť podľa dát v <data>. Nevymýšľaj vady bez opory. Ku každej vade uveď sourceEvidenceId a aspoň sourcePage alebo sourceParagraph ako presný locator do konkrétneho zdroja; samotná citácia paragrafu zákona nie je locator. K overallStatus, score a courtReadySummary uveď sourceReferences s presnými evidenceId a locatorom. Používaj len ID existujúce v <data>; ak väzba chýba, uveď záver/vadu v unverified. Ak nie sú podklady, vráť prázdne defects. Vráť JSON: {"overallStatus": "admissible"|"at_risk"|"inadmissible", "score": number, "defects": [{"severity": "critical"|"curable"|"formal", "paragraph": string, "description": string, "remedyAction": string, "sourceEvidenceId": string, "sourcePage"?: number, "sourceParagraph"?: string}], "courtReadySummary": string, "sourceReferences": [{"evidenceId": string, "page"?: number, "paragraph"?: string}], "unverified": string[], "cited": string[]}.',
+    'ROLE: Procesný audítor trestného konania (TP SR č. 301/2005 Z. z. § 119 a nasl.). Skontroluj zákonnosť a procesnú prípustnosť podľa dát v <data>. Nevymýšľaj vady bez opory. Ku každej vade uveď sourceEvidenceId a aspoň sourcePage alebo sourceParagraph ako presný locator do konkrétneho zdroja; samotná citácia paragrafu zákona nie je locator. K overallStatus, score a courtReadySummary uveď sourceReferences s presnými evidenceId a locatorom. sourceEvidenceId a evidenceId musia byť VÝHRADNE ID dôkazu z <data>.evidence (E1, E2 …) — ID entít (S…) ani transakcií (T…) nie sú dôkazy; ak väzba chýba, uveď záver/vadu v unverified. Ak nie sú podklady, vráť prázdne defects. Vráť JSON: {"overallStatus": "admissible"|"at_risk"|"inadmissible", "score": number, "defects": [{"severity": "critical"|"curable"|"formal", "paragraph": string, "description": string, "remedyAction": string, "sourceEvidenceId": string, "sourcePage"?: number, "sourceParagraph"?: string}], "courtReadySummary": string, "sourceReferences": [{"evidenceId": string, "page"?: number, "paragraph"?: string}], "unverified": string[], "cited": string[]}.',
 };
 
 type LoadedCaseContext = {
@@ -519,6 +519,16 @@ async function runAiTaskInner(
       );
     }
 
+    // Task 4: právne závery sa smú viazať len na hash-overené dôkazy WORM ledgera.
+    const bindsEvidence = data.task === "alt_devil" || data.task === "admiss_audit";
+    const { loadEvidenceRegistry, pseudonymizeRegistry, remapEvidenceReferences } =
+      await import("./evidence-registry");
+    const registryEntries = bindsEvidence
+      ? await loadEvidenceRegistry(context.supabase, data.caseId)
+      : [];
+    const evidencePseudonyms = pseudonymizeRegistry(registryEntries);
+    if (bindsEvidence) payload = { ...payload, evidence: evidencePseudonyms.entries };
+
     const base = {
       task: data.task,
       promptVersion: PROMPT_VERSION,
@@ -684,6 +694,18 @@ async function runAiTaskInner(
     if (Array.isArray(output["defects"])) {
       const defects = output["defects"] as { description?: string }[];
       output["defects"] = defects.filter((d) => Boolean(d.description?.trim()));
+    }
+    if (bindsEvidence) {
+      // E1… → UUID; každá hypotéza/vada bez vlastnej platnej väzby → unverified.
+      const { enforceTaskEvidenceBinding } = await import("./legal-conclusions");
+      const remapped = remapEvidenceReferences(output, evidencePseudonyms.back);
+      Object.assign(
+        output,
+        enforceTaskEvidenceBinding(
+          remapped as Parameters<typeof enforceTaskEvidenceBinding>[0],
+          new Set(registryEntries.map((entry) => entry.evidenceId)),
+        ),
+      );
     }
 
     const typedOutput = output as NonNullable<AiRunResult["output"]>;
@@ -1353,6 +1375,10 @@ export async function runForensicAutopilotInner(
   }
   await assertCaseOwned(context.supabase, caseId);
 
+  // Task 4: jediné platné evidenceId = hash-overené dôkazy WORM ledgera tohto prípadu.
+  const { loadEvidenceRegistry } = await import("./evidence-registry");
+  const evidenceRegistry = await loadEvidenceRegistry(context.supabase, caseId);
+
   const {
     buildUserPrompt,
     splitDocumentForAutopilot,
@@ -1443,7 +1469,8 @@ export async function runForensicAutopilotInner(
         {
           role: "user",
           content:
-            label + buildUserPrompt(chunk, { index, total: chunks.length }),
+            label +
+            buildUserPrompt(chunk, { index, total: chunks.length }, evidenceRegistry),
         },
       ],
       maxTokens: AUTOPILOT_MAX_TOKENS,
@@ -1530,8 +1557,15 @@ export async function runForensicAutopilotInner(
       ? ("partial" as const)
       : ("complete" as const);
 
-  const withMeta = attachAnalysisMeta(
+  // Task 4: Zod validácia + vynútenie väzby právnych záverov pred uložením.
+  const { sanitizeLegalConclusions } = await import("./legal-conclusions");
+  const bound = sanitizeLegalConclusions(
     parsed,
+    new Set(evidenceRegistry.map((entry) => entry.evidenceId)),
+  ).dossier;
+
+  const withMeta = attachAnalysisMeta(
+    bound,
     buildAnalysisMeta({
       caseId,
       documentIds,
@@ -1543,7 +1577,7 @@ export async function runForensicAutopilotInner(
       ...(lastProvider ? { provider: lastProvider } : {}),
       idempotencyKey,
       analysisStatus,
-      sourceReferences: collectSourceReferences(parsed),
+      sourceReferences: collectSourceReferences(bound),
     }),
   );
 

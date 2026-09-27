@@ -96,7 +96,7 @@ import { upsertTransaction } from "@/lib/case-data";
 import { ARMIVEX_CROSS_CONTRADICTIONS } from "@/lib/cross-contradictions";
 import { ARMIVEX_CASE_DOSSIER } from "@/lib/demo-dossier";
 import { isDemoDossier } from "@/lib/autopilot-meta";
-import { collectCustodyEvidenceIds } from "@/lib/forza/evidence-binding";
+import { useVerifiedEvidence } from "@/hooks/useVerifiedEvidence";
 import { loadQuarantineDocuments } from "@/lib/quarantine.functions";
 import {
   clearQuarantineStage,
@@ -224,6 +224,8 @@ export function Assistant() {
     revisions,
     setDossier: setSharedDossier,
   } = useActiveCase();
+  // Task 4: jediný zdroj väzby tvrdení = hash-overené dôkazy z WORM ledgera.
+  const { knownEvidence } = useVerifiedEvidence(hasCase ? activeCase.id : null);
   const isOnline = useOnlineStatus();
   const status = useQuery({
     queryKey: ["ai-status"],
@@ -804,11 +806,11 @@ export function Assistant() {
       exportDossierToPDF(
         dossier,
         investigator
-          ? { ...investigator, webauthn: binding ?? undefined }
-          : undefined,
+          ? { ...investigator, webauthn: binding ?? undefined, knownEvidence }
+          : { knownEvidence },
       );
       toast.success(
-        "AI pracovná analýza (A4) so SHA-256 pečaťou bola pripravená na tlač/stiahnutie.",
+        "AI pracovná analýza (A4) so SHA-256 odtlačkom bola pripravená na tlač/stiahnutie.",
       );
     } finally {
       setIsExportingPdf(false);
@@ -1941,7 +1943,7 @@ ${dossier.judgeReadyText.vedecke}`;
                     <Card className="p-3.5">
                       <DevilsAdvocatePanel
                         hypotheses={dossier.alternativeHypotheses ?? []}
-                        knownEvidence={collectCustodyEvidenceIds(dossier)}
+                        knownEvidence={knownEvidence}
                         onSimulate={() => {
                           setTask("alt_devil");
                           setMainMode("quick_tasks");
@@ -1955,7 +1957,7 @@ ${dossier.judgeReadyText.vedecke}`;
                     <Card className="p-3.5">
                       <AdmissibilityAuditView
                         audit={dossier.admissibilityAudit}
-                        knownEvidence={collectCustodyEvidenceIds(dossier)}
+                        knownEvidence={knownEvidence}
                       />
                     </Card>
                   </TabsContent>

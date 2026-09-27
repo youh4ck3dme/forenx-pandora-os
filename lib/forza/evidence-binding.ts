@@ -10,73 +10,91 @@ import type {
 } from "./types";
 
 /**
- * P1-01 — deterministické viazanie tvrdení na evidencie (Source Evidence Binding).
+ * Task 4 / P1-01 — viazanie tvrdení a právnych záverov na nemenné dôkazy.
  *
- * Skutkové tvrdenie (udalosť chronológie, podozrivý finančný tok) smie byť
- * exportované ako fakt len vtedy, keď sa viaže na konkrétny immutable
- * identifikátor dôkazu evidovaného v spise (documentId z analysisMeta
- * alebo traceId z custody ledgera). Tvrdenie s chýbajúcim, prázdnym
- * alebo neznámym identifikátorom nemá platnú oporu v dôkazovom materiáli
- * a NESMIE sa exportovať ako fakt.
+ * JEDINÝ zdroj nemenných dôkazov je WORM ledger `evidence_items` (Supabase):
+ * záznam s identitou zapísanou raz (WORM trigger) a hashom overeným serverovým
+ * workerom (`hash_verification_status = 'verified'`). Do UI prichádza cez
+ * `GET /api/vault` ako položka s `integrityStatus: "verified"`.
+ *
+ * NIKDY sa za dôkaz nepovažuje:
+ * - `dossier.custodyLedger` — generuje ho AI (vrátane ID aj hashov), podvrhnutý
+ *   text v spise by si vedel „vyrobiť“ dôkaz,
+ * - `analysisMeta.documentIds` — sú to názvy súborov z klienta,
+ * - dôkaz so stavom pending / mismatch / object_missing / error.
+ *
+ * Tvrdenie bez platnej väzby (známe overené evidenceId + konkrétna strana alebo
+ * odsek) sa exportuje/zobrazuje iba ako „neoverené — nie je skutkom“.
+ * Bez načítaného ledgera je množina dôkazov prázdna → nič nie je viazané (fail-closed).
  */
 
-/** Immutable identifikátory dôkazov aktuálne evidovaných v spise. */
-export function collectEvidenceIds(dossier: ForensicDossier): Set<string> {
+/** Záznam z WORM ledgera tak, ako ho vracia `GET /api/vault` (ForensicEvidenceItem). */
+export type LedgerEvidence = {
+  id: string;
+  sha256Hash?: string;
+  fileName?: string;
+  integrityStatus: string;
+};
+
+/** Množina ID dôkazov, na ktoré sa smú viazať tvrdenia: iba hash-overené záznamy WORM ledgera. */
+export function verifiedEvidenceIds(items: readonly LedgerEvidence[] | undefined | null): Set<string> {
   const ids = new Set<string>();
-  for (const id of dossier.analysisMeta?.documentIds ?? []) {
-    const trimmed = id.trim();
-    if (trimmed) ids.add(trimmed);
-  }
-  for (const entry of dossier.custodyLedger ?? []) {
-    const traceId = entry.traceId?.trim();
-    if (traceId) ids.add(traceId);
+  for (const item of items ?? []) {
+    const id = item.id?.trim();
+    if (id && item.integrityStatus === "verified") ids.add(id);
   }
   return ids;
 }
 
-/** Evidence IDs, not custody-entry IDs, eligible for binding legal conclusions. */
-export function collectCustodyEvidenceIds(
-  dossier: ForensicDossier,
-): Set<string> {
-  const ids = new Set<string>();
-  for (const entry of dossier.custodyLedger ?? []) {
-    const traceId = entry.traceId?.trim();
-    if (traceId) ids.add(traceId);
-  }
-  return ids;
+/** Prázdna množina — nič nie je viazané, kým sa ledger nenačíta. */
+export const NO_VERIFIED_EVIDENCE: ReadonlySet<string> = new Set<string>();
+
+function hasLocator(ref: { page?: number | undefined; paragraph?: string | undefined } | undefined | null): boolean {
+  const paragraph = ref?.paragraph?.trim();
+  return (
+    (Number.isInteger(ref?.page) && (ref?.page ?? 0) > 0) ||
+    // Samotná citácia zákona („§ 119 TP“) nie je locator do dôkazu.
+    Boolean(paragraph && !/^§\s*\d/u.test(paragraph))
+  );
 }
 
-/** Overí, či sa tvrdenie viaže na známy immutable dôkaz. */
+/**
+ * Skutkové tvrdenie (chronológia, tok): väzba cez `sourceRef.evidenceId` na
+ * overený dôkaz. Legacy `documentId` (názov súboru) sa za dôkaz nepovažuje.
+ */
 export function isBoundToEvidence(
   sourceRef: SourceRef | undefined | null,
   knownEvidence: ReadonlySet<string>,
 ): boolean {
-  const documentId = sourceRef?.documentId?.trim();
-  if (!documentId) return false;
-  return knownEvidence.has(documentId);
+  const evidenceId = sourceRef?.evidenceId?.trim();
+  return Boolean(evidenceId && knownEvidence.has(evidenceId));
 }
 
+/** Právny záver: overené evidenceId + konkrétna strana alebo odsek. */
 export function isValidEvidenceReference(
   sourceRef: HypothesisSourceRef | undefined | null,
   knownEvidence: ReadonlySet<string>,
 ): boolean {
   const evidenceId = sourceRef?.evidenceId?.trim();
-  const paragraph = sourceRef?.paragraph?.trim();
-  const hasLocator =
-    (Number.isInteger(sourceRef?.page) && (sourceRef?.page ?? 0) > 0) ||
-    Boolean(paragraph && !/^§\s*\d/u.test(paragraph));
-  return Boolean(evidenceId && knownEvidence.has(evidenceId) && hasLocator);
+  return Boolean(evidenceId && knownEvidence.has(evidenceId) && hasLocator(sourceRef));
 }
 
-function hasValidEvidenceReferences(
+/** Každý odkaz musí byť platný a musí existovať aspoň jeden. */
+export function hasValidEvidenceReferences(
   sourceRefs: HypothesisSourceRef[] | undefined,
   knownEvidence: ReadonlySet<string>,
 ): boolean {
   return Boolean(
-    sourceRefs?.length &&
-      sourceRefs.every((ref) => isValidEvidenceReference(ref, knownEvidence)),
+    sourceRefs?.length && sourceRefs.every((ref) => isValidEvidenceReference(ref, knownEvidence)),
   );
 }
+
+export type BoundPartition<T> = {
+  /** Tvrdenia s platnou oporou v dôkazoch — exportovateľné ako fakt. */
+  bound: T[];
+  /** Tvrdenia bez opory — nesmú sa exportovať ako fakt. */
+  unbound: T[];
+};
 
 export function partitionAlternativeHypotheses(
   hypotheses: AlternativeHypothesis[] | undefined,
@@ -85,12 +103,19 @@ export function partitionAlternativeHypotheses(
   const bound: AlternativeHypothesis[] = [];
   const unbound: AlternativeHypothesis[] = [];
   for (const hypothesis of hypotheses ?? []) {
-    (hasValidEvidenceReferences(hypothesis.sourceReferences, knownEvidence)
-      ? bound
-      : unbound
-    ).push(hypothesis);
+    (hasValidEvidenceReferences(hypothesis.sourceReferences, knownEvidence) ? bound : unbound).push(hypothesis);
   }
   return { bound, unbound };
+}
+
+export function defectSourceRef(defect: AdmissibilityAuditDefect): HypothesisSourceRef | undefined {
+  if (defect.sourceRef) return defect.sourceRef;
+  if (!defect.sourceEvidenceId) return undefined;
+  return {
+    evidenceId: defect.sourceEvidenceId,
+    ...(defect.sourcePage ? { page: defect.sourcePage } : {}),
+    ...(defect.sourceParagraph ? { paragraph: defect.sourceParagraph } : {}),
+  };
 }
 
 export function partitionAdmissibilityAudit(
@@ -104,49 +129,24 @@ export function partitionAdmissibilityAudit(
   const boundDefects: AdmissibilityAuditDefect[] = [];
   const unboundDefects: AdmissibilityAuditDefect[] = [];
   for (const defect of audit?.defects ?? []) {
-    const sourceRef =
-      defect.sourceRef ??
-      (defect.sourceEvidenceId
-        ? {
-            evidenceId: defect.sourceEvidenceId,
-            ...(defect.sourcePage ? { page: defect.sourcePage } : {}),
-            ...(defect.sourceParagraph
-              ? { paragraph: defect.sourceParagraph }
-              : {}),
-          }
-        : undefined);
-    (isValidEvidenceReference(sourceRef, knownEvidence)
-      ? boundDefects
-      : unboundDefects
-    ).push(defect);
+    (isValidEvidenceReference(defectSourceRef(defect), knownEvidence) ? boundDefects : unboundDefects).push(defect);
   }
   return {
-    summaryBound: hasValidEvidenceReferences(
-      audit?.sourceReferences,
-      knownEvidence,
-    ),
+    summaryBound: hasValidEvidenceReferences(audit?.sourceReferences, knownEvidence),
     boundDefects,
     unboundDefects,
   };
 }
 
-export type BoundPartition<T> = {
-  /** Tvrdenia s platnou oporou v dôkazoch — exportovateľné ako fakt. */
-  bound: T[];
-  /** Tvrdenia bez opory — nesmú sa exportovať ako fakt. */
-  unbound: T[];
-};
-
 /** Rozdelí udalosti chronológie na zdrojované (fakty) a nezdrojované. */
 export function partitionTimeline(
   dossier: ForensicDossier,
-  knownEvidence: ReadonlySet<string> = collectEvidenceIds(dossier),
+  knownEvidence: ReadonlySet<string>,
 ): BoundPartition<TimelineEvent> {
   const bound: TimelineEvent[] = [];
   const unbound: TimelineEvent[] = [];
   for (const event of dossier.facts.timeline) {
-    if (isBoundToEvidence(event.sourceRef, knownEvidence)) bound.push(event);
-    else unbound.push(event);
+    (isBoundToEvidence(event.sourceRef, knownEvidence) ? bound : unbound).push(event);
   }
   return { bound, unbound };
 }
@@ -154,14 +154,12 @@ export function partitionTimeline(
 /** Rozdelí podozrivé finančné toky na viazané (fakty) a neviazané. */
 export function partitionSuspiciousFlows(
   dossier: ForensicDossier,
-  knownEvidence: ReadonlySet<string> = collectEvidenceIds(dossier),
+  knownEvidence: ReadonlySet<string>,
 ): BoundPartition<SuspiciousFlowItem> {
-  const flows = dossier.financialAnalysis?.suspiciousFlows ?? [];
   const bound: SuspiciousFlowItem[] = [];
   const unbound: SuspiciousFlowItem[] = [];
-  for (const flow of flows) {
-    if (isBoundToEvidence(flow.sourceRef, knownEvidence)) bound.push(flow);
-    else unbound.push(flow);
+  for (const flow of dossier.financialAnalysis?.suspiciousFlows ?? []) {
+    (isBoundToEvidence(flow.sourceRef, knownEvidence) ? bound : unbound).push(flow);
   }
   return { bound, unbound };
 }

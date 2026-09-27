@@ -306,9 +306,12 @@ describe("Assistant regression: rendered UI with mocked server boundary", () => 
           analysisStatus: "demo",
         }),
       }),
-      // P1-01: druhý argument (investigator) je pri demo exporte undefined.
-      undefined,
+      // Task 4: bez vyšetrovateľa ide iba množina overených dôkazov z WORM
+      // ledgera — syntetická ukážka ich nemá, takže nič nie je viazané (fail-closed).
+      { knownEvidence: expect.any(Set) },
     );
+    const options = mocks.pdf.mock.calls.at(-1)?.[1] as { knownEvidence: Set<string> };
+    expect(options.knownEvidence.size).toBe(0);
   });
 
   it("does not load a persisted demo into a real case", async () => {

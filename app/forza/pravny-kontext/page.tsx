@@ -14,7 +14,7 @@ import {
 import { buildLegalContext, severityLabel } from "@/lib/forza/forensic";
 import { BRAND } from "@/config/brand";
 import { AdmissibilityAuditView } from "@/components/features/forensic/AdmissibilityAuditView";
-import { collectCustodyEvidenceIds } from "@/lib/forza/evidence-binding";
+import { useVerifiedEvidence } from "@/hooks/useVerifiedEvidence";
 
 export default function PravnyKontextPage() {
   return <LegalScreen />;
@@ -23,9 +23,8 @@ export default function PravnyKontextPage() {
 function LegalScreen() {
   const { activeCase, analysis, dossier } = useActiveCase();
   const legal = buildLegalContext(analysis);
-  const knownEvidence = dossier
-    ? collectCustodyEvidenceIds(dossier)
-    : new Set<string>();
+  // Task 4: väzba výlučne na hash-overené dôkazy z WORM ledgera (nie AI custody ledger).
+  const { knownEvidence } = useVerifiedEvidence(activeCase.id);
 
   return (
     <PhoneFrame>

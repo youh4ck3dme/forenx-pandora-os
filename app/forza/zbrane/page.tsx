@@ -23,7 +23,7 @@ import { AdmissibilityAuditView } from "@/components/features/forensic/Admissibi
 import { CustodyLedgerViewer } from "@/components/features/forensic/CustodyLedgerViewer";
 import { EmptyState, ForzaModuleSkeleton } from "@/components/malte/EmptyState";
 import { Button } from "@/components/ui/button";
-import { collectCustodyEvidenceIds } from "@/lib/forza/evidence-binding";
+import { useVerifiedEvidence } from "@/hooks/useVerifiedEvidence";
 
 export default function ZbranePage() {
   return <Weapons />;
@@ -34,9 +34,8 @@ function Weapons() {
   const names = new Map(activeCase.entities.map((e) => [e.id, e.name]));
   const batches = detectSerialBatches(activeCase.weapons);
   const matches = analysis.weapons.filter((w) => w.europolMatch).length;
-  const knownEvidence = dossier
-    ? collectCustodyEvidenceIds(dossier)
-    : new Set<string>();
+  // Task 4: väzba výlučne na hash-overené dôkazy z WORM ledgera (nie AI custody ledger).
+  const { knownEvidence } = useVerifiedEvidence(activeCase.id);
 
   if (loading) {
     return (

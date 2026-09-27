@@ -5,7 +5,10 @@ export type TrafficLight = "green" | "yellow" | "red";
 /** Štruktúrovaný odkaz na zdroj v spise (spätne kompatibilný so string `source`). */
 export interface SourceRef {
   documentId: string;
+  /** ID dôkazu vo WORM ledgeri `evidence_items` — jediná platná väzba na dôkaz. */
+  evidenceId?: string;
   page?: number;
+  paragraph?: string;
   excerpt?: string;
   /** Voľný popis / legacy fallback. */
   label?: string;

@@ -6,9 +6,9 @@ import { sha256Hex } from "./provenance/sha256";
 import { canonicalSha256 } from "./provenance/canonical";
 import { buildReportManifest, type ReportManifest } from "./provenance/report-manifest";
 import {
+  NO_VERIFIED_EVIDENCE,
   partitionAdmissibilityAudit,
   partitionAlternativeHypotheses,
-  collectCustodyEvidenceIds,
   partitionSuspiciousFlows,
   partitionTimeline,
 } from "./evidence-binding";
@@ -28,16 +28,47 @@ export function computeDossierSha256(dossier: ForensicDossier): string {
   return canonicalSha256(dossier);
 }
 
+const HTML_ESCAPES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+
+export function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (ch) => HTML_ESCAPES[ch] ?? ch);
+}
+
+/**
+ * Hlboká kópia dossieru so všetkými reťazcami escapovanými pre HTML. Obsah
+ * dossieru pochádza z AI a z textu spisu (nedôveryhodný vstup) — do reportu,
+ * ktorý sa otvára v origine aplikácie, sa nesmie dostať ako značky/skripty.
+ */
+export function escapeDossierForHtml<T>(value: T): T {
+  if (typeof value === "string") return escapeHtml(value) as T;
+  if (Array.isArray(value)) return value.map((item) => escapeDossierForHtml(item)) as T;
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, escapeDossierForHtml(v)]),
+    ) as T;
+  }
+  return value;
+}
+
 /**
  * Report + reprodukovateľný manifest. `report_sha256` viaže presný HTML text,
  * `content_sha256` kanonický obsah dossieru.
  */
-export function buildReportPackage(dossier: ForensicDossier): {
+export function buildReportPackage(
+  dossier: ForensicDossier,
+  knownEvidence: ReadonlySet<string> = NO_VERIFIED_EVIDENCE,
+): {
   html: string;
   manifest: ReportManifest;
   manifestSha256: string;
 } {
-  const html = buildReportHTML(dossier);
+  const html = buildReportHTML(dossier, knownEvidence);
   const meta = dossier.analysisMeta;
   const { manifest, manifestSha256 } = buildReportManifest({
     subjectId: dossier.caseId,
@@ -138,9 +169,11 @@ export function exportDossierToPDF(
     investigator?: { id: string; name: string };
     /** Voliteľná WebAuthn väzba na hardvérový kľúč. */
     webauthn?: WebauthnBinding;
+    /** ID hash-overených dôkazov z WORM ledgera (useVerifiedEvidence); bez nich nie je nič viazané. */
+    knownEvidence?: ReadonlySet<string>;
   },
 ): void {
-  const pkg = buildReportPackage(dossier);
+  const pkg = buildReportPackage(dossier, options?.knownEvidence ?? NO_VERIFIED_EVIDENCE);
   // P1-01: podpis viaže presný (nepodpísaný) text reportu; blok sa
   // vloží pred manifest, aby stripEmbedded* revertovali presne tento text.
   const signedHtml = options?.investigator
@@ -174,11 +207,16 @@ export function exportDossierToPDF(
   }, 500);
 }
 
-export function buildReportHTML(d: ForensicDossier): string {
-  const dossierHash = computeDossierSha256(d);
+export function buildReportHTML(
+  dossier: ForensicDossier,
+  knownEvidence: ReadonlySet<string> = NO_VERIFIED_EVIDENCE,
+): string {
+  // Hash z pôvodného obsahu; do HTML ide výhradne escapovaná kópia.
+  const dossierHash = computeDossierSha256(dossier);
+  const d = escapeDossierForHtml(dossier);
 
-  // P1-01: faktom je iba udalosť viazaná na immutable dôkaz.
-  const timeline = partitionTimeline(d);
+  // Task 4: faktom je iba udalosť viazaná na hash-overený dôkaz z WORM ledgera.
+  const timeline = partitionTimeline(d, knownEvidence);
   const timelineHtml =
     timeline.bound.length > 0
       ? `
@@ -322,7 +360,7 @@ export function buildReportHTML(d: ForensicDossier): string {
   </table>`
       : "";
 
-  const flows = partitionSuspiciousFlows(d);
+  const flows = partitionSuspiciousFlows(d, knownEvidence);
   const financialHtml = d.financialAnalysis
     ? `
   <h2>Forenzná analýza transakcií a tokov financií (§ 119 ods. 1 písm. f) TP)</h2>
@@ -387,7 +425,6 @@ export function buildReportHTML(d: ForensicDossier): string {
   </div>`
     : "";
 
-  const knownEvidence = collectCustodyEvidenceIds(d);
   const hypotheses = partitionAlternativeHypotheses(
     d.alternativeHypotheses,
     knownEvidence,
