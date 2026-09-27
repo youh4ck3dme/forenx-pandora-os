@@ -30,6 +30,14 @@ import {
   saveWeapon,
 } from "@/lib/case-write.functions";
 
+/** Životný cyklus prípadu (P1-03). Iba „draft“ je mutable. */
+export type CaseStatus =
+  | "draft"
+  | "closed"
+  | "legal_hold"
+  | "archived"
+  | "destroyed";
+
 export type CaseSummary = {
   id: string;
   name: string;
@@ -38,6 +46,7 @@ export type CaseSummary = {
   baseCurrency: string;
   createdAt: string;
   isDemo: boolean;
+  status: CaseStatus;
 };
 
 /**
@@ -61,7 +70,7 @@ export async function listCases(): Promise<CaseSummary[]> {
   const { data, error } = await supabase
     .from("cases")
     .select(
-      "id, name, subtitle, reference_date, base_currency, created_at, is_demo",
+      "id, name, subtitle, reference_date, base_currency, created_at, is_demo, status",
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
@@ -77,6 +86,7 @@ export async function listCases(): Promise<CaseSummary[]> {
       base_currency: string | null;
       created_at: string;
       is_demo: boolean | null;
+      status: string | null;
     }>
   ).map((row) => ({
     id: row.id,
@@ -86,7 +96,18 @@ export async function listCases(): Promise<CaseSummary[]> {
     baseCurrency: row.base_currency ?? "EUR",
     createdAt: row.created_at,
     isDemo: row.is_demo === true,
+    status: isCaseStatus(row.status) ? row.status : "draft",
   }));
+}
+
+function isCaseStatus(value: unknown): value is CaseStatus {
+  return (
+    value === "draft" ||
+    value === "closed" ||
+    value === "legal_hold" ||
+    value === "archived" ||
+    value === "destroyed"
+  );
 }
 
 /** Načíta celý prípad a poskladá ho do tvaru, ktorý očakáva forenzné jadro. */

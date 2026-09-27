@@ -22,6 +22,7 @@ import { StepProgress } from "@/components/malte/StepProgress";
 import { EntityForm } from "@/components/malte/CaseForms";
 import { EntityList } from "@/components/malte/RecordLists";
 import { DeleteRecordButton } from "@/components/malte/DeleteRecordButton";
+import { CaseLifecycleMenu } from "@/components/malte/CaseLifecycleMenu";
 import { BRAND } from "@/config/brand";
 
 export default function PripadyPage() {
@@ -184,6 +185,7 @@ export default function PripadyPage() {
                     <FolderPlus className="h-3.5 w-3.5" aria-hidden />
                   )}
                 </Button>
+                <CaseLifecycleMenu item={item} onChanged={refresh} />
                 <DeleteRecordButton
                   type="case"
                   id={item.id}

@@ -271,6 +271,7 @@ export function listDevCases(): CaseSummary[] {
     baseCurrency: c.baseCurrency,
     createdAt: c.createdAt,
     isDemo: false,
+    status: "draft" as const,
   }));
 }
 
