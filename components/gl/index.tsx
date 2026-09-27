@@ -36,7 +36,8 @@ export const GL = ({ hovering }: { hovering: boolean }) => {
     opacity: { value: 0.8, min: 0, max: 1, step: 0.01 },
     planeScale: { value: 10.0, min: 0.1, max: 10, step: 0.1 },
     size: {
-      value: gpuInfo.particleSize,
+      // 512² = 262k DOF points stalls the rAF loop; keep 512 as an opt-in dev control only
+      value: Math.min(gpuInfo.particleSize, 256),
       options: [64, 128, 256, 512],
     },
     showDebugPlane: { value: false },
@@ -48,6 +49,7 @@ export const GL = ({ hovering }: { hovering: boolean }) => {
   return (
     <div id="webgl">
       <Canvas
+        dpr={[1, 1.5]}
         camera={{
           position: [
             1.2629783123314589, 2.664606471394044, -1.8178993743288914,
