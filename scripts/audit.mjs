@@ -168,7 +168,7 @@ async function callModel(modelName, prompt) {
       },
     ],
     generationConfig: {
-      temperature: 0.1,
+      temperature: 0.4,
       maxOutputTokens: 65536,
     },
   };
