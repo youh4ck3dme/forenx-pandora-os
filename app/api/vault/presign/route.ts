@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createClient } from "@supabase/supabase-js";
 import { getPresignedUploadUrl } from "@/lib/storage/s3-vault";
+import { tracedError, withTraceRoute } from "@/lib/forza/trace";
+import {
+  accessContext,
+  authenticateVaultRequest,
+  logVaultAccess,
+} from "@/lib/storage/vault-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -42,70 +47,16 @@ const PresignResponseSchema = z.object({
 }).strict();
 
 /**
- * Získa používateľské ID z autorizačnej hlavičky alebo session.
- */
-async function authenticateRequest(
-  request: NextRequest,
-): Promise<{ userId: string | null; error?: string; status?: number }> {
-  const isDev = process.env.NODE_ENV !== "production";
-  const authHeader = request.headers.get("authorization");
-
-  if (authHeader?.startsWith("Bearer ")) {
-    const token = authHeader.replace("Bearer ", "").trim();
-    const supabaseUrl =
-      process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-    const supabaseAnonKey =
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-      process.env.SUPABASE_PUBLISHABLE_KEY;
-
-    if (supabaseUrl && supabaseAnonKey && token.split(".").length === 3) {
-      try {
-        const supabase = createClient(supabaseUrl, supabaseAnonKey);
-        const { data, error } = await supabase.auth.getUser(token);
-        if (data?.user) {
-          return { userId: data.user.id };
-        }
-        if (error && !isDev) {
-          return {
-            userId: null,
-            error: `Neplatný auth token: ${error.message}`,
-            status: 401,
-          };
-        }
-      } catch {
-        // Fallback v dev režime
-      }
-    }
-  }
-
-  // Lokálny vývojársky / testovací bypass
-  if (isDev) {
-    const devUserId =
-      request.headers.get("x-dev-user-id") ||
-      request.headers.get("x-user-id") ||
-      "dev-investigator-001";
-    return { userId: devUserId };
-  }
-
-  return {
-    userId: null,
-    error:
-      "Neautorizovaný prístup: Chýba platná autorizačná relácia vyšetrovateľa.",
-    status: 401,
-  };
-}
-
-/**
  * POST /api/vault/presign
  * Generuje autorizovanú S3 Presigned PUT URL pre priamy upload veľkých súborov (až do 250 MB).
  * Obchádza 4.5 MB limit Vercel Serverless runtime.
  * Chráni pred IDOR zraniteľnosťou overením vlastníctva spisu v databáze.
  */
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function handlePost(request: NextRequest, traceId: string): Promise<NextResponse> {
   try {
-    // 1. Autentifikácia vyšetrovateľa
-    const auth = await authenticateRequest(request);
-    if (!auth.userId) {
+    // 1. Autentifikácia vyšetrovateľa (P1-04: zdieľaná fail-closed vrstva)
+    const auth = await authenticateVaultRequest(request);
+    if (auth.userId === null) {
       return NextResponse.json(
         { error: auth.error || "Neautorizovaný prístup." },
         { status: auth.status || 401 },
@@ -147,7 +98,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           .maybeSingle();
 
         if (caseError) {
-          console.error(
+          tracedError(
+            traceId,
             `[Vault Presign] Chyba pri overovaní prípadu ${caseId}:`,
             caseError,
           );
@@ -167,10 +119,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           );
         }
       } catch (dbError: unknown) {
-        console.error("[Vault Presign] DB verification failed:", dbError);
+        tracedError(traceId, "[Vault Presign] DB verification failed:", dbError);
         return NextResponse.json(
           { error: "Overenie oprávnenia k spisu zlyhalo; nahratie nebolo povolené." },
           { status: 503 },
+        );
+      }
+    }
+
+    // 3b. P1-04: serverový audit uploadu do auditného ledgeri (fail-closed).
+    if (process.env.NODE_ENV === "production" && auth.token) {
+      const audited = await logVaultAccess({
+        token: auth.token,
+        caseId,
+        action: "upload",
+        ...accessContext(request),
+      });
+      if (!audited) {
+        return NextResponse.json(
+          { error: "Záznam prístupu k spisu sa nepodarilo zapísať." },
+          { status: 500 },
         );
       }
     }
@@ -216,4 +184,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         : "Neznáma chyba pri generovaní presigned URL.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+// P0-04: korelačné trace id (x-trace-id, UUIDv4) v hlavičke odpovede.
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  return withTraceRoute(request, (traceId) => handlePost(request, traceId));
 }

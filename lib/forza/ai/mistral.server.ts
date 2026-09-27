@@ -65,6 +65,8 @@ type CallOptions = {
   messages: MistralMessage[];
   maxTokens?: number;
   purpose?: MistralPurpose;
+  /** P0-04: korelačné trace id — posiela sa ako x-trace-id poskytovateľovi/workeru. */
+  traceId?: string;
   /** Prepíše časový limit odvodený z účelu volania. */
   timeoutMs?: number;
   /** Injektovateľné len v testoch. */
@@ -81,6 +83,7 @@ export async function callMistral(
   options: CallOptions,
 ): Promise<MistralResult> {
   const apiKey = mistralApiKey(options.purpose ?? "chat");
+  const traceId = options.traceId;
   if (!apiKey) {
     return { status: "not_configured", message: "AI nie je nakonfigurovaná." };
   }
@@ -118,16 +121,20 @@ export async function callMistral(
           useWorker ? `${workerUrl}/v1/mistral/chat` : MISTRAL_ENDPOINT,
           {
             method: "POST",
-            headers: useWorker
-              ? {
-                  "content-type": "application/json",
-                  "x-forenx-worker-key": workerKey!,
-                  "x-mistral-authorization": `Bearer ${apiKey}`,
-                }
-              : {
-                  "content-type": "application/json",
-                  authorization: `Bearer ${apiKey}`,
-                },
+            headers: {
+              ...(useWorker
+                ? {
+                    "content-type": "application/json",
+                    "x-forenx-worker-key": workerKey!,
+                    "x-mistral-authorization": `Bearer ${apiKey}`,
+                  }
+                : {
+                    "content-type": "application/json",
+                    authorization: `Bearer ${apiKey}`,
+                  }),
+              // P0-04: korelácia požiadavky aj na strane Mistralu/workera.
+              ...(traceId ? { "x-trace-id": traceId } : {}),
+            },
             body: payload,
             signal: controller.signal,
           },
@@ -146,6 +153,7 @@ export async function callMistral(
             headers: {
               "content-type": "application/json",
               authorization: `Bearer ${apiKey}`,
+              ...(traceId ? { "x-trace-id": traceId } : {}),
             },
             body: payload,
             signal: controller.signal,
@@ -164,6 +172,7 @@ export async function callMistral(
           headers: {
             "content-type": "application/json",
             authorization: `Bearer ${apiKey}`,
+            ...(traceId ? { "x-trace-id": traceId } : {}),
           },
           body: payload,
           signal: controller.signal,

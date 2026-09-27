@@ -104,7 +104,10 @@ required.
 - [ ] Configure Sentry or equivalent frontend/server exception reporting.
 - [ ] Alert on AI timeout over 60 seconds, S3 upload failure above 1%, and
       Supabase failures.
-- [ ] Add correlation/trace IDs to server-side audit-safe logs.
+- [x] Add correlation/trace IDs to server-side audit-safe logs. Done: lib/forza/trace.ts
+      (x-trace-id UUIDv4) wraps every Next.js API route, callMistral and the
+      browser Mistral client, and every server-fn call gets context.traceId.
+      traced* helpers sanitize logs (redactPii + masked bearer/API keys).
 - [ ] Define alert owner, escalation channel, and response runbook.
 
 ### P0-05 — Headers and CSP
@@ -142,8 +145,11 @@ references, and the in-memory custody chain.
 
 **Remaining:**
 
-- [ ] Bind every exported claim and financial transaction to a concrete
-      immutable evidence identifier.
+- [x] Bind every exported claim and financial transaction to a concrete
+      immutable evidence identifier. Done: lib/forza/evidence-binding.ts —
+      timeline events and suspicious flows export as facts only when their
+      sourceRef.documentId exists in analysisMeta.documentIds/custody ledger;
+      unbound claims render in an explicit "nie sú skutkom" section.
 - [ ] Add a WebAuthn-backed investigator signature and independently verify it.
 - [ ] Produce and review a real PDF/JSON-LD dossier with legal stakeholders.
 
@@ -206,8 +212,9 @@ feedback, and guarded destructive actions. Case deletion requires the case name.
 **Status:** `IN PROGRESS`
 
 - [x] Forza/Malte user-visible terminology was normalized toward **Prípad**.
-- [ ] Scan web, Electron, email/export templates, and translations for remaining
-      visible **Projekt** terminology.
+- [x] Scan web, Electron, email/export templates, and translations for
+      remaining visible **Projekt** terminology. Enforced by
+      lib/__tests__/terminology.test.ts (source scan, zero occurrences).
 
 ### P2-04 — Loading, empty, and offline states
 
@@ -215,7 +222,8 @@ feedback, and guarded destructive actions. Case deletion requires the case name.
 
 - [x] Skeletons and actionable empty states exist for Osoby, Vzťahy, Zbrane,
       and Bankové výpisy.
-- [ ] Add the same standardized state to Trezor.
+- [x] Add the same standardized state to Trezor (skeleton rows while
+      loading + actionable EmptyState in the Evidence Vault panel).
 - [ ] Clearly distinguish locally cached/offline data from synchronized data.
 
 ## 6. P3 — architecture, performance, and desktop release

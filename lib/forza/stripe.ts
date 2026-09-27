@@ -17,7 +17,7 @@ function paymentsEnvironment(): StripeEnv {
   if (clientToken?.startsWith("pk_test_")) return "sandbox";
   if (clientToken?.startsWith("pk_live_")) return "live";
   throw new Error(
-    "Platby nie sú pre toto zostavenie nakonfigurované. Dokončite nastavenie platieb v projekte.",
+    "Platby nie sú pre toto zostavenie nakonfigurované. Dokončite nastavenie platieb v administrácii aplikácie.",
   );
 }
 

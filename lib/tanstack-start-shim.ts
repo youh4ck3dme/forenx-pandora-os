@@ -3,6 +3,8 @@
  * Allows using createServerFn, createMiddleware, useServerFn, and getRequest
  * inside Next.js without pulling in TanStack Start's SSR Vite runtime / node:async_hooks.
  */
+import { newTraceId } from "./forza/trace";
+
 
 export type MiddlewareServerFn<TContext = any> = (args: {
   next: (result?: { context?: any; headers?: HeadersInit }) => Promise<any>;
@@ -87,7 +89,8 @@ export function createServerFn(options?: { method?: "GET" | "POST" }) {
         }
 
         // Execute middleware chain
-        let context: any = {};
+        // P0-04: každé volanie serverovej funkcie dostane trace id (UUIDv4).
+        let context: any = { traceId: newTraceId() };
         const runMws = async (idx: number, currentCtx: any): Promise<any> => {
           if (idx >= middlewares.length) {
             return await handlerFn({ data: validData, context: currentCtx });

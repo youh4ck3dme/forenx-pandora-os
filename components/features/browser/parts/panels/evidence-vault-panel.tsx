@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { logCaseAccess } from "@/lib/forza/access-audit";
+import { getSupabaseSessionToken } from "@/lib/forza/access-audit";
+import { EmptyState } from "@/components/malte/EmptyState";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Upload,
   ShieldCheck,
@@ -76,7 +78,10 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
     if (!cId) return;
     try {
       setIsLoadingList(true);
-      const res = await fetch(`/api/vault?caseId=${encodeURIComponent(cId)}`);
+      const token = await getSupabaseSessionToken();
+      const res = await fetch(`/api/vault?caseId=${encodeURIComponent(cId)}`, {
+        headers: token ? { authorization: `Bearer ${token}` } : undefined,
+      });
       if (res.ok) {
         const data = (await res.json()) as { items: ForensicEvidenceItem[] };
         if (Array.isArray(data.items)) {
@@ -138,9 +143,13 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
 
         let directS3Success = false;
         try {
+          const presignToken = await getSupabaseSessionToken();
           const presignRes = await fetch("/api/vault/presign", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              ...(presignToken ? { authorization: `Bearer ${presignToken}` } : {}),
+            },
             body: JSON.stringify({
               caseId: effectiveCaseId,
               fileName: file.name,
@@ -208,8 +217,10 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
           formData.append("caseId", effectiveCaseId);
           formData.append("clientSha256", clientHash);
 
+          const multipartToken = await getSupabaseSessionToken();
           const response = await fetch("/api/vault/", {
             method: "POST",
+            headers: multipartToken ? { authorization: `Bearer ${multipartToken}` } : undefined,
             body: formData,
             signal: controller.signal,
           });
@@ -243,10 +254,11 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
   // ─── ON-DEMAND SŤAHOVANIE CEZ FRESH PRESIGNED URL (Flaw 4) ────────
   const handleDownload = useCallback(async (storageKey: string, fileName: string) => {
     setDownloadingKey(storageKey);
-    // P1-04: zobrazenie citliveho dokazu sa nezmenitelne zaznamena do auditneho ledgeri.
-    void logCaseAccess(effectiveCaseId, "view");
     try {
-      const res = await fetch(`/api/vault?storageKey=${encodeURIComponent(storageKey)}&action=presign`);
+      const dlToken = await getSupabaseSessionToken();
+      const res = await fetch(`/api/vault?storageKey=${encodeURIComponent(storageKey)}&action=presign`, {
+        headers: dlToken ? { authorization: `Bearer ${dlToken}` } : undefined,
+      });
       if (!res.ok) {
         throw new Error("Zlyhalo získanie čerstvej URL z trezoru.");
       }
@@ -387,11 +399,27 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
           </button>
         </div>
 
-        {items.length === 0 ? (
-          <div className="py-6 text-center border border-zinc-900 rounded-lg bg-zinc-900/20">
-            <FileText className="w-6 h-6 mx-auto text-zinc-600 mb-1" />
-            <p className="text-xs text-zinc-500">V tomto spise nie sú zaevidované žiadne súbory.</p>
+        {isLoadingList && items.length === 0 ? (
+          <div className="space-y-2" role="status" aria-label="Načítavam zoznam zaistených dôkazov">
+            <Skeleton className="h-16 w-full rounded-lg" />
+            <Skeleton className="h-16 w-full rounded-lg" />
+            <span className="sr-only">Načítavam zoznam zaistených dôkazov…</span>
           </div>
+        ) : items.length === 0 ? (
+          <EmptyState
+            icon={HardDrive}
+            title="Zatiaľ žiadne zaistené dôkazy"
+            detail="Nahrajte prvý súbor spisu (PDF, CSV, obrázok). Systém mu vypočíta SHA-256 a uloží ho do S3 trezora."
+            action={
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-full border border-border px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-foreground/10 cursor-pointer"
+              >
+                Nahrať prvý dôkaz
+              </button>
+            }
+          />
         ) : (
           <div className="space-y-2">
             {items.map((item) => (

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
+import { tracedError, withTraceRoute } from "@/lib/forza/trace";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -28,7 +29,7 @@ const AccessRequestSchema = z.object({
  * ledgeri. Zlyhanie auditu nikdy nesmie zablokovať samotný prístup, preto
  * klient volá best-effort.
  */
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function handlePost(request: NextRequest, traceId: string): Promise<NextResponse> {
   const isDev = process.env.NODE_ENV !== "production";
 
   const rawBody: unknown = await request.json().catch(() => null);
@@ -90,7 +91,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
 
     if (error) {
-      console.error("[AccessAudit] Záznam prístupu sa nepodarilo zapísať:", error.message);
+      tracedError(traceId, "[AccessAudit] Záznam prístupu sa nepodarilo zapísať:", error.message);
       return NextResponse.json(
         { error: "Záznam prístupu sa nepodarilo zapísať." },
         { status: 500 },
@@ -99,10 +100,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({ success: true, logged: true });
   } catch (err: unknown) {
-    console.error("[AccessAudit] Neočekávaná chyba:", err);
+    tracedError(traceId, "[AccessAudit] Neočekávaná chyba:", err);
     return NextResponse.json(
       { error: "Záznam prístupu sa nepodarilo zapísať." },
       { status: 500 },
     );
   }
+}
+// P0-04: korelačné trace id (x-trace-id, UUIDv4) v hlavičke odpovede.
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  return withTraceRoute(request, (traceId) => handlePost(request, traceId));
 }

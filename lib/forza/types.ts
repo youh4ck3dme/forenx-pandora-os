@@ -112,6 +112,8 @@ export interface SuspiciousFlowItem {
   method: "cash_deposit" | "wire_transfer" | "handover";
   purpose: string;
   redFlag: string;
+  /** P1-01: viazanie na immutable dôkaz; bez neho sa tok neexportuje ako fakt. */
+  sourceRef?: SourceRef;
 }
 
 export interface FinancialTransactionSummary {

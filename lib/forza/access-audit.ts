@@ -32,7 +32,8 @@ export async function logCaseAccess(
   }
 }
 
-async function getSessionToken(): Promise<string | null> {
+/** Supabase access token aktuálnej relácie (alebo null v dev/offline režime). */
+export async function getSupabaseSessionToken(): Promise<string | null> {
   try {
     const { supabase } = await import("@/integrations/supabase/client");
     const { data } = await supabase.auth.getSession();
@@ -40,4 +41,8 @@ async function getSessionToken(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+async function getSessionToken(): Promise<string | null> {
+  return getSupabaseSessionToken();
 }

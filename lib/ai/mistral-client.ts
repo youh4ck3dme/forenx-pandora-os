@@ -23,6 +23,8 @@ export interface CompletionStreamOptions {
   readonly model?: string;
   readonly temperature?: number;
   readonly maxTokens?: number;
+  /** P0-04: korelačné trace id (x-trace-id) pre odchádzajúcu požiadavku. */
+  readonly traceId?: string;
   readonly timeoutMs?: number;
   readonly signal?: AbortSignal;
 }
@@ -98,6 +100,7 @@ export async function createChatCompletionStream(
         "Content-Type": "application/json",
         "Authorization": `Bearer ${apiKey}`,
         "Accept": "text/event-stream",
+        ...(options.traceId ? { "x-trace-id": options.traceId } : {}),
       },
       body: JSON.stringify({
         model,

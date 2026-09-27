@@ -10,6 +10,7 @@ import {
   type MistralResult,
 } from "./mistral.server";
 import { applyPrivacyGateway } from "./privacy-gateway";
+import { newTraceId } from "@/lib/forza/trace";
 
 export type LlmProvider = "mistral";
 export type LlmResult = MistralResult & { provider?: LlmProvider };
@@ -34,14 +35,18 @@ export async function callLlm(options: {
   purpose?: MistralPurpose;
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
+  /** P0-04: korelačné trace id; ak chýba, vygeneruje sa nové (UUIDv4). */
+  traceId?: string;
 }): Promise<LlmResult> {
   const purpose = options.purpose ?? "chat";
+  const traceId = options.traceId ?? newTraceId();
   // Centrálna brána: žiadna nesystémová správa neodíde bez redakcie PII.
   const { messages } = applyPrivacyGateway(options.messages);
   const result = await callMistral({
     ...options,
     messages,
     purpose,
+    traceId,
     timeoutMs: options.timeoutMs ?? timeoutForPurpose(purpose),
   });
   return { ...result, provider: "mistral" };

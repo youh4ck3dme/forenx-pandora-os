@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash, randomUUID } from "node:crypto";
+import { withTraceRoute } from "@/lib/forza/trace";
 import { z } from "zod";
 import {
   uploadCaseDocument,
@@ -14,6 +15,14 @@ import {
   EvidenceIdSchema,
   S3StorageKeySchema,
 } from "@/lib/forza/vault-types";
+import {
+  accessContext,
+  authenticateVaultRequest,
+  caseIdFromStorageKey,
+  isUuidCaseId,
+  logVaultAccess,
+  verifyCaseOwnership,
+} from "@/lib/storage/vault-auth";
 
 export const maxDuration = 300; // 300 s limit pre veľké súbory
 export const dynamic = "force-dynamic";
@@ -48,9 +57,16 @@ function rejectUnconfiguredProductionVault(): NextResponse | undefined {
 /**
  * GET /api/vault?caseId=... alebo ?storageKey=...&action=presign
  */
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function handleGet(request: NextRequest): Promise<NextResponse> {
   const unavailable = rejectUnconfiguredProductionVault();
   if (unavailable) return unavailable;
+
+  // ─── P1-04: povinná autentifikácia vyšetrovateľa (fail-closed) ────────
+  const auth = await authenticateVaultRequest(request);
+  if (auth.userId === null) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+  const isDev = process.env.NODE_ENV !== "production";
 
   const { searchParams } = new URL(request.url);
   const rawCaseId = searchParams.get("caseId");
@@ -72,6 +88,47 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   // 1. On-Demand Just-in-Time Presigned URL generation (rieši Flaw 4)
   if (validation.data.action === "presign" && validation.data.storageKey) {
+    const storageKey = validation.data.storageKey;
+    const caseId = caseIdFromStorageKey(storageKey);
+    if (!isDev) {
+      if (!caseId) {
+        return NextResponse.json(
+          { error: "Neplatný storage kľúč: chýba identifikátor spisu." },
+          { status: 400 },
+        );
+      }
+      const ownership = await verifyCaseOwnership(caseId, auth.userId);
+      if (ownership === "not_found") {
+        return NextResponse.json({ error: "Spis nebol nájdený." }, { status: 404 });
+      }
+      if (ownership === "forbidden") {
+        return NextResponse.json(
+          { error: "Prístup zamietnutý: Nemáte oprávnenie k dôkazom tohto spisu." },
+          { status: 403 },
+        );
+      }
+      if (ownership === "unavailable") {
+        return NextResponse.json(
+          { error: "Overenie oprávnenia k spisu zlyhalo." },
+          { status: 503 },
+        );
+      }
+      // Audit je fail-closed: bez zápisu sa presigned URL nevydá.
+      const audited = auth.token
+        ? await logVaultAccess({
+            token: auth.token,
+            caseId,
+            action: "view",
+            ...accessContext(request),
+          })
+        : false;
+      if (!audited) {
+        return NextResponse.json(
+          { error: "Záznam prístupu k dôkazu sa nepodarilo zapísať." },
+          { status: 500 },
+        );
+      }
+    }
     try {
       const presignedUrl = await getPresignedDossierUrl(validation.data.storageKey, 300); // 5 minútová platnosť
       return NextResponse.json({ url: presignedUrl, expiresIn: 300 });
@@ -90,6 +147,46 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   const caseId = validation.data.caseId;
+
+  if (!isDev) {
+    if (!isUuidCaseId(caseId)) {
+      return NextResponse.json(
+        { error: "Neplatný identifikátor spisu." },
+        { status: 400 },
+      );
+    }
+    const ownership = await verifyCaseOwnership(caseId, auth.userId);
+    if (ownership === "not_found") {
+      return NextResponse.json({ error: "Spis nebol nájdený." }, { status: 404 });
+    }
+    if (ownership === "forbidden") {
+      return NextResponse.json(
+        { error: "Prístup zamietnutý: Nemáte oprávnenie k dôkazom tohto spisu." },
+        { status: 403 },
+      );
+    }
+    if (ownership === "unavailable") {
+      return NextResponse.json(
+        { error: "Overenie oprávnenia k spisu zlyhalo." },
+        { status: 503 },
+      );
+    }
+    const audited = auth.token
+      ? await logVaultAccess({
+          token: auth.token,
+          caseId,
+          action: "view",
+          ...accessContext(request),
+        })
+      : false;
+    if (!audited) {
+      return NextResponse.json(
+        { error: "Záznam prístupu k spisu sa nepodarilo zapísať." },
+        { status: 500 },
+      );
+    }
+  }
+
   const items = inMemoryEvidenceStore.get(caseId) || [];
 
   return NextResponse.json({
@@ -101,7 +198,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 /**
  * POST /api/vault -> Prijme súbor, nezávisle overí SHA-256 hash, uloží do Hetzner S3 a vráti evidenciu
  */
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function handlePost(request: NextRequest): Promise<NextResponse> {
   const unavailable = rejectUnconfiguredProductionVault();
   if (unavailable) return unavailable;
 
@@ -215,4 +312,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const message = error instanceof Error ? error.message : "Neznáma chyba spracovania trezoru.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+// P0-04: korelačné trace id (x-trace-id, UUIDv4) v hlavičke každej odpovede.
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  return withTraceRoute(request, () => handleGet(request));
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  return withTraceRoute(request, () => handlePost(request));
 }

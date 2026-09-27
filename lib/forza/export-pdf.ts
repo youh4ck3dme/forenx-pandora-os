@@ -5,6 +5,10 @@ import { AI_DISCLAIMER } from "@/config/brand";
 import { sha256Hex } from "./provenance/sha256";
 import { canonicalSha256 } from "./provenance/canonical";
 import { buildReportManifest, type ReportManifest } from "./provenance/report-manifest";
+import {
+  partitionSuspiciousFlows,
+  partitionTimeline,
+} from "./evidence-binding";
 
 export { sha256Hex };
 
@@ -91,8 +95,10 @@ export function exportDossierToPDF(dossier: ForensicDossier): void {
 export function buildReportHTML(d: ForensicDossier): string {
   const dossierHash = computeDossierSha256(d);
 
+  // P1-01: faktom je iba udalosť viazaná na immutable dôkaz.
+  const timeline = partitionTimeline(d);
   const timelineHtml =
-    d.facts.timeline.length > 0
+    timeline.bound.length > 0
       ? `
   <h2>Chronológia skutkov (zdrojované udalosti)</h2>
   <table>
@@ -104,7 +110,7 @@ export function buildReportHTML(d: ForensicDossier): string {
       </tr>
     </thead>
     <tbody>
-      ${d.facts.timeline
+      ${timeline.bound
         .map((ev) => {
           const src = formatSourceRef(ev.sourceRef) || ev.source?.trim() || "—";
           return `
@@ -112,6 +118,36 @@ export function buildReportHTML(d: ForensicDossier): string {
           <td>${ev.time}</td>
           <td>${ev.event}</td>
           <td><code>${src}</code></td>
+        </tr>`;
+        })
+        .join("")}
+    </tbody>
+  </table>`
+      : "";
+
+  // P1-01: nezdrojované okolnosti sa neexportujú ako fakt — iba ako
+  // explicitne označená sekcia mimo skutkovej chronológie.
+  const unboundTimelineHtml =
+    timeline.unbound.length > 0
+      ? `
+  <h2>Nezdrojované okolnosti (bez opory v dôkazoch — nie sú skutkom)</h2>
+  <p class="legal-expl">Nasledujúce okolnosti sa nepodarilo viazať na konkrétny dôkaz evidovaný v spise (§ 119 TP); nie sú súčasťou zisteného skutkového stavu.</p>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:14%">Čas</th>
+        <th style="width:46%">Udalosť</th>
+        <th style="width:40%">Poznámka</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${timeline.unbound
+        .map((ev) => {
+          return `
+        <tr>
+          <td>${ev.time}</td>
+          <td>${ev.event}</td>
+          <td><code>bez viazania na dôkaz</code></td>
         </tr>`;
         })
         .join("")}
@@ -204,6 +240,7 @@ export function buildReportHTML(d: ForensicDossier): string {
   </table>`
       : "";
 
+  const flows = partitionSuspiciousFlows(d);
   const financialHtml = d.financialAnalysis
     ? `
   <h2>Forenzná analýza transakcií a tokov financií (§ 119 ods. 1 písm. f) TP)</h2>
@@ -218,11 +255,12 @@ export function buildReportHTML(d: ForensicDossier): string {
           <th style="width:28%">Platiteľ ➔ Príjemca</th>
           <th style="width:15%;text-align:right">Suma</th>
           <th style="width:15%;text-align:center">Forma platby</th>
-          <th style="width:30%">Účel platby & Forenzný indikátor (Red Flag)</th>
+          <th style="width:22%">Účel platby & Forenzný indikátor (Red Flag)</th>
+          <th style="width:8%">Zdroj (P1-01)</th>
         </tr>
       </thead>
       <tbody>
-        ${d.financialAnalysis.suspiciousFlows
+        ${flows.bound
           .map(
             (sf) => `
           <tr>
@@ -231,11 +269,39 @@ export function buildReportHTML(d: ForensicDossier): string {
             <td style="text-align:right;font-weight:bold">${sf.amount.toLocaleString("sk-SK")} €</td>
             <td style="text-align:center">${sf.method}</td>
             <td><strong>${sf.purpose}</strong>: ${sf.redFlag}</td>
+            <td><code>${formatSourceRef(sf.sourceRef)}</code></td>
           </tr>`,
           )
           .join("")}
       </tbody>
     </table>
+    ${flows.unbound.length > 0
+      ? `
+    <h3>Toky bez viazania na dôkaz (neoverené — nie sú skutkom)</h3>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:14%">Dátum</th>
+          <th style="width:34%">Platiteľ ➔ Príjemca</th>
+          <th style="width:16%;text-align:right">Suma</th>
+          <th style="width:36%">Poznámka</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${flows.unbound
+          .map(
+            (sf) => `
+        <tr>
+          <td>${sf.date}</td>
+          <td>${sf.payer} ➔ ${sf.recipient}</td>
+          <td style="text-align:right">${sf.amount.toLocaleString("sk-SK")} €</td>
+          <td>${sf.purpose} — <code>bez viazania na dôkaz</code></td>
+        </tr>`,
+          )
+          .join("")}
+      </tbody>
+    </table>`
+      : ""}
   </div>`
     : "";
 
@@ -341,6 +407,7 @@ ${
 ${questionsHtml}
 
 ${timelineHtml}
+${unboundTimelineHtml}
 
 ${contradictionsHtml}
 
