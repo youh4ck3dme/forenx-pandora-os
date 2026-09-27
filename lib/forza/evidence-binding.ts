@@ -6,6 +6,8 @@ import type {
   DefenseAttack,
   EvidenceRow,
   HypothesisSourceRef,
+  InvestigativeQuestionAnswer,
+  ParagraphStatus,
   SourceRef,
   SuspiciousFlowItem,
   TimelineEvent,
@@ -190,6 +192,46 @@ export function partitionEvidenceTraces(
   const unbound: EvidenceRow[] = [];
   for (const trace of dossier.evidenceStrength?.traces ?? []) {
     (isBoundToEvidence(trace.sourceRef, knownEvidence) ? bound : unbound).push(trace);
+  }
+  return { bound, unbound };
+}
+
+/**
+ * Issue #16: odpovede na 3 vyšetrovacie otázky menujú osoby a mieru istoty.
+ * Bez väzby na overený dôkaz sa nesmú exportovať ani odpoveď, ani mená.
+ */
+export function partitionInvestigativeAnswers(
+  dossier: ForensicDossier,
+  knownEvidence: ReadonlySet<string>,
+): BoundPartition<InvestigativeQuestionAnswer> {
+  const bound: InvestigativeQuestionAnswer[] = [];
+  const unbound: InvestigativeQuestionAnswer[] = [];
+  const answers = dossier.investigativeAnswers;
+  if (!answers) return { bound, unbound };
+  for (const answer of [answers.q1_buyer_seller, answers.q2_planner_coordinator, answers.q3_financier]) {
+    if (!answer) continue;
+    (isBoundToEvidence(answer.sourceRef, knownEvidence) ? bound : unbound).push(answer);
+  }
+  return { bound, unbound };
+}
+
+/** Issue #16: záver o financovaní je zistením iba s väzbou na overený dôkaz. */
+export function isFinancingConclusionBound(
+  dossier: ForensicDossier,
+  knownEvidence: ReadonlySet<string>,
+): boolean {
+  return isBoundToEvidence(dossier.financialAnalysis?.sourceRef, knownEvidence);
+}
+
+/** Issue #16: rozdelí stav zákonných znakov (IV.) na viazaný a neviazaný. */
+export function partitionLegalParagraphs(
+  dossier: ForensicDossier,
+  knownEvidence: ReadonlySet<string>,
+): BoundPartition<ParagraphStatus> {
+  const bound: ParagraphStatus[] = [];
+  const unbound: ParagraphStatus[] = [];
+  for (const paragraph of dossier.evidenceStrength?.paragraphs ?? []) {
+    (isBoundToEvidence(paragraph.sourceRef, knownEvidence) ? bound : unbound).push(paragraph);
   }
   return { bound, unbound };
 }

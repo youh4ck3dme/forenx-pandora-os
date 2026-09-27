@@ -8,14 +8,25 @@ import { buildReportManifest, type ReportManifest } from "./provenance/report-ma
 import { NO_BOUND_FACTS_TEXT, judgeNarrativeParts } from "./judge-text";
 import {
   NO_VERIFIED_EVIDENCE,
+  isFinancingConclusionBound,
   listBoundFacts,
   partitionAdmissibilityAudit,
   partitionAlternativeHypotheses,
   partitionDefenseAttacks,
   partitionEvidenceTraces,
+  partitionInvestigativeAnswers,
+  partitionLegalParagraphs,
   partitionSuspiciousFlows,
   partitionTimeline,
 } from "./evidence-binding";
+
+/** Issue #16: odpoveď bez väzby na dôkaz sa nevypisuje — menuje osoby. */
+export const NO_BOUND_ANSWER_TEXT =
+  "Odpoveď nie je viazaná na hash-overený dôkaz z WORM ledgera — odpoveď, menované osoby ani miera istoty sa neuvádzajú.";
+
+/** Issue #16: záver o financovaní bez väzby na dôkaz sa nevypisuje. */
+export const NO_BOUND_FINANCING_TEXT =
+  "nie je viazaný na hash-overený dôkaz z WORM ledgera — neuvádza sa.";
 import {
   buildInvestigatorSignature,
   type InvestigatorSignature,
@@ -283,6 +294,7 @@ export function buildReportHTML(
   // hash-overený dôkaz; neviazané sa vypíšu len medzi neoverenými tvrdeniami.
   const traces = partitionEvidenceTraces(d, knownEvidence);
   const attacks = partitionDefenseAttacks(d, knownEvidence);
+  const legalParagraphs = partitionLegalParagraphs(d, knownEvidence);
 
   const tracesRows = traces.bound
     .map((t) => {
@@ -313,25 +325,30 @@ export function buildReportHTML(
     })
     .join("");
 
-  const questionsHtml = d.investigativeAnswers
+  // Issue #16: odpoveď menuje osoby — bez väzby na overený dôkaz sa nevypíše
+  // ani odpoveď, ani mená, ani miera istoty (ani medzi neoverenými tvrdeniami).
+  const answers = partitionInvestigativeAnswers(d, knownEvidence);
+  const questionCards = [...answers.bound, ...answers.unbound]
+    .sort((a, b) => a.questionNumber - b.questionNumber)
+    .map((q) =>
+      answers.bound.includes(q)
+        ? `
+    <div class="question-card">
+      <h3>${q.questionNumber}. ${q.question}</h3>
+      <p>${q.answer}</p>
+      <p class="question-meta"><strong>Identifikované osoby:</strong> ${q.identifiedPersons.join(", ")} · <strong>Miera istoty:</strong> ${q.confidenceLevel} % · <strong>Zdroj:</strong> <code>${formatSourceRef(q.sourceRef)}</code></p>
+    </div>`
+        : `
+    <div class="question-card">
+      <h3>${q.questionNumber}. ${q.question}</h3>
+      <p class="legal-expl">${NO_BOUND_ANSWER_TEXT}</p>
+    </div>`,
+    )
+    .join("");
+  const questionsHtml = questionCards
     ? `
   <h2>Záväzný analytický rámec ÚBOK (3 vyšetrovacie otázky — Source of Truth)</h2>
-  <div class="section">
-    <div class="question-card">
-      <h3>1. ${d.investigativeAnswers.q1_buyer_seller.question}</h3>
-      <p>${d.investigativeAnswers.q1_buyer_seller.answer}</p>
-      <p class="question-meta"><strong>Identifikované osoby:</strong> ${d.investigativeAnswers.q1_buyer_seller.identifiedPersons.join(", ")} · <strong>Miera istoty:</strong> ${d.investigativeAnswers.q1_buyer_seller.confidenceLevel} %</p>
-    </div>
-    <div class="question-card">
-      <h3>2. ${d.investigativeAnswers.q2_planner_coordinator.question}</h3>
-      <p>${d.investigativeAnswers.q2_planner_coordinator.answer}</p>
-      <p class="question-meta"><strong>Identifikované osoby:</strong> ${d.investigativeAnswers.q2_planner_coordinator.identifiedPersons.join(", ")} · <strong>Miera istoty:</strong> ${d.investigativeAnswers.q2_planner_coordinator.confidenceLevel} %</p>
-    </div>
-    <div class="question-card">
-      <h3>3. ${d.investigativeAnswers.q3_financier.question}</h3>
-      <p>${d.investigativeAnswers.q3_financier.answer}</p>
-      <p class="question-meta"><strong>Identifikované osoby:</strong> ${d.investigativeAnswers.q3_financier.identifiedPersons.join(", ")} · <strong>Miera istoty:</strong> ${d.investigativeAnswers.q3_financier.confidenceLevel} %</p>
-    </div>
+  <div class="section">${questionCards}
   </div>`
     : "";
 
@@ -375,7 +392,11 @@ export function buildReportHTML(
   <h2>Forenzná analýza transakcií a tokov financií (§ 119 ods. 1 písm. f) TP)</h2>
   <div class="section">
     <p><strong>Celkový objem:</strong> ${d.financialAnalysis.totalVolume.toLocaleString("sk-SK")} € · <strong>Hotovosť:</strong> ${d.financialAnalysis.cashVolume.toLocaleString("sk-SK")} € (${d.financialAnalysis.cashRatioPercent} %) · <strong>Prevody:</strong> ${d.financialAnalysis.transferVolume.toLocaleString("sk-SK")} €</p>
-    <p><em>Záver o financovaní:</em> ${d.financialAnalysis.financingConclusion}</p>
+    ${
+      isFinancingConclusionBound(d, knownEvidence)
+        ? `<p><em>Záver o financovaní:</em> ${d.financialAnalysis.financingConclusion} <em>(zdroj: <code>${formatSourceRef(d.financialAnalysis.sourceRef)}</code>)</em></p>`
+        : `<p class="legal-expl"><em>Záver o financovaní:</em> ${NO_BOUND_FINANCING_TEXT}</p>`
+    }
     <h3>Podozrivé finančné toky a platobné operácie</h3>
     <table>
       <thead>
@@ -519,6 +540,10 @@ export function buildReportHTML(
     ...traces.unbound.map(
       (t) =>
         `<strong>Stopa ${t.id} — ${t.name}:</strong> LR ${t.lr}, ${t.strength} <em>(hodnotenie stopy bez platnej väzby na dôkaz)</em>`,
+    ),
+    ...legalParagraphs.unbound.map(
+      (p) =>
+        `<strong>${p.para} — ${p.title} (${p.status}):</strong> ${p.note} <em>(posúdenie zákonného znaku bez platnej väzby na dôkaz)</em>`,
     ),
   ];
   const unverifiedClaimsHtml =
@@ -719,13 +744,21 @@ ${narrativeDraftHtml}
   </thead>
   <tbody>
     ${d.evidenceStrength.paragraphs
-      .map(
-        (p) => `
+      .map((p) =>
+        legalParagraphs.bound.includes(p)
+          ? `
       <tr>
         <td><strong>${p.para}</strong></td>
         <td>${p.title}</td>
         <td style="text-align:center;font-weight:bold;color:${p.status === "OK" ? "#16a34a" : p.status === "Narušené" ? "#dc2626" : "#d97706"}">${p.status}</td>
-        <td>${p.note}</td>
+        <td>${p.note} <em>(zdroj: <code>${formatSourceRef(p.sourceRef)}</code>)</em></td>
+      </tr>`
+          : `
+      <tr>
+        <td><strong>${p.para}</strong></td>
+        <td>${p.title}</td>
+        <td style="text-align:center;font-weight:bold;color:#64748b">Neoverené</td>
+        <td><em>Posúdenie nie je viazané na hash-overený dôkaz — uvedené medzi neoverenými tvrdeniami.</em></td>
       </tr>`,
       )
       .join("")}
