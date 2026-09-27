@@ -1,0 +1,2 @@
+# Shell scripts run on Linux (VPS): always LF, even on Windows checkouts.
+*.sh text eol=lf
