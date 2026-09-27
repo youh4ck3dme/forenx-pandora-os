@@ -455,6 +455,16 @@ export const getDeleteImpact = createServerFn({ method: "POST" })
     }
 
     if (data.type === "case") {
+      const { data: row } = await context.supabase
+        .from("cases")
+        .select("status")
+        .eq("id", data.id)
+        .maybeSingle();
+      if (row && row.status !== "draft") {
+        blockers.push(
+          "životný cyklus prípadu — vymazať priamo možno iba prípad v stave Draft",
+        );
+      }
       const tables = [
         "case_entities",
         "case_transactions",
@@ -502,6 +512,66 @@ export const deleteRecord = createServerFn({ method: "POST" })
       }
       fail(error, "Mazanie zlyhalo.");
     }
+    return { ok: true };
+  });
+
+/* ------------------------ životný cyklus prípadu --------------------------- */
+
+const caseStatusInput = z.object({
+  id: uuid,
+  status: z.enum(["draft", "closed", "legal_hold", "archived"]),
+  reason: z.string().trim().max(500, "Odôvodnenie je príliš dlhé.").default(""),
+});
+
+/**
+ * Zmena stavu prípadu. Databáza vynucuje povolené prechody a audituje ich;
+ * zrušenie legal holdu navyše vyžaduje administrátora.
+ */
+export const setCaseStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) => caseStatusInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase.rpc("set_case_status", {
+      _case_id: data.id,
+      _status: data.status,
+      _reason: data.reason,
+    });
+    if (error) fail(error, "Stav prípadu sa nepodarilo zmeniť.");
+    return { ok: true, status: data.status };
+  });
+
+/**
+ * Kontrolované zničenie prípadu (P1-03). Vyžaduje administrátora, prípad musí
+ * byť archivovaný a zničenie sa najprv nezmeniteľne zaznamená do audit logu.
+ */
+export const destroyCase = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({
+        id: uuid,
+        reason: z
+          .string()
+          .trim()
+          .min(10, "Uveďte odôvodnenie zničenia (aspoň 10 znakov).")
+          .max(1000),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: isAdmin, error: roleError } = await context.supabase.rpc(
+      "has_role",
+      { _user_id: context.userId, _role: "admin" },
+    );
+    if (roleError) throw new Error("Overenie oprávnení zlyhalo.");
+    if (!isAdmin) {
+      throw new Error("Zničenie prípadu vyžaduje schválenie administrátora.");
+    }
+    const { error } = await context.supabase.rpc("destroy_case", {
+      _case_id: data.id,
+      _reason: data.reason,
+    });
+    if (error) fail(error, "Prípad sa nepodarilo zničiť.");
     return { ok: true };
   });
 

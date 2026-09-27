@@ -159,12 +159,17 @@ Prompt/Zod/readiness controls, legal authorities, defect classification, and §1
 
 ### P1-03 — Retention, legal hold, and controlled destruction
 
-**Status:** `TODO`
+**Status:** `DONE`  
+`cases.status` holds the full lifecycle (draft/closed/legal_hold/archived/
+destroyed). Status moves only via set_case_status; releasing a legal hold
+requires an admin. Every child table rejects mutations unless the case is
+draft, so legal hold blocks all mutation and deletion paths. destroy_case
+(admin-only, archived cases, mandatory reason) writes an immutable`case_destroyed` audit entry before the cascade, and the audit chain survives.
 
-- [ ] Add case lifecycle states: Draft, Closed, Legal Hold, Archived, and
+- [x] Add case lifecycle states: Draft, Closed, Legal Hold, Archived, and
       Destroyed.
-- [ ] Enforce legal hold in every mutation and deletion path.
-- [ ] Require administrator approval and immutable audit logging for destruction.
+- [x] Enforce legal hold in every mutation and deletion path.
+- [x] Require administrator approval and immutable audit logging for destruction.
 
 ### P1-04 — GDPR and privacy gateway
 
