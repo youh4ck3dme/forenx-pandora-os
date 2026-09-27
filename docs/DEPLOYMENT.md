@@ -56,14 +56,46 @@ placeholder, tajný kľúč s prefixom `NEXT_PUBLIC_`, nesúlad `SUPABASE_URL` �
 | Tajné (iba server) | `SUPABASE_SERVICE_ROLE_KEY`, `S3_*_KEY*`, `MISTRAL_API_KEY*`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `STRIPE_*`, `WHOISWHO_API_KEY`, `ICO_ATLAS_API_KEY`, `FORENX_AI_WORKER_KEY` | nikdy s prefixom `NEXT_PUBLIC_` |
 | Nenastavovať v produkcii | `VAULT_FALLBACK_SECRET` | platí len pre vývoj/testy |
 
-Odporúčané hodnoty konfigurácie: `NEXT_PUBLIC_BASE_URL=https://pandora.whoiswho.at`,
-`NEXT_PUBLIC_RP_ID=pandora.whoiswho.at`, `S3_ENDPOINT=https://hel1.your-objectstorage.com`,
+Odporúčané hodnoty konfigurácie: `NEXT_PUBLIC_BASE_URL=https://pandora.whoiswho.at`, `S3_ENDPOINT=https://hel1.your-objectstorage.com`,
 `S3_REGION=hel1`, `S3_BUCKET=forenx-vault-sk`, `S3_FORCE_PATH_STYLE=true`,
 `FORENX_ADMIN_EMAILS=<e-maily administrátorov oddelené čiarkou>`.
+
+**`NEXT_PUBLIC_RP_ID` (WebAuthn) je rozhodnutie, nie default.** `.env.production.example` má
+`whoiswho.at` (passkey použiteľný na všetkých subdoménach `*.whoiswho.at`); `pandora.whoiswho.at`
+obmedzí passkey len na Pandoru (menšia plocha útoku). Pozor: prihlasovacia stránka `/auth/login`
+dnes passkey **neoveruje na serveri** (challenge sa generuje v prehliadači a prihlásenie prejde aj bez
+neho), takže voľba RP_ID zatiaľ neprináša bezpečnosť ani skutočné zdieľanie prihlásenia medzi appkami.
 
 ---
 
 ## 2. Supabase migrácie
+
+### 2.0 Je databáza zdieľaná s inou aplikáciou (napr. whoiswho.at)?
+
+Zisti to **pred** `db push` (SQL Editor, iba čítanie):
+
+```sql
+-- tabuľky, ktoré nepatria Pandore (Pandora: cases, case_*, profiles, user_roles, ai_*, subscriptions,
+-- billing_events, company_registry_profiles, cross_border_analyses, error_logs, deletion_requests,
+-- evidence_items, source_snapshots)
+select table_name from information_schema.tables where table_schema = 'public' order by 1;
+
+-- existujúci trigger na auth.users a jeho funkcia (Pandora ju prepisuje cez CREATE OR REPLACE)
+select tgname, tgfoid::regproc from pg_trigger where tgrelid = 'auth.users'::regclass and not tgisinternal;
+select pg_get_functiondef('public.handle_new_user'::regproc);
+```
+
+Ak DB **je zdieľaná**, migrácie Pandory **nie sú izolované** a treba ich pred pushom posúdiť:
+
+| Migrácia | Dopad na inú aplikáciu v tej istej DB |
+|---|---|
+| `20260925143000_admin_email_bizagent` | `CREATE OR REPLACE public.handle_new_user()` — ak ho používa aj iná appka, **prepíše jej logiku registrácie**; každá registrácia (aj z inej appky) vytvorí záznam v `profiles` a `user_roles` |
+| `20260927130000_forensic_integrity` | mení existujúce tabuľky `case_audit_log` (append-only: UPDATE/DELETE zlyhajú), `case_transactions` (sumy max. 2 des. miesta pre nové zápisy, nový stĺpec → prepis tabuľky so zámkom), `case_relations`, funkcie `commit_import` a `commit_ai_case_graph` |
+| `20260927120000_court_ready_evidence_ledger` | `CREATE TABLE` (bez `IF NOT EXISTS`) — zlyhá, ak tabuľka `evidence_items` už existuje |
+
+Bezpečné riešenie pre zdieľané prostredie je **samostatný Supabase projekt pre Pandoru**.
+
+### 2.1 Záloha a push
 
 **Pred pushom zálohuj DB:** Dashboard → *Database → Backups* (`supabase db dump` vyžaduje Docker).
 
@@ -88,7 +120,7 @@ Očakávané v `--dry-run` (podľa stavu remote DB):
 `20260921040519` sa **nesmie** znova aplikovať (remote ju už má; úprava s podmieneným stubom
 `rls_auto_enable()` slúži len pre čistý Postgres). Ak ju `--dry-run` uvádza, zastav sa.
 
-### 2.1 Overenie migrácie `forensic_integrity` (SQL Editor)
+### 2.2 Overenie migrácie `forensic_integrity` (SQL Editor)
 
 ```sql
 -- CHECK musí obsahovať regex, nie IN ('INSERT','UPDATE','DELETE')
@@ -108,7 +140,7 @@ select * from verify_audit_chain('<UUID-používateľa>');
 Funkčná skúška: v aplikácii spusti AI analýzu → „Použiť výsledky“. Graf sa uloží a v `case_audit_log`
 pribudne `ai_graph_committed` (pred touto migráciou zápis vždy zlyhal).
 
-### 2.2 Overenie RLS pre `evidence_items`
+### 2.3 Overenie RLS pre `evidence_items`
 
 Celý súbor `supabase/verify/evidence_items_rls.sql` vlož do SQL Editora a spusti
 (alebo `psql "$DATABASE_URL" -f supabase/verify/evidence_items_rls.sql`).
@@ -184,7 +216,8 @@ sudo cp deploy/nginx.conf /etc/nginx/conf.d/pandora.conf
 sudo sed -i 's/your-project-id\.supabase\.co/tlmuvzrgighahnjkxoyw.supabase.co/g' /etc/nginx/conf.d/pandora.conf
 # iba ak je nginx < 1.25.1:
 sudo sed -i 's/^\s*http2 on;//; s/listen 443 ssl;/listen 443 ssl http2;/; s/listen \[::\]:443 ssl;/listen [::]:443 ssl http2;/' /etc/nginx/conf.d/pandora.conf
-sudo rm -f /etc/nginx/sites-enabled/pandora.whoiswho.at   # starý vhost (deploy/vps/nginx-pandora.conf)
+sudo rm -f /etc/nginx/sites-enabled/pandora.whoiswho.at   # iba starý vhost PANDORY (deploy/vps/nginx-pandora.conf)
+# NEMAŽ vhost whoiswho.at ani iných stránok. Zoznam: ls /etc/nginx/sites-enabled/ /etc/nginx/conf.d/
 sudo nginx -t && sudo systemctl reload nginx
 
 # 4) PM2 — .env.production sa načíta cez node_args --env-file (absolútna cesta)
@@ -197,9 +230,14 @@ sudo certbot renew --dry-run
 ```
 
 `deploy/nginx.conf` obsahuje: HSTS (iba HTTPS), CSP, `X-Frame-Options: DENY`, Permissions-Policy,
-rate limity, odmietnutie neznámeho `Host` (444), streamovaný upload na `/api/vault` (260 MB,
+rate limity, voliteľné odmietnutie neznámeho `Host` (444, iba na samostatnom nginx), streamovaný upload na `/api/vault` (260 MB,
 bez bufferovania do RAM), SSE timeout 600 s pre `/api/ai/`, voliteľný same-origin S3 pass-through
 `/vault-s3/`. Nový externý host v aplikácii = doplniť ho do `connect-src` v CSP.
+
+**Zdieľaný nginx (napr. aj whoiswho.at na tom istom serveri):** súbor mení správanie iba pre
+`server_name pandora.whoiswho.at`; na úrovni `http` definuje len jedinečne pomenované zóny a mapy
+(`pandora_*`). Catch-all `default_server` je zakomentovaný — zapni ho len na samostatnom nginx.
+Po `nginx -t` over aj starú stránku: `curl -sI https://whoiswho.at | head -1`.
 
 ---
 
@@ -209,6 +247,8 @@ bez bufferovania do RAM), SSE timeout 600 s pre `/api/ai/`, voliteľný same-ori
 sudo ss -ltnp | grep 3005                          # 127.0.0.1:3005, nie 0.0.0.0
 curl -sI https://pandora.whoiswho.at | grep -iE "strict-transport|content-security|x-frame|^server:"
 curl -s -m 5 -o /dev/null -w "%{http_code}\n" http://<VPS_IP>:3005                 # z iného stroja: 000
+curl -sI https://whoiswho.at | head -1                           # stará appka stále odpovedá
+# iba ak je zapnutý catch-all default_server:
 curl -sk -o /dev/null -w "%{http_code}\n" -H "Host: evil.example" https://<VPS_IP>/  # 000 (444)
 pm2 status && pm2 logs pandora-browser --lines 50 --nostream
 ```
