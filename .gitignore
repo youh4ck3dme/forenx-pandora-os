@@ -90,3 +90,4 @@ scratch/
 /ios/
 !/ios/App/
 .mcp.json
+preflight.sql
