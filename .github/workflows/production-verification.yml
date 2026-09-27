@@ -37,9 +37,17 @@ jobs:
           fetch-depth: 0
       - name: gitleaks
         # Pinned CLI via container: no license/token needed, fails the job on any finding.
+        # Reviewed false positives are listed by exact fingerprint in .gitleaksignore.
         run: |
           docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/gitleaks/gitleaks:v8.24.3 \
-            git --redact --verbose --exit-code 1 .
+            git --redact --verbose --report-format sarif --report-path /repo/gitleaks.sarif --exit-code 1 .
+      - name: Upload gitleaks report (redacted)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks.sarif
+          retention-days: 7
 
   supply-chain:
     name: Lockfile, dependency audit, release artifact
