@@ -1,13 +1,12 @@
-import { Suspense } from "react"
-import { BrowserClient } from "@/components/features/browser/browser-client"
-import { ErrorBoundary } from "@/components/ui/error-boundary"
+import { Suspense } from "react";
+import { BrowserViewWrapper } from "@/components/features/browser/browser-view-wrapper";
+
+export const dynamic = "force-dynamic";
 
 export default function BrowserPage() {
   return (
-    <Suspense fallback={null}>
-      <ErrorBoundary name="Browser Core">
-        <BrowserClient />
-      </ErrorBoundary>
+    <Suspense fallback={<div className="h-screen w-screen bg-black" />}>
+      <BrowserViewWrapper />
     </Suspense>
-  )
+  );
 }

@@ -86,9 +86,10 @@ export const loadQuarantineDocuments = createServerFn({ method: "POST" })
   .handler(
     async ({ data, context }): Promise<{ files: QuarantineLoadedFile[] }> => {
       assertAdmin(context.claims);
+      const validData = loadSchema.parse(data);
       const { readFile, stat } = await import("fs/promises");
       const path = await import("path");
-      const unique = [...new Set(data.names.map((n) => path.basename(n)))];
+      const unique = [...new Set(validData.names.map((n: string) => path.basename(n)))];
       if (unique.length > MAX_BATCH_FILES) {
         throw new Error(`Najviac ${MAX_BATCH_FILES} súborov naraz.`);
       }

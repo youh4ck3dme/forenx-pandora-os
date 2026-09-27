@@ -4,7 +4,7 @@ import { TransactionList } from "@/components/malte/RecordLists";
 import { AddPanel, TransactionForm } from "@/components/malte/CaseForms";
 import { useActiveCase } from "@/hooks/useActiveCase";
 import { EmptyState } from "@/components/malte/EmptyState";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   AlertTriangle,
   Banknote,
@@ -66,6 +66,14 @@ function StatementAnalysis() {
   >(null);
   const [dimitriWarnings, setDimitriWarnings] = useState<string[]>([]);
   const [rawDimitriPayload, setRawDimitriPayload] = useState<unknown>(null);
+
+  const balanceSeries = useMemo(() => {
+    let running = 0;
+    return activeCase.transactions.map((t) => {
+      running += t.amount;
+      return running;
+    });
+  }, [activeCase.transactions]);
 
   const handleDimitriFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -134,6 +142,7 @@ function StatementAnalysis() {
             <TransactionForm
               caseId={activeCase.id}
               entities={activeCase.entities}
+              baseCurrency={activeCase.baseCurrency}
               onSaved={refresh}
             />
           </AddPanel>
@@ -155,6 +164,7 @@ function StatementAnalysis() {
           <TransactionForm
             caseId={activeCase.id}
             entities={activeCase.entities}
+            baseCurrency={activeCase.baseCurrency}
             onSaved={refresh}
           />
         </AddPanel>
@@ -165,11 +175,11 @@ function StatementAnalysis() {
               <AlertTriangle className="h-5 w-5 text-risk-high shrink-0" />
               <div>
                 <p className="text-sm font-bold text-foreground">
-                  Náhľad Dimitri Audit Reportu ({dimitriReport.caseNumber})
+                  Náhľad Dimitri Audit Reportu ({dimitriReport.caseReference || dimitriReport.reportId})
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  Detekovaných transakcií: {dimitriReport.findings.length} |
-                  Celková suma: {formatEur(dimitriReport.metadata.totalVolume)}
+                  Detekovaných signálov: {dimitriReport.signals.length} | Trás: {dimitriReport.routes.length} |
+                  Sprostredkovateľov: {dimitriReport.intermediaries.length}
                 </p>
               </div>
             </div>
@@ -206,24 +216,18 @@ function StatementAnalysis() {
               Metóda platieb
             </p>
             <DonutChart
-              data={[
-                { label: "Prevod", value: totals.bankVolume, color: "var(--primary)" },
-                {
-                  label: "Hotovosť",
-                  value: totals.cashVolume,
-                  color: "var(--risk-medium)",
-                },
-              ]}
+              incomeRatio={totals.volume > 0 ? 1 - totals.cashRatio : 1}
+              caption="bezhotovostne"
             />
             <Legend
               color="var(--primary)"
               label="Banka"
-              value={formatEur(totals.bankVolume)}
+              value={formatEur(totals.volume * (1 - totals.cashRatio))}
             />
             <Legend
               color="var(--risk-medium)"
               label="Hotovosť"
-              value={formatEur(totals.cashVolume)}
+              value={formatEur(totals.volume * totals.cashRatio)}
             />
           </Card>
 
@@ -231,40 +235,52 @@ function StatementAnalysis() {
             <p className="text-xs font-semibold text-muted-foreground">
               Zostatok v čase
             </p>
-            <BalanceChart transactions={activeCase.transactions} />
+            <BalanceChart
+              data={balanceSeries.length > 0 ? balanceSeries : [0]}
+              format={(v) => formatEur(v)}
+            />
           </Card>
         </div>
 
         <SectionTitle>Správa transakcií prípadu</SectionTitle>
         <TransactionList
           caseId={activeCase.id}
+          entities={activeCase.entities}
           transactions={activeCase.transactions}
+          baseCurrency={activeCase.baseCurrency}
           revisions={revisions}
-          onChanged={refresh}
+          onChanged={() => void refresh()}
         />
 
-        {analysis.patterns.length > 0 ? (
+        {analysis.temporalPatterns.length > 0 ? (
           <Card className="space-y-2">
             <p className="text-xs font-semibold">Forenzné vzorce tokov</p>
-            {analysis.patterns.map((p) => (
-              <button
-                type="button"
-                key={p.id}
-                onClick={() => setTarget({ kind: "pattern", id: p.id })}
-                className="w-full space-y-1 rounded-lg border border-border/60 p-2.5 text-left transition-colors hover:bg-accent"
-              >
-                <div className="flex items-center gap-2">
-                  <p className="text-xs font-semibold">{p.label}</p>
-                  <span className="ml-auto">
-                    <RiskChip level={p.severity}>{p.score}/100</RiskChip>
-                  </span>
-                </div>
-                <p className="text-[11px] text-muted-foreground">{p.detail}</p>
-                <p className="text-[10px] text-muted-foreground tnum">
-                  {p.transactionIds.length} transakcií
-                </p>
-              </button>
-            ))}
+            {analysis.temporalPatterns.map((p) => {
+              const firstTxId = p.transactionIds[0];
+              return (
+                <button
+                  type="button"
+                  key={p.code}
+                  onClick={() => {
+                    if (firstTxId) {
+                      setTarget({ kind: "transaction", id: firstTxId });
+                    }
+                  }}
+                  className="w-full space-y-1 rounded-lg border border-border/60 p-2.5 text-left transition-colors hover:bg-accent"
+                >
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-semibold">{p.label}</p>
+                    <span className="ml-auto">
+                      <RiskChip level={p.severity}>{p.score}/100</RiskChip>
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">{p.detail}</p>
+                  <p className="text-[10px] text-muted-foreground tnum">
+                    {p.transactionIds.length} transakcií
+                  </p>
+                </button>
+              );
+            })}
           </Card>
         ) : null}
 

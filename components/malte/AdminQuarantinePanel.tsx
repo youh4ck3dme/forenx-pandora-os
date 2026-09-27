@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { FlaskConical, Loader2, Shield } from "lucide-react";
@@ -85,6 +86,7 @@ function NewCaseInline({
 }
 
 export function AdminQuarantinePanel() {
+  const router = useRouter();
   const { cases, activeCaseId, setActiveCaseId } = useActiveCase();
   const checkAccess = useServerFn(getAdminQuarantineAccess);
   const listDocs = useServerFn(listQuarantineDocuments);
@@ -192,15 +194,13 @@ export function AdminQuarantinePanel() {
       const label = target === "sandbox" ? "AI Sandbox" : "Forenzný Autopilot";
       toast.success(`${selectedCount} dokumentov pripravených → ${label}`);
       if (target === "sandbox") {
-        await navigate({
-          to: "/sandbox",
-          search: { upload: "1", case: caseId, quarantine: "1" },
-        });
+        router.push(
+          `/forza/sandbox?upload=1&case=${encodeURIComponent(caseId)}&quarantine=1`
+        );
       } else {
-        await navigate({
-          to: "/asistent",
-          search: { case: caseId, quarantine: "1" },
-        });
+        router.push(
+          `/forza/asistent?case=${encodeURIComponent(caseId)}&quarantine=1`
+        );
       }
     } finally {
       setBusy(false);

@@ -179,7 +179,7 @@ export async function uploadCaseDocument(
       'x-amz-content-sha256': payloadHash,
       Authorization: authorizationHeader,
     },
-    body: file.buffer,
+    body: new Uint8Array(file.buffer),
   })
 
   if (!response.ok) {

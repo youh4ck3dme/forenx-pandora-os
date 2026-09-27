@@ -17,10 +17,10 @@ export default function BlogPage() {
     return (
         <main className="min-h-svh bg-black">
             {/* Header */}
-            <div className="py-16 px-4 border-b border-border bg-gradient-to-b from-purple-500/5 to-transparent">
+            <div className="py-16 px-4 border-b border-border bg-linear-to-b from-purple-500/5 to-transparent">
                 <div className="max-w-6xl mx-auto text-center">
                     <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-4">
-                        PΛND0RΛ <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-cyan-400">Blog</span>
+                        PΛND0RΛ <span className="text-transparent bg-clip-text bg-linear-to-r from-purple-500 to-cyan-400">Blog</span>
                     </h1>
                     <p className="text-foreground/60 text-lg max-w-2xl mx-auto">
                         Najnovšie články o bezpečnosti, súkromí a technológiách prehliadačov.
@@ -38,7 +38,7 @@ export default function BlogPage() {
                             className="group block bg-foreground/5 border border-border rounded-xl overflow-hidden hover:border-purple-500/50 hover:bg-foreground/10 transition-all"
                         >
                             {/* Cover Image */}
-                            <div className="aspect-video bg-gradient-to-br from-purple-500/20 to-cyan-500/20 flex items-center justify-center">
+                            <div className="aspect-video bg-linear-to-br from-purple-500/20 to-cyan-500/20 flex items-center justify-center">
                                 <div className="w-16 h-16 text-foreground/20">
                                     <svg viewBox="0 0 24 24" fill="currentColor">
                                         <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
@@ -67,7 +67,7 @@ export default function BlogPage() {
 
                                 {/* Excerpt */}
                                 <p className="text-foreground/60 text-sm mb-4 line-clamp-2">
-                                    {post.excerpt}
+                                    {post.description}
                                 </p>
 
                                 {/* Meta */}

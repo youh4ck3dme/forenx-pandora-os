@@ -611,20 +611,20 @@ export function detectBankFormat(
     totalCoreCount: number;
     confidence: number;
     matchedIndices: Partial<
-      Record<keyof ColumnMapping | "counterpartyName", number>
+      Record<keyof ColumnMapping | "counterpartyName" | "counterparty", number>
     >;
     matchedHeaders: Partial<
-      Record<keyof ColumnMapping | "counterpartyName", string>
+      Record<keyof ColumnMapping | "counterpartyName" | "counterparty", string>
     >;
     isUnique: boolean;
   };
 
   const scores: ScoredBank[] = BANK_PROFILES.map((profile) => {
     const matchedIndices: Partial<
-      Record<keyof ColumnMapping | "counterpartyName", number>
+      Record<keyof ColumnMapping | "counterpartyName" | "counterparty", number>
     > = {};
     const matchedHeaders: Partial<
-      Record<keyof ColumnMapping | "counterpartyName", string>
+      Record<keyof ColumnMapping | "counterpartyName" | "counterparty", string>
     > = {};
 
     const usedIndices = new Set<number>();
