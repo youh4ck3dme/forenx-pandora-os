@@ -80,7 +80,7 @@ export function SettingsPanel() {
                   className={cn(
                     "flex items-center justify-between px-3 py-1.5 rounded-lg text-[11px] border transition-all",
                     settings.searchEngine === url
-                      ? "bg-primary/10 border-primary/50 text-white"
+                      ? "bg-primary/10 border-primary/50 text-primary"
                       : "bg-black/20 border-white/5 text-white/60 hover:bg-white/5"
                   )}
                 >
@@ -106,7 +106,7 @@ export function SettingsPanel() {
                 className={cn(
                   "flex-1 flex items-center justify-center gap-2 py-1.5 text-[10px] font-bold rounded-md transition-all uppercase tracking-tighter",
                   settings.theme === theme
-                    ? "bg-primary text-black shadow-sm"
+                    ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-white/40 hover:text-white"
                 )}
               >
