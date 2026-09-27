@@ -16,7 +16,8 @@
     "electron:build": "next build && npx tsc -p electron/tsconfig.json && npx tsc -p electron/tsconfig.preload.json && cross-env NODE_OPTIONS=--max-old-space-size=8192 electron-builder",
     "test": "vitest",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "audit": "node scripts/audit.mjs"
   },
   "main": "dist-electron/main.mjs",
   "build": {
