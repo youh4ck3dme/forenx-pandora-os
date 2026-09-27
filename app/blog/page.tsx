@@ -67,7 +67,7 @@ export default function BlogPage() {
 
                                 {/* Excerpt */}
                                 <p className="text-foreground/60 text-sm mb-4 line-clamp-2">
-                                    {post.excerpt ?? post.description}
+                                    {post.description}
                                 </p>
 
                                 {/* Meta */}

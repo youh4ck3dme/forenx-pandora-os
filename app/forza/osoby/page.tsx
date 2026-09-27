@@ -63,7 +63,7 @@ function People() {
     try {
       setIsDownloadingReport(true);
       const res = await fetchWhoIsWhoDdReportPdf(ico, selectedCountry);
-      if (!res.ok) {
+      if (!res.ok || !res.pdfBase64) {
         throw new Error(res.error || "Nepodarilo sa vygenerovať PDF report");
       }
       const byteCharacters = atob(res.pdfBase64);
@@ -113,7 +113,7 @@ function People() {
         graph: res.snapshot.graph,
       });
       toast.success(
-        `Nájdená firma "${res.snapshot.profile.name}" (IČO: ${cleanIco}). Náhľad pripravený.`,
+        `Nájdená firma "${res.snapshot.profile.legalName}" (IČO: ${cleanIco}). Náhľad pripravený.`,
       );
     } catch (err) {
       toast.error("Vyhľadávanie v registroch zlyhalo.");
@@ -132,24 +132,22 @@ function People() {
       );
       const entityId =
         mode === "update" && existing ? existing.id : `ent_${Date.now()}`;
-      await upsertEntity(activeCase.id, {
-        id: entityId,
-        name: prof.name,
-        kind: "company",
-        role: "Importované z RPO / RÚZ",
-        ico: prof.ico,
-        dic: prof.dic,
-        icDph: prof.icDph,
-        legalForm: prof.legalForm,
-        address: prof.formattedAddress,
-        establishedDate: prof.establishedDate,
-        terminationDate: prof.terminationDate,
-        equityEur: prof.equityEur,
-        statutoryPersons: prof.statutoryPersons.map((sp) => ({
-          name: sp.name,
-          role: sp.role,
-        })),
-        businessActivities: prof.businessActivities,
+      await upsertEntity({
+        data: {
+          id: entityId,
+          caseId: activeCase.id,
+          name: prof.legalName,
+          kind: "company",
+          role: prof.legalForm || "Importované z RPO / RÚZ",
+          ico: prof.ico,
+          address: prof.registeredAddress || null,
+          registeredAddress: prof.registeredAddress || null,
+          country:
+            prof.country && prof.country.length === 2
+              ? prof.country.toUpperCase()
+              : selectedCountry,
+          incorporatedAt: prof.incorporatedAt || null,
+        },
       });
 
       refresh();
@@ -157,8 +155,8 @@ function People() {
       setIcoInput("");
       toast.success(
         mode === "new"
-          ? `Firma "${prof.name}" bola pridaná do prípadu.`
-          : `Firma "${prof.name}" bola aktualizovaná.`,
+          ? `Firma "${prof.legalName}" bola pridaná do prípadu.`
+          : `Firma "${prof.legalName}" bola aktualizovaná.`,
       );
     } catch (err) {
       toast.error("Uloženie profilu firmy zlyhalo.");
@@ -262,11 +260,11 @@ function People() {
                     WhoIsWho Snapshot Náhľad
                   </span>
                   <h2 className="text-base font-bold text-foreground mt-0.5">
-                    {previewSnapshot.profile.name}
+                    {previewSnapshot.profile.legalName}
                   </h2>
                   <p className="text-xs text-muted-foreground">
-                    IČO: {previewSnapshot.profile.ico} • DIČ:{" "}
-                    {previewSnapshot.profile.dic || "N/A"}
+                    IČO: {previewSnapshot.profile.ico} • Krajina:{" "}
+                    {previewSnapshot.profile.country || selectedCountry}
                   </p>
                 </div>
                 <RiskChip
@@ -286,10 +284,10 @@ function People() {
                 <div>
                   <p className="font-semibold text-foreground">Sídlo & Vznik:</p>
                   <p className="text-muted-foreground">
-                    {previewSnapshot.profile.formattedAddress || "Neuvedené"}
+                    {previewSnapshot.profile.registeredAddress || "Neuvedené"}
                   </p>
                   <p className="text-muted-foreground mt-0.5">
-                    Vznik: {previewSnapshot.profile.establishedDate || "Neuvedený"}{" "}
+                    Vznik: {previewSnapshot.profile.incorporatedAt || "Neuvedený"}{" "}
                     | Právna forma: {previewSnapshot.profile.legalForm || "s.r.o."}
                   </p>
                 </div>
@@ -373,8 +371,14 @@ function People() {
           {(
             [
               { id: "all", label: `Všetky (${analysis.entities.length})` },
-              { id: "person", label: `Fyzické osoby (${analysis.totals.persons})` },
-              { id: "company", label: `Právnické osoby (${analysis.totals.companies})` },
+              {
+                id: "person",
+                label: `Fyzické osoby (${analysis.totals.entities - analysis.totals.companies})`,
+              },
+              {
+                id: "company",
+                label: `Právnické osoby (${analysis.totals.companies})`,
+              },
               { id: "shell", label: `Schránky` },
             ] as const
           ).map((item) => (
