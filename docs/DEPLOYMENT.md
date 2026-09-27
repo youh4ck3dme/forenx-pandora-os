@@ -325,6 +325,20 @@ updater/release workflow.
 
 ## 8. Známe obmedzenia pred „court-ready“ vaultom
 
+> **Release blocker — vault nevystavovať ako produkčný forenzný trezor, kým nie je vyriešené:**
+>
+> - **Priamy upload do S3 je neplatný.** `getPresignedUploadUrl` podpisuje `x-amz-content-sha256` a
+>   `x-amz-meta-*` hlavičky (presign ich vracia ako `requiredHeaders`), no upload v
+>   `evidence-vault-panel.tsx` posiela iba `Content-Type` → S3 podpis odmietne a UI prejde na
+>   multipart `/api/vault`, kde väčšie súbory narazia na limit tela požiadavky na Verceli.
+> - **Ledger sa nezapisuje.** Úspešný upload aktualizuje iba stav v UI; multipart route ukladá do
+>   pamäte procesu. Jediný zápis do `evidence_items` je v nepoužitom hooku `useSecureVaultUpload`.
+>   Po obnovení stránky záznam zmizne a v S3 ostane nezaindexovaný objekt.
+> - UI označí nahratý súbor ako `integrityStatus: "verified"` bez serverového overenia.
+>
+> Oprava: PUT s `requiredHeaders` z presign odpovede, zápis do `evidence_items` po úspešnom PUT
+> (stav `pending`) a zobrazovanie stavu overenia zo servera.
+
 - **Vyriešené migráciou `20260927234500_evidence_ledger_worm`:** identifikačné stĺpce sú WORM,
   mazanie iba cez auditovanú RPC, registrácia/zmazanie/overenie sú v auditnom hash-chaine a hash
   sa overuje na serveri voči objektu v S3.
