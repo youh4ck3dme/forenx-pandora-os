@@ -4,7 +4,15 @@ const GlobeCanvas = lazy(() =>
     import('./GlobeCanvas').then((mod) => ({ default: mod.GlobeCanvas }))
 );
 
-export const Globe = ({ hovering = false }: { hovering?: boolean }) => {
+export const Globe = ({
+    hovering = false,
+    className = "",
+    style,
+}: {
+    hovering?: boolean;
+    className?: string;
+    style?: React.CSSProperties;
+}) => {
     const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
@@ -17,7 +25,7 @@ export const Globe = ({ hovering = false }: { hovering?: boolean }) => {
 
     return (
         <Suspense fallback={null}>
-            <GlobeCanvas hovering={hovering} />
+            <GlobeCanvas hovering={hovering} className={className} style={style} />
         </Suspense>
     );
 };

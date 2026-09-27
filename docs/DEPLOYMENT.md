@@ -269,7 +269,9 @@ sudo ufw allow 80,443/tcp && sudo ufw deny 3005/tcp && sudo ufw status
 sudo certbot renew --dry-run
 ```
 
-`deploy/nginx.conf` obsahuje: HSTS (iba HTTPS), CSP, `X-Frame-Options: DENY`, Permissions-Policy,
+`deploy/nginx.conf` obsahuje: HSTS (iba HTTPS), CSP, `X-Frame-Options: SAMEORIGIN`
+(interné pandora:// aplikácie sa vo vstavanom prehliadači framujú same-origin; cudzí framing
+ostáva zablokovaný), Permissions-Policy,
 rate limity, voliteľné odmietnutie neznámeho `Host` (444, iba na samostatnom nginx), streamovaný upload na `/api/vault` (260 MB,
 bez bufferovania do RAM), SSE timeout 600 s pre `/api/ai/`, voliteľný same-origin S3 pass-through
 `/vault-s3/`. Nový externý host v aplikácii = doplniť ho do `connect-src` v CSP.

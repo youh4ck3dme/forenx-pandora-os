@@ -289,7 +289,7 @@ export function BottomNav() {
 
 export function Screen({ children }: { children?: ReactNode }) {
   return (
-    <main className="stagger-children min-w-0 flex-1 space-y-4 overflow-x-clip px-4 pt-4 pb-24 sm:px-5 sm:pb-28 lg:px-8 lg:py-6">
+    <main className="stagger-children relative min-w-0 flex-1 space-y-4 overflow-x-clip px-4 pt-4 pb-24 sm:px-5 sm:pb-28 lg:px-8 lg:py-6">
       {children}
     </main>
   );
