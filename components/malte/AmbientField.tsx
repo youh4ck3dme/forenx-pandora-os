@@ -21,6 +21,9 @@ type AmbientNode = {
 // Procedural micro-tokens referencing Vercel's ASCII/data triangle matrix
 const GLYPHS = ["▲", "0x", "::", "Δ", "FRX", "λ", "99"] as const;
 
+// Počet úrovní priehľadnosti pre dávkové vykreslenie spojníc
+const LINE_ALPHA_BUCKETS = 6;
+
 function createNode(width: number, height: number): AmbientNode {
   const rand = Math.random();
   const type: ParticleType =
@@ -156,6 +159,12 @@ export function AmbientField() {
       const maxDistSq = maxDist * maxDist;
       const nLen = nodes.length;
 
+      // Spojnice sa zoskupia do niekoľkých úrovní priehľadnosti, aby sa každá
+      // skupina vykreslila jedným stroke() namiesto stroke() na každú čiaru.
+      const buckets = LINE_ALPHA_BUCKETS;
+      const goldSegs: number[][] = Array.from({ length: buckets }, () => []);
+      const baseSegs: number[][] = Array.from({ length: buckets }, () => []);
+
       for (let i = 0; i < nLen; i++) {
         const p1 = nodes[i];
         if (!p1) continue;
@@ -168,20 +177,39 @@ export function AmbientField() {
 
           if (distSq < maxDistSq) {
             const factor = 1 - distSq / maxDistSq;
-            const lineAlpha = factor * (dark ? 0.11 : 0.05);
-            context.strokeStyle =
-              p1.gold || p2.gold
-                ? `rgba(255, 199, 0, ${lineAlpha})`
-                : dark
-                  ? `rgba(64, 214, 206, ${lineAlpha})`
-                  : `rgba(15, 23, 42, ${lineAlpha})`;
-            context.lineWidth = 0.75;
-            context.beginPath();
-            context.moveTo(p1.x, p1.y);
-            context.lineTo(p2.x, p2.y);
-            context.stroke();
+            const bucket = Math.min(buckets - 1, Math.floor(factor * buckets));
+            (p1.gold || p2.gold ? goldSegs : baseSegs)[bucket]?.push(
+              p1.x,
+              p1.y,
+              p2.x,
+              p2.y,
+            );
           }
         }
+      }
+
+      const strokeSegments = (segs: number[] | undefined, color: string) => {
+        if (!segs || segs.length === 0) return;
+        context.strokeStyle = color;
+        context.beginPath();
+        for (let k = 0; k < segs.length; k += 4) {
+          context.moveTo(segs[k]!, segs[k + 1]!);
+          context.lineTo(segs[k + 2]!, segs[k + 3]!);
+        }
+        context.stroke();
+      };
+
+      context.lineWidth = 0.75;
+      const lineScale = dark ? 0.11 : 0.05;
+      for (let b = 0; b < buckets; b++) {
+        const lineAlpha = ((b + 0.5) / buckets) * lineScale;
+        strokeSegments(goldSegs[b], `rgba(255, 199, 0, ${lineAlpha})`);
+        strokeSegments(
+          baseSegs[b],
+          dark
+            ? `rgba(64, 214, 206, ${lineAlpha})`
+            : `rgba(15, 23, 42, ${lineAlpha})`,
+        );
       }
 
       // Vykreslenie geometrických trojuholníkov, bodov a micro-tokenov
