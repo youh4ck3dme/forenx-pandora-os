@@ -512,6 +512,47 @@ export function buildReportHTML(
   <ul>${unverifiedClaims.map((claim) => `<li>${claim}</li>`).join("")}</ul>`
       : "";
 
+  // Issue #13: číslované závery (I.–III.) sa skladajú výlučne z tvrdení
+  // viazaných na hash-overený dôkaz. judgeReadyText je voľný text modelu bez
+  // väzby na dôkazy — môže opakovať neoverenú alebo podvrhnutú (prompt
+  // injection) hypotézu, preto sa nikdy nevypisuje ako skutkový záver.
+  const boundFacts = [
+    ...timeline.bound.map((ev) => {
+      const src = formatSourceRef(ev.sourceRef) || ev.source?.trim() || "—";
+      return `<strong>${ev.time}:</strong> ${ev.event} <em>(zdroj: <code>${src}</code>)</em>`;
+    }),
+    ...flows.bound.map(
+      (sf) =>
+        `<strong>${sf.date}:</strong> ${sf.payer} ➔ ${sf.recipient}, ${sf.amount.toLocaleString("sk-SK")} € — ${sf.purpose} <em>(zdroj: <code>${formatSourceRef(sf.sourceRef)}</code>)</em>`,
+    ),
+  ];
+  const boundFactsHtml =
+    boundFacts.length > 0
+      ? `<p class="legal-expl">Skutkový stav tvoria výlučne okolnosti viazané na hash-overený dôkaz z WORM ledgera (evidence_id a strana alebo odsek).</p>
+  <ul>${boundFacts.map((fact) => `<li>${fact}</li>`).join("")}</ul>`
+      : `<p class="legal-expl">Žiadna okolnosť nie je viazaná na hash-overený dôkaz — skutkový stav nemožno z AI analýzy uviesť.</p>`;
+
+  const narrativeParts = [
+    { label: "I. Skutkový stav", text: d.judgeReadyText?.skutkovyStav },
+    { label: "II. Vyporiadanie sa s obhajobou", text: d.judgeReadyText?.vyporiadanie },
+    { label: "III. Vedecké zhodnotenie stôp", text: d.judgeReadyText?.vedecke },
+  ].filter((part) => part.text?.trim());
+  const narrativeDraftHtml =
+    narrativeParts.length > 0
+      ? `
+  <h2>AI návrh textu odôvodnenia (neoverený — nie je súčasťou záverov)</h2>
+  <p class="legal-expl">Voľný text vygenerovaný modelom bez väzby na konkrétne dôkazy. Môže obsahovať neoverené tvrdenia; do záverov I.–III. sa nepreberá a pred akýmkoľvek použitím musí byť overený voči originálu spisu.</p>
+  ${narrativeParts
+    .map(
+      (part) => `
+  <div class="section">
+    <h3>${part.label} — návrh</h3>
+    <p>${part.text}</p>
+  </div>`,
+    )
+    .join("")}`
+      : "";
+
   return `<!DOCTYPE html>
 <html lang="sk">
 <head>
@@ -626,21 +667,21 @@ ${admissibilityHtml}
 
 ${unverifiedClaimsHtml}
 
+${narrativeDraftHtml}
+
 <h2>I. Zistený skutkový stav (§ 119 ods. 1 Trestného poriadku)</h2>
 <div class="section">
-  <p>${d.judgeReadyText.skutkovyStav}</p>
+  ${boundFactsHtml}
 </div>
 
 <h2>II. Vyporiadanie sa s obhajobou obvineného (§ 168 TP)</h2>
 <div class="section">
-  <p>${d.judgeReadyText.vyporiadanie}</p>
   <h3>Identifikované body útoku obhajoby a dôkazné protiúdery:</h3>
   ${attacksHtml}
 </div>
 
 <h2>III. Vedecké zhodnotenie stôp</h2>
 <div class="section">
-  <p>${d.judgeReadyText.vedecke}</p>
   <h3>Dôkazová matica stôp (§ 119 ods. 2 TP & ENFSI metodika)</h3>
   <table>
     <thead>

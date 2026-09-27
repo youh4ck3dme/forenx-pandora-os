@@ -235,6 +235,59 @@ describe("export gate", () => {
   });
 });
 
+describe("numbered conclusions are built only from bound claims (issue #13)", () => {
+  const INJECTED = "NARATIV_NEOVERENA_HYPOTEZA";
+  const d = dossierWith([boundEvent, unboundEvent]);
+  d.judgeReadyText = {
+    skutkovyStav: `${INJECTED} skutok`,
+    vyporiadanie: `${INJECTED} obhajoba`,
+    vedecke: `${INJECTED} stopy`,
+  };
+  const out = buildReportHTML(d, known);
+  const conclusionsStart = out.indexOf("<h2>I. Zistený skutkový stav");
+  const conclusions = out.slice(conclusionsStart);
+
+  it("never renders the model narrative inside sections I.–III.", () => {
+    expect(conclusionsStart).toBeGreaterThan(-1);
+    expect(conclusions).not.toContain(INJECTED);
+  });
+
+  it("keeps the narrative only as an explicitly unverified draft before the conclusions", () => {
+    const draftStart = out.indexOf("<h2>AI návrh textu odôvodnenia (neoverený");
+    expect(draftStart).toBeGreaterThan(-1);
+    expect(draftStart).toBeLessThan(conclusionsStart);
+    const draft = out.slice(draftStart, conclusionsStart);
+    expect(draft).toContain(`${INJECTED} skutok`);
+    expect(draft).toContain(`${INJECTED} obhajoba`);
+    expect(draft).toContain(`${INJECTED} stopy`);
+  });
+
+  it("section I lists bound events and flows with sources, never unbound ones", () => {
+    const sectionI = conclusions.slice(0, conclusions.indexOf("<h2>II."));
+    expect(sectionI).toContain("Zadržanie hotovosti pri kontrole");
+    expect(sectionI).toContain("Vklad hotovosti");
+    expect(sectionI).not.toContain("UTOK_BEZ_OPORY_V_EVENT");
+    expect(sectionI).not.toContain("Prevod bez dokladu");
+  });
+
+  it("without a verified ledger section I states that no fact can be established", () => {
+    const failClosed = buildReportHTML(d);
+    const sectionI = failClosed.slice(
+      failClosed.indexOf("<h2>I. Zistený skutkový stav"),
+      failClosed.indexOf("<h2>II."),
+    );
+    expect(sectionI).toContain("skutkový stav nemožno z AI analýzy uviesť");
+    expect(sectionI).not.toContain("Zadržanie hotovosti pri kontrole");
+    expect(sectionI).not.toContain(INJECTED);
+  });
+
+  it("omits the draft section when the model produced no narrative", () => {
+    const empty = dossierWith([boundEvent]);
+    empty.judgeReadyText = { skutkovyStav: "", vyporiadanie: " ", vedecke: "" };
+    expect(buildReportHTML(empty, known)).not.toContain("AI návrh textu odôvodnenia");
+  });
+});
+
 describe("export escapes untrusted AI/document text (stored XSS)", () => {
   it("renders injected markup as text, never as elements", () => {
     const d = dossierWith([
