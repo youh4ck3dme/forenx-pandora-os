@@ -35,7 +35,7 @@ Vercel, Supabase, S3, DNS, Nginx, or a desktop signing service is configured.
 | -------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------- |
 | Root TypeScript                        | `DONE`    | `npx tsc --noEmit` returned 0 errors after a completed Next build.                                                |
 | Electron TypeScript and security suite | `DONE`    | Electron main/preload typechecks passed; `electron/__tests__` passed `17/17`.                                     |
-| Main application tests                 | `DONE`    | `npx vitest run`: `349/349` passed across 51 test suites.                                                         |
+| Main application tests                 | `DONE`    | `npx vitest run`: `417/417` passed across 59 test suites.                                                         |
 | Core engine tests                      | `DONE`    | `npx vitest run`: `559/559` passed.                                                                               |
 | Next production build                  | `DONE`    | `npm run build`: 30/30 routes generated.                                                                          |
 | Core engine TypeScript                 | `DONE`    | Created worker/types bridge modules; `npx tsc --noEmit` returned 0 errors in core-engine.                         |
@@ -89,13 +89,16 @@ required.
 - [x] S3 keys, MIME metadata, expiry, SHA-256, and provenance metadata are
       validated.
 - [x] Vault tests passed: 10 original plus 4 hardening tests.
+- [x] WORM ledger immutability and audited deletion: `20260927234500_evidence_ledger_worm.sql` makes `sha256_hash`, `s3_object_key`, `created_at`, `investigator_id` immutable; direct `DELETE` prohibited in favor of `delete_evidence_item_audited`.
+- [x] Server-side hash verification worker: `/api/vault/verify` recalculates SHA-256 and byte length from S3.
+- [x] Supabase RLS policies for `evidence_items` verified: `supabase/verify/evidence_items_rls.sql` reports 17/17 PASS in automated PGlite test suite.
 
 **Remaining acceptance criteria:**
 
-- [ ] Apply and verify Supabase RLS policies for `evidence_items`.
+- [ ] Apply migrations to hosted Supabase instance (`supabase db push`).
 - [ ] Upload a 250 MB fixture through the production presigned URL.
 - [ ] Persist the post-upload evidence record transactionally.
-- [ ] Verify rejected cross-case access with an authenticated attacker test.
+- [ ] Verify rejected cross-case access with an authenticated attacker test on live deployment.
 
 ### P0-04 — Monitoring, alerting, and operational visibility
 
@@ -209,7 +212,7 @@ feedback, and guarded destructive actions. Case deletion requires the case name.
 
 ### P2-03 — Terminology
 
-**Status:** `IN PROGRESS`
+**Status:** `DONE`
 
 - [x] Forza/Malte user-visible terminology was normalized toward **Prípad**.
 - [x] Scan web, Electron, email/export templates, and translations for
