@@ -1,4 +1,4 @@
-// Stub: payments module adapted for Next.js (Stripe not yet configured)
+import { PLANS } from "@/config/billing";
 
 export type SubscriptionState = {
   configured: boolean;
@@ -8,18 +8,18 @@ export type SubscriptionState = {
   features: string[];
 };
 
-/** Stub — returns a default professional plan while Stripe is not configured */
 export async function getSubscriptionState(): Promise<SubscriptionState> {
   return {
     configured: false,
-    status: "active",
-    tier: "professional",
-    tierLabel: "Profesionál",
-    features: ["Neobmedzené vyšetrovania", "Forenzný Autopilot", "AI Sandbox"],
+    status: "inactive",
+    tier: "free",
+    tierLabel: PLANS.free.name,
+    features: PLANS.free.features,
   };
 }
 
-/** Stub — portal session */
 export async function createPortalSession(): Promise<{ url: string }> {
-  return { url: "#" };
+  throw new Error(
+    "Platobný portál nie je nakonfigurovaný. Prémiový prístup nemožno aktivovať.",
+  );
 }

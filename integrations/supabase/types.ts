@@ -181,6 +181,7 @@ export type Database = {
           created_at: string;
           ico: string | null;
           id: string;
+          identity_key: string | null;
           incorporated_at: string | null;
           kind: string;
           licence: string | null;
@@ -203,6 +204,7 @@ export type Database = {
           created_at?: string;
           ico?: string | null;
           id?: string;
+          identity_key?: string | null;
           incorporated_at?: string | null;
           kind?: string;
           licence?: string | null;
@@ -225,6 +227,7 @@ export type Database = {
           created_at?: string;
           ico?: string | null;
           id?: string;
+          identity_key?: string | null;
           incorporated_at?: string | null;
           kind?: string;
           licence?: string | null;
@@ -973,6 +976,16 @@ export type Database = {
       commit_import: {
         Args: { _actor: string; _import: string; _rows: Json };
         Returns: number;
+      };
+      commit_ai_case_graph: {
+        Args: {
+          _actor: string;
+          _case: string;
+          _entities: Json;
+          _events: Json;
+          _relations: Json;
+        };
+        Returns: Json;
       };
       current_plan: { Args: { _user: string }; Returns: string };
       db_health_stats: { Args: never; Returns: Json };

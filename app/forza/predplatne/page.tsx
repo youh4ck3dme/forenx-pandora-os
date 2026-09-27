@@ -45,10 +45,11 @@ function SubscriptionScreen() {
         return await getSubscriptionState();
       } catch {
         return {
-          status: "active",
-          tier: "professional",
-          tierLabel: "Profesionál",
-          features: ["Neobmedzené vyšetrovania", "Forenzný Autopilot", "AI Sandbox"],
+          configured: false,
+          status: "inactive",
+          tier: "free",
+          tierLabel: PLANS.free.name,
+          features: PLANS.free.features,
         };
       }
     },
@@ -104,11 +105,18 @@ function SubscriptionScreen() {
               <Button
                 variant={plan.id === "pro" ? "default" : "outline"}
                 className="w-full mt-4"
+                disabled={plan.id === "pro" && !configured}
                 onClick={() => {
+                  if (plan.id === "pro" && !configured) {
+                    toast.error("Platby zatiaľ nie sú nakonfigurované.");
+                    return;
+                  }
                   toast.info("Aktivácia plánu prebieha prostredníctvom Stripe.");
                 }}
               >
-                Aktivovať {plan.name}
+                {plan.id === "pro" && !configured
+                  ? "Platby nie sú dostupné"
+                  : `Aktivovať ${plan.name}`}
               </Button>
             </Card>
           ))}
