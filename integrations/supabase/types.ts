@@ -677,6 +677,9 @@ export type Database = {
           orsr_addresses: Json;
           reference_date: string;
           revision: number;
+          status: string;
+          status_changed_at: string;
+          status_reason: string;
           subtitle: string;
           updated_at: string;
           user_id: string;
@@ -694,6 +697,9 @@ export type Database = {
           orsr_addresses?: Json;
           reference_date?: string;
           revision?: number;
+          status?: string;
+          status_changed_at?: string;
+          status_reason?: string;
           subtitle?: string;
           updated_at?: string;
           user_id?: string;
@@ -711,6 +717,9 @@ export type Database = {
           orsr_addresses?: Json;
           reference_date?: string;
           revision?: number;
+          status?: string;
+          status_changed_at?: string;
+          status_reason?: string;
           subtitle?: string;
           updated_at?: string;
           user_id?: string;
