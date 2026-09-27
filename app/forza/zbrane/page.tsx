@@ -29,10 +29,19 @@ export default function ZbranePage() {
 }
 
 function Weapons() {
-  const { activeCase, analysis, dossier, refresh, loading } = useActiveCase();
+  const {
+    activeCase,
+    analysis,
+    dossier,
+    refresh,
+    loading,
+    trustedEvidenceIds,
+    trustedEvidenceError,
+  } = useActiveCase();
   const names = new Map(activeCase.entities.map((e) => [e.id, e.name]));
   const batches = detectSerialBatches(activeCase.weapons);
   const matches = analysis.weapons.filter((w) => w.europolMatch).length;
+  const knownEvidence = new Set(trustedEvidenceIds);
 
   if (loading) {
     return (
@@ -158,8 +167,19 @@ function Weapons() {
 
         <SectionTitle>Forenzné superzbrane</SectionTitle>
         <Card className="space-y-5">
-          <DevilsAdvocatePanel hypotheses={dossier?.alternativeHypotheses ?? []} />
-          <AdmissibilityAuditView audit={dossier?.admissibilityAudit} />
+          {trustedEvidenceError ? (
+            <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-200">
+              {trustedEvidenceError} Hypotézy a audit zostanú neoverené.
+            </p>
+          ) : null}
+          <DevilsAdvocatePanel
+            hypotheses={dossier?.alternativeHypotheses ?? []}
+            knownEvidence={knownEvidence}
+          />
+          <AdmissibilityAuditView
+            audit={dossier?.admissibilityAudit}
+            knownEvidence={knownEvidence}
+          />
           <CustodyLedgerViewer entries={dossier?.custodyLedger ?? []} />
         </Card>
       </Screen>

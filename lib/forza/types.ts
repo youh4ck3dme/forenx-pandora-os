@@ -343,6 +343,9 @@ export interface AdmissibilityAuditDefect {
   paragraph: string; // napr. "§ 119 ods. 3 TP", "§ 142 TP"
   legalAuthority?: string; // Judikatúra / ustanovenie TP (napr. "Nález ÚS SR II. ÚS 399/2014")
   sourceEvidenceId?: string; // Väzba na ID zaisteného dôkazu / listiny (napr. "doc-01", "tx-88")
+  sourcePage?: number;
+  sourceParagraph?: string;
+  sourceRef?: HypothesisSourceRef;
   defectType?: DefectClassification;
   description: string;
   remedyAction: string; // Ako vadu odstrániť alebo procesne zhojiť na pojednávaní
@@ -354,5 +357,6 @@ export interface AdmissibilityAuditResult {
   score: number; // 0-100
   defects: AdmissibilityAuditDefect[];
   courtReadySummary: string;
+  sourceReferences?: HypothesisSourceRef[];
   remediationPlan?: Array<{ defectId?: string; action: string; priority: "high" | "medium" | "low" }>;
 }

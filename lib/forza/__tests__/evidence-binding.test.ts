@@ -3,6 +3,10 @@ import { ARMIVEX_CASE_DOSSIER } from "../demo-dossier";
 import {
   collectEvidenceIds,
   isBoundToEvidence,
+  isValidEvidenceReference,
+  resolveEvidenceReference,
+  partitionAdmissibilityAudit,
+  partitionAlternativeHypotheses,
   partitionSuspiciousFlows,
   partitionTimeline,
 } from "../evidence-binding";
@@ -16,6 +20,21 @@ function dossierWith(
   timeline: TimelineEvent[],
 ): ForensicDossier {
   const base: ForensicDossier = JSON.parse(JSON.stringify(ARMIVEX_CASE_DOSSIER));
+  base.custodyLedger = [
+    ...(base.custodyLedger ?? []),
+    {
+      index: 2,
+      id: "CL-TEST",
+      traceId: KNOWN_DOC,
+      timestamp: "2026-01-01T00:00:00Z",
+      actor: "Vyšetrovateľ",
+      action: "SEIZURE",
+      location: "Bratislava",
+      payloadHash: "0".repeat(64),
+      prevHash: "1".repeat(64),
+      hash: "2".repeat(64),
+    },
+  ];
   base.facts.timeline = timeline;
   base.financialAnalysis = {
     totalVolume: 1000,
@@ -87,8 +106,92 @@ describe("collectEvidenceIds (P1-01)", () => {
     const ids = collectEvidenceIds(base);
     expect(ids.has(KNOWN_DOC)).toBe(true);
     expect(ids.has("trace-abc")).toBe(true);
-    expect(ids.has("entry-1")).toBe(true);
+    expect(ids.has("entry-1")).toBe(false);
     expect(ids.has("   ")).toBe(false);
+  });
+});
+
+describe("evidence references for legal conclusions", () => {
+  const known = new Set([KNOWN_DOC]);
+  it("requires an existing evidence ID and a concrete page or paragraph locator", () => {
+    expect(
+      isValidEvidenceReference(
+        { evidenceId: KNOWN_DOC, page: 2 },
+        known,
+      ),
+    ).toBe(true);
+    expect(
+      isValidEvidenceReference(
+        { evidenceId: KNOWN_DOC, paragraph: "odsek 4" },
+        known,
+      ),
+    ).toBe(true);
+    expect(
+      isValidEvidenceReference(
+        { evidenceId: KNOWN_DOC, paragraph: "§ 119 ods. 2 TP" },
+        known,
+      ),
+    ).toBe(false);
+    expect(
+      isValidEvidenceReference({ evidenceId: KNOWN_DOC }, known),
+    ).toBe(false);
+    expect(
+      isValidEvidenceReference(
+        { evidenceId: UNKNOWN_DOC, page: 2 },
+        known,
+      ),
+    ).toBe(false);
+    expect(
+      isValidEvidenceReference(
+        { evidenceId: KNOWN_DOC, page: 0 },
+        known,
+      ),
+    ).toBe(false);
+  });
+
+  it("resolves only known ledger aliases to persistent evidence IDs", () => {
+    const aliases = new Map([["E1", "persistent-evidence-1"]]);
+    expect(
+      resolveEvidenceReference(
+        { evidenceId: "E1", page: 3 },
+        aliases,
+      ),
+    ).toEqual({ evidenceId: "persistent-evidence-1", page: 3 });
+    expect(
+      resolveEvidenceReference(
+        { evidenceId: "E2", page: 3 },
+        aliases,
+      ),
+    ).toBeNull();
+    expect(
+      resolveEvidenceReference({ evidenceId: "E1" }, aliases),
+    ).toBeNull();
+  });
+
+  it("partitions hypotheses and audit claims fail-closed", () => {
+    const dossier = JSON.parse(
+      JSON.stringify(ARMIVEX_CASE_DOSSIER),
+    ) as ForensicDossier;
+    const hypotheses = dossier.alternativeHypotheses ?? [];
+    hypotheses[0]!.sourceReferences = [{ evidenceId: KNOWN_DOC, page: 4 }];
+    hypotheses[1]!.sourceReferences = [
+      { evidenceId: UNKNOWN_DOC, paragraph: "odsek 3" },
+    ];
+    const hypothesisPartition = partitionAlternativeHypotheses(
+      hypotheses,
+      known,
+    );
+    expect(hypothesisPartition.bound.map((item) => item.id)).toEqual(["AH-1"]);
+    expect(hypothesisPartition.unbound.map((item) => item.id)).toEqual(["AH-2"]);
+
+    const audit = dossier.admissibilityAudit!;
+    audit.sourceReferences = [{ evidenceId: KNOWN_DOC, paragraph: "odsek 2" }];
+    audit.defects[0]!.sourceEvidenceId = KNOWN_DOC;
+    audit.defects[0]!.sourcePage = 8;
+    const auditPartition = partitionAdmissibilityAudit(audit, known);
+    expect(auditPartition.summaryBound).toBe(true);
+    expect(auditPartition.boundDefects).toHaveLength(1);
+    expect(auditPartition.unboundDefects).toHaveLength(1);
   });
 });
 
@@ -131,7 +234,7 @@ describe("partition (P1-01)", () => {
 
 describe("export gate — bez opory nie fakt (P1-01)", () => {
   const dossier = dossierWith([boundEvent, unboundEvent]);
-  const html = buildReportHTML(dossier);
+  const html = buildReportHTML(dossier, new Set([KNOWN_DOC]));
 
   const chronologyStart = html.indexOf("<h2>Chronológia skutkov");
   const unboundStart = html.indexOf("<h2>Nezdrojované okolnosti");
@@ -191,8 +294,54 @@ describe("export gate — bez opory nie fakt (P1-01)", () => {
       ],
       financingConclusion: "Testovací záver",
     };
-    const cleanHtml = buildReportHTML(clean);
+    const cleanHtml = buildReportHTML(clean, new Set([KNOWN_DOC]));
     expect(cleanHtml).not.toContain("Nezdrojované okolnosti");
     expect(cleanHtml).not.toContain("Toky bez viazania na dôkaz");
+  });
+
+  it("exportuje hypotézy a § 119 posúdenie bez väzby výhradne ako neoverené", () => {
+    const dossier = dossierWith([boundEvent]);
+    const html = buildReportHTML(dossier, new Set([KNOWN_DOC]));
+    const unverifiedStart = html.indexOf(
+      "<h2>Neoverené tvrdenia (nie sú skutkom)</h2>",
+    );
+    expect(unverifiedStart).toBeGreaterThan(-1);
+    const unverified = html.slice(unverifiedStart);
+    expect(unverified).toContain("Finančné prostriedky boli riadnou pôžičkou");
+    expect(unverified).toContain("celkový audit");
+    expect(html.slice(0, unverifiedStart)).not.toContain(
+      "Finančné prostriedky boli riadnou pôžičkou",
+    );
+    expect(html.slice(0, unverifiedStart)).not.toContain(
+      "Rozpor medzi výpoveďou Petra Nováka",
+    );
+  });
+
+  it("nepovažuje AI custodyLedger ID za dôveryhodné bez authoritative ID zo servera", () => {
+    const dossier = dossierWith([boundEvent]);
+    dossier.alternativeHypotheses![0]!.sourceReferences = [
+      { evidenceId: KNOWN_DOC, page: 3 },
+    ];
+    const html = buildReportHTML(dossier);
+    expect(html).not.toContain("Alternatívne hypotézy viazané na dôkazy");
+    expect(html).toContain("Neoverené tvrdenia (nie sú skutkom)");
+    expect(html).toContain("Finančné prostriedky boli riadnou pôžičkou");
+  });
+
+  it("zdrojovaný audit a hypotéza sa objavia v samostatných overených sekciách", () => {
+    const dossier = dossierWith([boundEvent]);
+    dossier.alternativeHypotheses![0]!.sourceReferences = [
+      { evidenceId: KNOWN_DOC, page: 12 },
+    ];
+    dossier.admissibilityAudit!.sourceReferences = [
+      { evidenceId: KNOWN_DOC, paragraph: "odsek 5" },
+    ];
+    dossier.admissibilityAudit!.defects[0]!.sourceEvidenceId = KNOWN_DOC;
+    dossier.admissibilityAudit!.defects[0]!.sourcePage = 10;
+    const html = buildReportHTML(dossier, new Set([KNOWN_DOC]));
+    expect(html).toContain("Alternatívne hypotézy viazané na dôkazy");
+    expect(html).toContain("Audit procesnej prípustnosti (§ 119 TP)");
+    expect(html).toContain("Finančné prostriedky boli riadnou pôžičkou");
+    expect(html).toContain("§ 125 TP — curable");
   });
 });

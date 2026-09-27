@@ -222,6 +222,8 @@ export function Assistant() {
     hasCase,
     revisions,
     setDossier: setSharedDossier,
+    trustedEvidenceIds,
+    trustedEvidenceError,
   } = useActiveCase();
   const isOnline = useOnlineStatus();
   const status = useQuery({
@@ -803,8 +805,12 @@ export function Assistant() {
       exportDossierToPDF(
         dossier,
         investigator
-          ? { ...investigator, webauthn: binding ?? undefined }
-          : undefined,
+          ? {
+              ...investigator,
+              webauthn: binding ?? undefined,
+              trustedEvidenceIds: new Set(trustedEvidenceIds),
+            }
+          : { trustedEvidenceIds: new Set(trustedEvidenceIds) },
       );
       toast.success(
         "AI pracovná analýza (A4) so SHA-256 pečaťou bola pripravená na tlač/stiahnutie.",
@@ -812,7 +818,13 @@ export function Assistant() {
     } finally {
       setIsExportingPdf(false);
     }
-  }, [dossier, isExportingPdf, profile.data?.fullName, profile.data?.email]);
+  }, [
+    dossier,
+    isExportingPdf,
+    profile.data?.fullName,
+    profile.data?.email,
+    trustedEvidenceIds,
+  ]);
 
   const handleRetryFailedChunks = useCallback(async () => {
     if (!dossier?.analysisMeta || !lastAutopilotDocumentText) {
@@ -1020,7 +1032,11 @@ export function Assistant() {
         ...(requestedTask === "explain_finding" ? { alertId } : {}),
       },
     });
-    return JSON.stringify(value.payload, null, 2).slice(0, 1500);
+    return JSON.stringify(
+      { payload: value.payload, evidenceAliases: value.evidenceAliases ?? [] },
+      null,
+      2,
+    ).slice(0, 1500);
   }
 
   const taskReadiness = assessControlReadiness(task, {
@@ -1855,6 +1871,13 @@ ${dossier.judgeReadyText.vedecke}`;
                   </div>
                 </div>
 
+                {trustedEvidenceError ? (
+                  <Card className="border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-200">
+                    {trustedEvidenceError} Závery s väzbou na dôkaz sa zobrazia
+                    ako neoverené.
+                  </Card>
+                ) : null}
+
                 <Tabs
                   value={autopilotTab}
                   onValueChange={setAutopilotTab}
@@ -1940,6 +1963,7 @@ ${dossier.judgeReadyText.vedecke}`;
                     <Card className="p-3.5">
                       <DevilsAdvocatePanel
                         hypotheses={dossier.alternativeHypotheses ?? []}
+                        knownEvidence={new Set(trustedEvidenceIds)}
                         onSimulate={() => {
                           setTask("alt_devil");
                           setMainMode("quick_tasks");
@@ -1951,7 +1975,10 @@ ${dossier.judgeReadyText.vedecke}`;
 
                   <TabsContent value="admissibility" className="space-y-3 m-0">
                     <Card className="p-3.5">
-                      <AdmissibilityAuditView audit={dossier.admissibilityAudit} />
+                      <AdmissibilityAuditView
+                        audit={dossier.admissibilityAudit}
+                        knownEvidence={new Set(trustedEvidenceIds)}
+                      />
                     </Card>
                   </TabsContent>
 

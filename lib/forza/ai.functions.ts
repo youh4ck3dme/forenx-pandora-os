@@ -23,6 +23,7 @@ import {
 } from "@/lib/ai/control-readiness";
 import { aiTaskSchemas } from "@/lib/ai/task-schemas";
 import { assertAiConsent } from "@/lib/ai-consent";
+import { resolveEvidenceReference } from "./evidence-binding";
 import type { ExtractedCaseEntity, ParsedCaseDocument } from "./types";
 
 export type { AiControlFinding, AiControlResult, AiControlStatus };
@@ -191,9 +192,9 @@ const instructions: Record<AiTask, string> = {
   normalize_descriptions:
     'Navrhni normalizovaný tvar popisov platieb a možné zhody protistrán na kontrolu používateľom. Nič nespájaj automaticky. Vráť JSON {"suggestions": [{"transaction": string, "normalized": string, "counterparty": string, "confidence": "low"|"medium"|"high"}], "unverified": string[]}.',
   alt_devil:
-    'ROLE: Forenzný oponent ("Devil\'s Advocate"). Rozbi tunelové videnie vyšetrovania. Ak v <data> sú stopy/transakcie/nálezy, vygeneruj minimálne 2 plnohodnotné alternatívne hypotézy s oporou v dátach (nevymýšľaj nové entity ani transakcie). Ak nie je v dátach opora, vráť prázdne hypotheses. Pre každú uveď explainedEvidence, requiredTracesIfTrue a rebuttalTest. Vráť JSON: {"hypotheses": [{"id": string, "title": string, "scenario": string, "explainedEvidence": string[], "requiredTracesIfTrue": string[], "rebuttalTest": string}], "unverified": string[], "cited": string[]}.',
+    'ROLE: Forenzný oponent ("Devil\'s Advocate"). Rozbi tunelové videnie vyšetrovania. Ak v <data> sú stopy/transakcie/nálezy, vygeneruj minimálne 2 plnohodnotné alternatívne hypotézy s oporou v dátach (nevymýšľaj nové entity ani transakcie). Pri každej hypotéze uveď sourceReferences: aspoň jeden {evidenceId, page alebo paragraph}; evidenceId musí byť presné existujúce ID v <data>, locator musí označovať konkrétnu stranu alebo odsek. Ak taký odkaz nemožno doložiť, hypotézu označ v unverified a nepriraď jej sourceReferences. Pre každú uveď explainedEvidence, requiredTracesIfTrue a rebuttalTest. Vráť JSON: {"hypotheses": [{"id": string, "title": string, "scenario": string, "sourceReferences": [{"evidenceId": string, "page"?: number, "paragraph"?: string}], "explainedEvidence": string[], "requiredTracesIfTrue": string[], "rebuttalTest": string}], "unverified": string[], "cited": string[]}.',
   admiss_audit:
-    'ROLE: Procesný audítor trestného konania (TP SR č. 301/2005 Z. z. § 119 a nasl.). Skontroluj zákonnosť a procesnú prípustnosť podľa dát v <data>. Nevymýšľaj vady bez opory. Ak nie sú podklady, vráť prázdne defects. Vráť JSON: {"overallStatus": "admissible"|"at_risk"|"inadmissible", "score": number, "defects": [{"severity": "critical"|"curable"|"formal", "paragraph": string, "description": string, "remedyAction": string}], "courtReadySummary": string, "unverified": string[], "cited": string[]}.',
+    'ROLE: Procesný audítor trestného konania (TP SR č. 301/2005 Z. z. § 119 a nasl.). Skontroluj zákonnosť a procesnú prípustnosť podľa dát v <data>. Nevymýšľaj vady bez opory. Ku každej vade uveď sourceEvidenceId a aspoň sourcePage alebo sourceParagraph ako presný locator do konkrétneho zdroja; samotná citácia paragrafu zákona nie je locator. K overallStatus, score a courtReadySummary uveď sourceReferences s presnými evidenceId a locatorom. Používaj len ID existujúce v <data>; ak väzba chýba, uveď záver/vadu v unverified. Ak nie sú podklady, vráť prázdne defects. Vráť JSON: {"overallStatus": "admissible"|"at_risk"|"inadmissible", "score": number, "defects": [{"severity": "critical"|"curable"|"formal", "paragraph": string, "description": string, "remedyAction": string, "sourceEvidenceId": string, "sourcePage"?: number, "sourceParagraph"?: string}], "courtReadySummary": string, "sourceReferences": [{"evidenceId": string, "page"?: number, "paragraph"?: string}], "unverified": string[], "cited": string[]}.',
 };
 
 type LoadedCaseContext = {
@@ -238,6 +239,27 @@ async function loadAnalysis(
 }
 
 type SupabaseLike = any;
+
+async function loadEvidenceAliases(
+  supabase: SupabaseLike,
+  caseId: string,
+): Promise<Map<string, string>> {
+  const { data, error } = await supabase
+    .from("evidence_items")
+    .select("id")
+    .like("s3_object_key", `cases/${caseId}/evidence/%`)
+    .order("id", { ascending: true })
+    .limit(500);
+  if (error) {
+    throw new Error(`Nemenný ledger dôkazov sa nepodarilo overiť (${error.code}).`);
+  }
+  return new Map(
+    (data ?? []).map((row: { id: string }, index: number) => [
+      `E${index + 1}`,
+      row.id,
+    ]),
+  );
+}
 
 /** Stav AI: či je nakonfigurovaná a koľko volaní ostáva v dennom limite. */
 export const getAiStatus = createServerFn({ method: "POST" })
@@ -294,7 +316,15 @@ export const previewAiPayload = createServerFn({ method: "POST" })
         ? ({ task: "explain_finding", alertId: data.alertId ?? "" } as const)
         : ({ task: data.task } as const);
     const { payload } = buildAiPayload(analysis, scope);
-    return { payload, dataFingerprint: analysis.dataFingerprint };
+    const evidenceAliases =
+      data.task === "alt_devil" || data.task === "admiss_audit"
+        ? [...(await loadEvidenceAliases(context.supabase, data.caseId)).keys()]
+        : [];
+    return {
+      payload,
+      ...(evidenceAliases.length > 0 ? { evidenceAliases } : {}),
+      dataFingerprint: analysis.dataFingerprint,
+    };
   });
 
 export type AiRunResult = {
@@ -336,16 +366,31 @@ export type AiRunResult = {
       explainedEvidence: string[];
       requiredTracesIfTrue: string[];
       rebuttalTest: string;
+      sourceReferences?: {
+        evidenceId: string;
+        page?: number;
+        paragraph?: string;
+        description?: string;
+      }[];
     }[];
     defects?: {
       severity: "critical" | "curable" | "formal";
       paragraph: string;
       description: string;
       remedyAction: string;
+      sourceEvidenceId?: string;
+      sourcePage?: number;
+      sourceParagraph?: string;
     }[];
     overallStatus?: "admissible" | "at_risk" | "inadmissible";
     score?: number;
     courtReadySummary?: string;
+    sourceReferences?: {
+      evidenceId: string;
+      page?: number;
+      paragraph?: string;
+      description?: string;
+    }[];
     idMap?: {
       entities: Record<string, string>;
       transactions: Record<string, string>;
@@ -519,6 +564,11 @@ async function runAiTaskInner(
       );
     }
 
+    const evidenceAliasToId =
+      data.task === "alt_devil" || data.task === "admiss_audit"
+        ? await loadEvidenceAliases(context.supabase, data.caseId)
+        : new Map<string, string>();
+
     const base = {
       task: data.task,
       promptVersion: PROMPT_VERSION,
@@ -583,7 +633,11 @@ async function runAiTaskInner(
         { role: "system", content: SYSTEM_PROMPT },
         {
           role: "user",
-          content: `${instructions[data.task]}\n\n<data>\n${serialized}\n</data>`,
+          content: `${instructions[data.task]}${
+            evidenceAliasToId.size > 0
+              ? `\n\nPERSISTENTNÝ LEDGER dôkazov (iba tieto aliasy možno citovať): ${JSON.stringify([...evidenceAliasToId.keys()])}. Použi ich len ak sa zdrojový dokument obsahovo viaže na tvrdenie; locator musí byť konkrétna strana alebo odsek. Ak obsah/lokátor nevieš doložiť, vráť tvrdenie iba v unverified.`
+              : ""
+          }\n\n<data>\n${serialized}\n</data>`,
         },
       ],
       // Interaktívne kontroly a zhrnutia → asistentský kľúč.
@@ -669,21 +723,129 @@ async function runAiTaskInner(
         explainedEvidence?: string[];
         title?: string;
         scenario?: string;
+        sourceReferences?: {
+          evidenceId: string;
+          page?: number;
+          paragraph?: string;
+          description?: string;
+        }[];
       }[];
-      // Odfiltruj prázdne / vymyslené hypotézy bez názvu a scenára.
-      output["hypotheses"] = hyps.filter(
+      const bound: typeof hyps = [];
+      const unverified: string[] = [];
+      for (const hypothesis of hyps) {
+        const references = hypothesis.sourceReferences;
+        const resolvedReferences = references?.map((ref) =>
+          resolveEvidenceReference(ref, evidenceAliasToId),
+        );
+        const valid = Boolean(
+          resolvedReferences?.length &&
+            resolvedReferences.every((ref) => ref !== null),
+        );
+        if (
+          valid &&
+          Boolean(hypothesis.title?.trim()) &&
+          Boolean(hypothesis.scenario?.trim())
+        ) {
+          bound.push({
+            ...hypothesis,
+            sourceReferences: resolvedReferences!.filter(
+              (ref): ref is NonNullable<typeof ref> => ref !== null,
+            ),
+          });
+        } else {
+          unverified.push(
+            `${hypothesis.title?.trim() || "Alternatívna hypotéza"}: ${
+              hypothesis.scenario?.trim() || "Bez opisu"
+            } (neoverené — chýba platná väzba na evidence_items a konkrétny locator)`,
+          );
+        }
+      }
+      output["hypotheses"] = bound.filter(
         (h) =>
-          Boolean(h.title?.trim()) &&
-          Boolean(h.scenario?.trim()) &&
-          (hasSourceRef ||
-            !isClearanceOrInnocenceClaim(
-              `${h.title ?? ""} ${h.scenario ?? ""}`,
-            )),
+          hasSourceRef ||
+          !isClearanceOrInnocenceClaim(
+            `${h.title ?? ""} ${h.scenario ?? ""}`,
+          ),
       );
+      output["unverified"] = [
+        ...((output["unverified"] as string[] | undefined) ?? []),
+        ...unverified,
+      ];
     }
     if (Array.isArray(output["defects"])) {
-      const defects = output["defects"] as { description?: string }[];
-      output["defects"] = defects.filter((d) => Boolean(d.description?.trim()));
+      const defects = output["defects"] as {
+        description?: string;
+        paragraph?: string;
+        remedyAction?: string;
+        sourceEvidenceId?: string;
+        sourcePage?: number;
+        sourceParagraph?: string;
+      }[];
+      const bound = [];
+      const unverified: string[] = [];
+      for (const defect of defects) {
+        const evidenceId = defect.sourceEvidenceId?.trim();
+        const ref = evidenceId
+          ? {
+              evidenceId,
+              ...(defect.sourcePage ? { page: defect.sourcePage } : {}),
+              ...(defect.sourceParagraph
+                ? { paragraph: defect.sourceParagraph }
+                : {}),
+            }
+          : undefined;
+        const resolved = resolveEvidenceReference(ref, evidenceAliasToId);
+        if (defect.description?.trim() && resolved) {
+          bound.push({
+            ...defect,
+            sourceEvidenceId: resolved.evidenceId,
+          });
+        } else {
+          unverified.push(
+            `${defect.paragraph || "Procesná vada"}: ${
+              defect.description?.trim() || "Bez opisu"
+            } (neoverené — chýba platná väzba na evidence_items a konkrétny locator)`,
+          );
+        }
+      }
+      output["defects"] = bound;
+      output["unverified"] = [
+        ...((output["unverified"] as string[] | undefined) ?? []),
+        ...unverified,
+      ];
+    }
+    if (data.task === "admiss_audit") {
+      const references = output["sourceReferences"] as
+        | {
+            evidenceId: string;
+            page?: number;
+            paragraph?: string;
+            description?: string;
+          }[]
+        | undefined;
+      const resolvedReferences = references?.map((ref) =>
+        resolveEvidenceReference(ref, evidenceAliasToId),
+      );
+      const valid = Boolean(
+        resolvedReferences?.length &&
+          resolvedReferences.every((ref) => ref !== null),
+      );
+      if (valid) {
+        output["sourceReferences"] = resolvedReferences!.filter(
+          (ref): ref is NonNullable<typeof ref> => ref !== null,
+        );
+      } else {
+        const summary = output["courtReadySummary"];
+        if (typeof summary === "string" && summary.trim()) {
+          output["unverified"] = [
+            ...((output["unverified"] as string[] | undefined) ?? []),
+            `§ 119 TP: ${summary} (neoverené — chýba platná väzba na evidence_items a konkrétny locator)`,
+          ];
+        }
+        delete output["overallStatus"];
+        delete output["score"];
+        delete output["courtReadySummary"];
+      }
     }
 
     const typedOutput = output as NonNullable<AiRunResult["output"]>;

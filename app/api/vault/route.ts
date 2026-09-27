@@ -219,6 +219,7 @@ async function handleGet(request: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     caseId,
     items,
+    ledgerEvidenceIds: ledgerItems.map((item) => item.id),
   });
 }
 

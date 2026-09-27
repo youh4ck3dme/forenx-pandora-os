@@ -20,8 +20,15 @@ export default function PravnyKontextPage() {
 }
 
 function LegalScreen() {
-  const { activeCase, analysis, dossier } = useActiveCase();
+  const {
+    activeCase,
+    analysis,
+    dossier,
+    trustedEvidenceIds,
+    trustedEvidenceError,
+  } = useActiveCase();
   const legal = buildLegalContext(analysis);
+  const knownEvidence = new Set(trustedEvidenceIds);
 
   return (
     <PhoneFrame>
@@ -119,7 +126,15 @@ function LegalScreen() {
         ))}
 
         <SectionTitle>Procesná prípustnosť (§ 119 a nasl. TP)</SectionTitle>
-        <AdmissibilityAuditView audit={dossier?.admissibilityAudit} />
+        {trustedEvidenceError ? (
+          <Card className="border-amber-500/30 bg-amber-500/5 text-xs text-amber-200">
+            {trustedEvidenceError} Audit zostane neoverený.
+          </Card>
+        ) : null}
+        <AdmissibilityAuditView
+          audit={dossier?.admissibilityAudit}
+          knownEvidence={knownEvidence}
+        />
 
         <SectionTitle>Procesné postavenie osôb</SectionTitle>
         <Card className="divide-y divide-border p-0">

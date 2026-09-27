@@ -29,6 +29,7 @@ const hypothesis: AlternativeHypothesis = {
   requiredTraces: ["Splátkový kalendár"],
   rebuttal: "Vyžiadať účtovníctvo veriteľa.",
   probabilityScore: 42,
+  sourceReferences: [{ evidenceId: "doc-1", page: 2 }],
 };
 
 const audit: AdmissibilityAuditResult = {
@@ -40,9 +41,12 @@ const audit: AdmissibilityAuditResult = {
       paragraph: "§ 114 TP",
       description: "Chýba poučenie svedka.",
       remedyAction: "Vykonať doplňujúci výsluch.",
+      sourceEvidenceId: "doc-1",
+      sourcePage: 3,
     },
   ],
   courtReadySummary: "Dôkazy sú použiteľné po doplnení vady.",
+  sourceReferences: [{ evidenceId: "doc-1", paragraph: "odsek 4" }],
 };
 
 const ledger: CustodyLedgerEntry[] = [
@@ -74,7 +78,12 @@ const ledger: CustodyLedgerEntry[] = [
 
 describe("forenzné superzbrane", () => {
   it("vykreslí alternatívnu hypotézu s dôkazmi, chýbajúcimi stopami a protiargumentom", () => {
-    render(<DevilsAdvocatePanel hypotheses={[hypothesis]} />);
+    render(
+      <DevilsAdvocatePanel
+        hypotheses={[hypothesis]}
+        knownEvidence={new Set(["doc-1"])}
+      />,
+    );
     expect(screen.getByText("Legitímna pôžička")).toBeDefined();
     expect(screen.getByText("Zmluva o pôžičke")).toBeDefined();
     expect(screen.getByText("Splátkový kalendár")).toBeDefined();
@@ -83,8 +92,31 @@ describe("forenzné superzbrane", () => {
     expect(probabilityTone(70)).toContain("rose");
   });
 
+  it("označí hypotézu bez existujúceho dôkazu a lokátora ako neoverenú", () => {
+    render(
+      <DevilsAdvocatePanel
+        hypotheses={[
+          {
+            ...hypothesis,
+            sourceReferences: [{ evidenceId: "unknown" }],
+          },
+        ]}
+        knownEvidence={new Set(["doc-1"])}
+      />,
+    );
+    expect(
+      screen.getByText("Neoverené tvrdenia (nie sú skutkom)"),
+    ).toBeDefined();
+    expect(screen.queryByText("42 % ALTERNATÍVA")).toBeNull();
+  });
+
   it("clampne a vykreslí skóre procesnej prípustnosti aj vadu", () => {
-    render(<AdmissibilityAuditView audit={audit} />);
+    render(
+      <AdmissibilityAuditView
+        audit={audit}
+        knownEvidence={new Set(["doc-1"])}
+      />,
+    );
     expect(screen.getByText("88%")).toBeDefined();
     expect(screen.getByText("§ 114 TP")).toBeDefined();
     expect(screen.getByText("Vykonať doplňujúci výsluch.")).toBeDefined();

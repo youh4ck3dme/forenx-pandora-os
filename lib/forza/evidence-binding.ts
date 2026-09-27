@@ -1,5 +1,9 @@
 import type {
   ForensicDossier,
+  AdmissibilityAuditDefect,
+  AdmissibilityAuditResult,
+  AlternativeHypothesis,
+  HypothesisSourceRef,
   SourceRef,
   SuspiciousFlowItem,
   TimelineEvent,
@@ -11,7 +15,7 @@ import type {
  * Skutkové tvrdenie (udalosť chronológie, podozrivý finančný tok) smie byť
  * exportované ako fakt len vtedy, keď sa viaže na konkrétny immutable
  * identifikátor dôkazu evidovaného v spise (documentId z analysisMeta
- * alebo traceId/id z custody ledgera). Tvrdenie s chýbajúcim, prázdnym
+ * alebo traceId z custody ledgera). Tvrdenie s chýbajúcim, prázdnym
  * alebo neznámym identifikátorom nemá platnú oporu v dôkazovom materiáli
  * a NESMIE sa exportovať ako fakt.
  */
@@ -25,9 +29,7 @@ export function collectEvidenceIds(dossier: ForensicDossier): Set<string> {
   }
   for (const entry of dossier.custodyLedger ?? []) {
     const traceId = entry.traceId?.trim();
-    const id = entry.id?.trim();
     if (traceId) ids.add(traceId);
-    if (id) ids.add(id);
   }
   return ids;
 }
@@ -40,6 +42,97 @@ export function isBoundToEvidence(
   const documentId = sourceRef?.documentId?.trim();
   if (!documentId) return false;
   return knownEvidence.has(documentId);
+}
+
+export function isValidEvidenceReference(
+  sourceRef: HypothesisSourceRef | undefined | null,
+  knownEvidence: ReadonlySet<string>,
+): boolean {
+  const evidenceId = sourceRef?.evidenceId?.trim();
+  const paragraph = sourceRef?.paragraph?.trim();
+  const hasLocator =
+    (Number.isInteger(sourceRef?.page) && (sourceRef?.page ?? 0) > 0) ||
+    Boolean(paragraph && !/^§\s*\d/u.test(paragraph));
+  return Boolean(evidenceId && knownEvidence.has(evidenceId) && hasLocator);
+}
+
+export function resolveEvidenceReference(
+  sourceRef: HypothesisSourceRef | undefined | null,
+  aliasToEvidenceId: ReadonlyMap<string, string>,
+): HypothesisSourceRef | null {
+  if (
+    !sourceRef ||
+    !isValidEvidenceReference(sourceRef, new Set(aliasToEvidenceId.keys()))
+  ) {
+    return null;
+  }
+  const evidenceId = sourceRef.evidenceId.trim();
+  const resolvedEvidenceId = aliasToEvidenceId.get(evidenceId);
+  return resolvedEvidenceId
+    ? { ...sourceRef, evidenceId: resolvedEvidenceId }
+    : null;
+}
+
+function hasValidEvidenceReferences(
+  sourceRefs: HypothesisSourceRef[] | undefined,
+  knownEvidence: ReadonlySet<string>,
+): boolean {
+  return Boolean(
+    sourceRefs?.length &&
+      sourceRefs.every((ref) => isValidEvidenceReference(ref, knownEvidence)),
+  );
+}
+
+export function partitionAlternativeHypotheses(
+  hypotheses: AlternativeHypothesis[] | undefined,
+  knownEvidence: ReadonlySet<string>,
+): BoundPartition<AlternativeHypothesis> {
+  const bound: AlternativeHypothesis[] = [];
+  const unbound: AlternativeHypothesis[] = [];
+  for (const hypothesis of hypotheses ?? []) {
+    (hasValidEvidenceReferences(hypothesis.sourceReferences, knownEvidence)
+      ? bound
+      : unbound
+    ).push(hypothesis);
+  }
+  return { bound, unbound };
+}
+
+export function partitionAdmissibilityAudit(
+  audit: AdmissibilityAuditResult | undefined,
+  knownEvidence: ReadonlySet<string>,
+): {
+  summaryBound: boolean;
+  boundDefects: AdmissibilityAuditDefect[];
+  unboundDefects: AdmissibilityAuditDefect[];
+} {
+  const boundDefects: AdmissibilityAuditDefect[] = [];
+  const unboundDefects: AdmissibilityAuditDefect[] = [];
+  for (const defect of audit?.defects ?? []) {
+    const sourceRef =
+      defect.sourceRef ??
+      (defect.sourceEvidenceId
+        ? {
+            evidenceId: defect.sourceEvidenceId,
+            ...(defect.sourcePage ? { page: defect.sourcePage } : {}),
+            ...(defect.sourceParagraph
+              ? { paragraph: defect.sourceParagraph }
+              : {}),
+          }
+        : undefined);
+    (isValidEvidenceReference(sourceRef, knownEvidence)
+      ? boundDefects
+      : unboundDefects
+    ).push(defect);
+  }
+  return {
+    summaryBound: hasValidEvidenceReferences(
+      audit?.sourceReferences,
+      knownEvidence,
+    ),
+    boundDefects,
+    unboundDefects,
+  };
 }
 
 export type BoundPartition<T> = {
