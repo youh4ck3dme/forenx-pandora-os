@@ -41,6 +41,7 @@ export interface BlogPost {
   slug: string;
   title: string;
   description: string;
+  excerpt?: string;
   content: string;
   publishedAt: string;
   readingTime: number;

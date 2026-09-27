@@ -30,7 +30,7 @@ export default async function BlogPostPage({ params }: PageProps) {
     return (
         <main className="min-h-svh bg-black">
             {/* Header */}
-            <div className="py-12 px-4 border-b border-border bg-gradient-to-b from-purple-500/5 to-transparent">
+            <div className="py-12 px-4 border-b border-border bg-linear-to-b from-purple-500/5 to-transparent">
                 <div className="max-w-3xl mx-auto">
                     {/* Back Link */}
                     <Link
