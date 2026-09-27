@@ -69,6 +69,21 @@ begin
     entry->>'label'
   from jsonb_array_elements(_relations) as entry;
 
+  insert into public.case_audit_log (
+    user_id, case_id, action, table_name, record_id, changes
+  ) values (
+    _actor,
+    _case,
+    'ai_graph_committed',
+    'case_graph',
+    _case,
+    jsonb_build_object(
+      'entities', jsonb_array_length(_entities),
+      'events', jsonb_array_length(_events),
+      'relations', jsonb_array_length(_relations)
+    )
+  );
+
   return jsonb_build_object(
     'entities', jsonb_array_length(_entities),
     'events', jsonb_array_length(_events),

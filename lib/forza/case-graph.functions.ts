@@ -3,8 +3,8 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   buildAiGraphPlan,
-  type AiGraphInput,
 } from "@/lib/forza/case-graph-plan";
+import { commitAiGraph } from "@/lib/forza/case-graph-commit";
 
 const nameSchema = z.string().trim().min(2).max(160);
 
@@ -44,7 +44,11 @@ export function normalizeDate(raw: string | undefined): string | null {
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
   const dotted = text.match(/(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{4})/);
   if (dotted) {
-    return `${dotted[3]}-${dotted[2]!.padStart(2, "0")}-${dotted[1]!.padStart(2, "0")}`;
+    const [, day, month, year] = dotted;
+    if (day && month && year) {
+      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    }
+    return null;
   }
   const monthOnly = text.match(/^(\d{4})-(\d{2})$/);
   if (monthOnly) return `${monthOnly[1]}-${monthOnly[2]}-01`;
@@ -90,11 +94,9 @@ export const applyAiResultsToCase = createServerFn({ method: "POST" })
       throw new Error(`Dáta prípadu sa nepodarilo načítať. (${error.message})`);
     }
 
-    const fallbackDate =
-      (caseRow as { reference_date?: string }).reference_date ??
-      new Date().toISOString().slice(0, 10);
+    const fallbackDate = caseRow.reference_date ?? new Date().toISOString().slice(0, 10);
     const plan = buildAiGraphPlan(
-      data as AiGraphInput,
+      data,
       context.userId,
       fallbackDate,
       entities ?? [],
@@ -104,16 +106,19 @@ export const applyAiResultsToCase = createServerFn({ method: "POST" })
 
     const { supabaseAdmin } =
       await import("@/integrations/supabase/client.server");
-    const { error } = await supabaseAdmin.rpc("commit_ai_case_graph", {
-      _actor: context.userId,
-      _case: data.caseId,
-      _entities: plan.entities,
-      _events: plan.events,
-      _relations: plan.relations,
-    });
-    if (error) {
+    const result = await commitAiGraph(
+      async (args) => await supabaseAdmin.rpc("commit_ai_case_graph", args),
+      {
+        actor: context.userId,
+        caseId: data.caseId,
+        entities: plan.entities,
+        events: plan.events,
+        relations: plan.relations,
+      },
+    );
+    if (!result.ok) {
       throw new Error(
-        `Výsledky AI sa nepodarilo zapísať atómovo. Nezapísal sa žiadny riadok. (${error.message})`,
+        `Výsledky AI sa nepodarilo zapísať atómovo. Nezapísal sa žiadny riadok. (${result.error.message})`,
       );
     }
     return {
@@ -129,8 +134,17 @@ export function toTimelineInput(dossier: unknown): {
   detail?: string;
   actors?: string[];
 }[] {
-  const facts = (dossier as { facts?: { timeline?: unknown[] } })?.facts;
-  const rows = Array.isArray(facts?.timeline) ? facts.timeline : [];
+  const timelineSchema = z.object({
+    facts: z
+      .object({
+        timeline: z.array(z.unknown()).optional(),
+      })
+      .optional(),
+  });
+  const parsedDossier = timelineSchema.safeParse(dossier);
+  const rows = parsedDossier.success
+    ? (parsedDossier.data.facts?.timeline ?? [])
+    : [];
   const out: {
     date?: string;
     event?: string;
@@ -138,32 +152,41 @@ export function toTimelineInput(dossier: unknown): {
     actors?: string[];
   }[] = [];
   for (const raw of rows.slice(0, 200)) {
-    const row = raw as {
-      date?: unknown;
-      event?: unknown;
-      title?: unknown;
-      description?: unknown;
-      detail?: unknown;
-      actors?: unknown;
-      persons?: unknown;
-      entities?: unknown;
-    };
+    const rowSchema = z.object({
+      date: z.unknown().optional(),
+      event: z.unknown().optional(),
+      title: z.unknown().optional(),
+      description: z.unknown().optional(),
+      detail: z.unknown().optional(),
+      actors: z.unknown().optional(),
+      persons: z.unknown().optional(),
+      entities: z.unknown().optional(),
+    });
+    const parsedRow = rowSchema.safeParse(raw);
+    if (!parsedRow.success) continue;
+    const row = parsedRow.data;
     const text = (value: unknown) =>
       typeof value === "string" ? value.trim() : "";
     const event = text(row.event) || text(row.title);
     const detail = text(row.detail) || text(row.description);
     if (!event && !detail) continue;
-    const actorsRaw = [row.actors, row.persons, row.entities].find(
-      Array.isArray,
-    ) as unknown[] | undefined;
-    const actors = (actorsRaw ?? [])
-      .map((actor) =>
-        typeof actor === "string"
-          ? actor.trim()
-          : text((actor as { name?: unknown })?.name),
-      )
-      .filter(Boolean)
-      .slice(0, 20);
+    const actorListSchema = z.array(
+      z.union([
+        z.string(),
+        z.object({ name: z.unknown().optional() }),
+      ]),
+    );
+    const actorsRaw = [row.actors, row.persons, row.entities]
+      .map((value) => actorListSchema.safeParse(value))
+      .find((result) => result.success);
+    const actors = actorsRaw?.success
+      ? actorsRaw.data
+          .map((actor) =>
+            typeof actor === "string" ? actor.trim() : text(actor.name),
+          )
+          .filter(Boolean)
+          .slice(0, 20)
+      : [];
     out.push({
       ...(text(row.date) ? { date: text(row.date) } : {}),
       ...(event ? { event } : {}),

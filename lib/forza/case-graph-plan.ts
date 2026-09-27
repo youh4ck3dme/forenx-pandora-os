@@ -85,7 +85,11 @@ function normalizeDate(raw: string | undefined): string | null {
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
   const dotted = text.match(/(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{4})/);
   if (dotted) {
-    return `${dotted[3]}-${dotted[2]!.padStart(2, "0")}-${dotted[1]!.padStart(2, "0")}`;
+    const [, day, month, year] = dotted;
+    if (day && month && year) {
+      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    }
+    return null;
   }
   const monthOnly = text.match(/^(\d{4})-(\d{2})$/);
   if (monthOnly) return `${monthOnly[1]}-${monthOnly[2]}-01`;
@@ -178,17 +182,22 @@ export function buildAiGraphPlan(
         severity: "medium",
       });
     }
-    const actorIds = (item.actors ?? [])
-      .map((actor) => entityIdsByName.get(normalizeKey(actor)) ?? [])
-      .filter((ids) => ids.length === 1)
-      .map(([id]) => id!);
+    const actorIds: string[] = [];
+    for (const actor of item.actors ?? []) {
+      const ids = entityIdsByName.get(normalizeKey(actor));
+      const id = ids?.length === 1 ? ids[0] : undefined;
+      if (id) actorIds.push(id);
+    }
     for (let i = 0; i < actorIds.length; i++) {
       for (let j = i + 1; j < actorIds.length; j++) {
+        const fromId = actorIds[i];
+        const toId = actorIds[j];
+        if (!fromId || !toId) continue;
         candidates.push({
           case_id: data.caseId,
           user_id: userId,
-          from_id: actorIds[i]!,
-          to_id: actorIds[j]!,
+          from_id: fromId,
+          to_id: toId,
           label: title.slice(0, 80) || "spoločná udalosť",
         });
       }
