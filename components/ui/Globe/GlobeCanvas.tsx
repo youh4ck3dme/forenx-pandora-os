@@ -2,11 +2,27 @@ import React from "react";
 import { Canvas } from "@react-three/fiber";
 import { Particles } from "./particles";
 
-export const GlobeCanvas = ({ hovering = false }: { hovering?: boolean }) => {
+export const GlobeCanvas = ({
+  hovering = false,
+  className = "",
+  style,
+}: {
+  hovering?: boolean;
+  className?: string;
+  style?: React.CSSProperties;
+}) => {
   return (
     <div
-      className="absolute inset-0 m-auto flex items-center justify-center z-999 pointer-events-none"
-      style={{ maxWidth: "100%", aspectRatio: "1", maxHeight: "100vh" }}
+      className={`pointer-events-none absolute inset-0 m-auto flex items-center justify-center ${className}`}
+      style={{
+        maxWidth: "100%",
+        width: "100%",
+        height: "100%",
+        aspectRatio: "1",
+        maxHeight: "100vh",
+        zIndex: 10,
+        ...style,
+      }}
     >
       <Canvas
         dpr={[1, 1.5]}
@@ -17,7 +33,7 @@ export const GlobeCanvas = ({ hovering = false }: { hovering?: boolean }) => {
           far: 300,
         }}
         gl={{ alpha: true, antialias: true }}
-        style={{ backgroundColor: "transparent" }}
+        style={{ backgroundColor: "transparent", width: "100%", height: "100%" }}
       >
         <Particles
           speed={1.15}

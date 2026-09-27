@@ -7,7 +7,7 @@ import { isElectron } from "@/lib/api";
 
 import React, { memo } from "react";
 
-const GL = dynamic(() => import("@/components/gl").then((mod) => mod.GL), {
+const Globe = dynamic(() => import("@/components/ui/Globe").then((mod) => mod.Globe), {
   ssr: false,
   loading: () => <div className="absolute inset-0 bg-black" />,
 });
@@ -46,7 +46,7 @@ const TabContent = memo(
             onMouseEnter={() => setHovering(true)}
             onMouseLeave={() => setHovering(false)}
           >
-            {isActive && <GL hovering={hovering} />}
+            {isActive && <Globe hovering={hovering} />}
           </div>
         )}
 
