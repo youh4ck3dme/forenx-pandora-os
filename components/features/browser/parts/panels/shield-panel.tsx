@@ -25,6 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import { Switch } from "../../../../ui/switch";
+import { electron, isElectron } from "@/lib/api";
 
 // Animated number component
 function AnimatedNumber({
@@ -155,28 +156,29 @@ export function ShieldPanel() {
   const [logs, setLogs] = useState<ShieldLog[]>([]);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !(window as any).electron) return;
+    if (!isElectron()) return;
 
-    // Fetch initial logs
-    (window as any).electron.invoke('shield:getLogs').then((initialLogs: ShieldLog[]) => {
-      setLogs(initialLogs || []);
+    void electron.invoke("shield:getLogs").then((initialLogs) => {
+      setLogs(Array.isArray(initialLogs) ? initialLogs as ShieldLog[] : []);
     });
 
     // Listen for new blocks
-    const handleBlocked = (data: any) => {
+    const handleBlocked = (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const log = data as ShieldLog;
       setLogs(prev => {
         const newLogs = [{
-          id: data.id,
-          url: data.url,
-          category: data.category,
-          timestamp: data.timestamp
+          id: log.id,
+          url: log.url,
+          category: log.category,
+          timestamp: log.timestamp
         }, ...prev];
         return newLogs.slice(0, 50); // Keep last 50
       });
     };
 
-    (window as any).electron.on('shield:blocked', handleBlocked);
-    // Cleanup is tricky with our basic bridge but usually okay for single-instance panels
+    electron.on("shield:blocked", handleBlocked);
+    return () => electron.off("shield:blocked", handleBlocked);
   }, []);
 
   // Calculate protection percentage (visual indicator)
@@ -405,12 +407,14 @@ export function ShieldPanel() {
                         </p>
                     </div>
 
-                    <button
-                        onClick={() => void window.forenxDesktop?.openExternalSafely(log.url)}
-                        className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded transition-all"
-                    >
-                        <ExternalLink className="w-3 h-3 text-white/40" />
-                    </button>
+                    {isElectron() && (
+                      <button
+                          onClick={() => void window.pandoraDesktop!.openExternalSafely(log.url)}
+                          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded transition-all"
+                      >
+                          <ExternalLink className="w-3 h-3 text-white/40" />
+                      </button>
+                    )}
                   </motion.div>
                 ))
               )}

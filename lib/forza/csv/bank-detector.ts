@@ -229,7 +229,9 @@ export function normalizeAmountToCents(raw: string | number): number | null {
         parts[0] &&
         parts[0].length <= 3
       ) {
-        integerPart = parts.join("");
+        // Jediný oddeľovač s troma číslicami môže znamenať tisíce aj
+        // OCR chybu/tri desatinné miesta; bez bankového formátu nehádame.
+        return null;
       } else {
         integerPart = parts[0]!;
         fractionPart = parts[1] ?? "";
@@ -250,7 +252,7 @@ export function normalizeAmountToCents(raw: string | number): number | null {
         parts[0] &&
         parts[0].length <= 3
       ) {
-        integerPart = parts.join("");
+        return null;
       } else {
         integerPart = parts[0]!;
         fractionPart = parts[1] ?? "";
@@ -260,12 +262,16 @@ export function normalizeAmountToCents(raw: string | number): number | null {
 
   if (!/^\d+$/.test(integerPart)) return null;
 
-  // Fraction up to 2 digits
-  fractionPart = fractionPart.padEnd(2, "0").slice(0, 2);
+  // Nikdy potichu nezaokrúhľuj ani neodrezávaj zlomky bankového výpisu.
+  if (fractionPart.length > 2) return null;
+  fractionPart = fractionPart.padEnd(2, "0");
   if (fractionPart && !/^\d+$/.test(fractionPart)) return null;
 
+  const integerValue = Number(integerPart);
+  if (!Number.isSafeInteger(integerValue)) return null;
   const totalCents =
-    Number(integerPart) * 100 + (fractionPart ? Number(fractionPart) : 0);
+    integerValue * 100 + (fractionPart ? Number(fractionPart) : 0);
+  if (!Number.isSafeInteger(totalCents)) return null;
   return negative ? -totalCents : totalCents;
 }
 
@@ -678,6 +684,15 @@ export function detectBankFormat(
 
   const best = scores[0];
   if (!best || best.confidence < 70) {
+    return null;
+  }
+  const equallyLikely = scores.filter(
+    (score) =>
+      score.confidence === best.confidence &&
+      score.isUnique === best.isUnique &&
+      score.matchedCoreCount === best.matchedCoreCount,
+  );
+  if (equallyLikely.length > 1) {
     return null;
   }
 

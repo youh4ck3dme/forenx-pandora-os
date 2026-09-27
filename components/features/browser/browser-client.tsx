@@ -53,57 +53,68 @@ export function BrowserClient() {
       }
     }
 
-    electron.on(
-      "tab:updated",
-      ({ id, title, url }: { id: string; title: string; url: string }) => {
+    if (!isElectron()) return;
+    const onTabUpdated = (data: unknown) => {
+      const tab = data as { id: string; title: string; url: string };
         useBrowserStore.getState().updateTab(
-          id,
+          tab.id,
           {
-            title,
-            url,
+            title: tab.title,
+            url: tab.url,
             isLoading: false,
           },
           true
         );
-      }
-    );
+      };
+    electron.on("tab:updated", onTabUpdated);
+    return () => electron.off("tab:updated", onTabUpdated);
   }, []);
 
   // Listen for Electron download updates
   useEffect(() => {
-    electron.on("download:start", (data: { id: string, fileName: string, url: string, totalBytes: number, startTime: number }) => {
+    if (!isElectron()) return;
+    const onDownloadStart = (data: unknown) => {
+      const download = data as { id: string; fileName: string; url: string; totalBytes: number; startTime: number };
       addDownload({
-        id: data.id,
-        fileName: data.fileName,
-        url: data.url,
-        fileSize: data.totalBytes
-          ? (data.totalBytes / 1024 / 1024).toFixed(2) + " MB"
+        id: download.id,
+        fileName: download.fileName,
+        url: download.url,
+        fileSize: download.totalBytes
+          ? (download.totalBytes / 1024 / 1024).toFixed(2) + " MB"
           : "Unknown",
         status: "in-progress",
-        timestamp: data.startTime,
+        timestamp: download.startTime,
         receivedBytes: 0,
-        totalBytes: data.totalBytes,
+        totalBytes: download.totalBytes,
       });
-    });
+    };
 
-    electron.on("download:updated", (data: { id: string, receivedBytes: number, status: string }) => {
-      updateDownload(data.id, data);
-    });
+    const onDownloadUpdated = (data: unknown) => {
+      const download = data as { id: string; receivedBytes: number; status: string };
+      updateDownload(download.id, download);
+    };
 
-    electron.on("download:completed", (data: { id: string }) => {
-      updateDownload(data.id, { status: "completed" });
-    });
+    const onDownloadCompleted = (data: unknown) => {
+      updateDownload((data as { id: string }).id, { status: "completed" });
+    };
 
-    electron.on(
-      "shield:blocked",
-      (data: {
+    const onShieldBlocked = (data: unknown) => {
+      const shield = data as {
         url: string;
         category: "ads" | "trackers" | "scripts";
-        stats: any;
-      }) => {
-        useBrowserStore.getState().updateBlockedStats(data.category);
-      }
-    );
+      };
+      useBrowserStore.getState().updateBlockedStats(shield.category);
+    };
+    electron.on("download:start", onDownloadStart);
+    electron.on("download:updated", onDownloadUpdated);
+    electron.on("download:completed", onDownloadCompleted);
+    electron.on("shield:blocked", onShieldBlocked);
+    return () => {
+      electron.off("download:start", onDownloadStart);
+      electron.off("download:updated", onDownloadUpdated);
+      electron.off("download:completed", onDownloadCompleted);
+      electron.off("shield:blocked", onShieldBlocked);
+    };
   }, [addDownload, updateDownload]);
 
   const [queryClient] = useState(

@@ -11,8 +11,8 @@ import {
   Sha256HashSchema,
   ForensicEvidenceItem,
   ForensicEvidenceItemSchema,
-  EvidenceId,
-  S3StorageKey,
+  EvidenceIdSchema,
+  S3StorageKeySchema,
 } from "@/lib/forza/vault-types";
 
 export const maxDuration = 300; // 300 s limit pre veľké súbory
@@ -26,6 +26,11 @@ const QueryParamSchema = z.object({
   caseId: CaseIdSchema.optional(),
   storageKey: z.string().optional(),
   action: z.enum(["list", "presign"]).optional().default("list"),
+});
+
+const UploadFormSchema = z.object({
+  caseId: CaseIdSchema,
+  clientSha256: Sha256HashSchema,
 });
 
 // In-memory runtime registry of uploaded evidence items (synchronized with S3 and Supabase)
@@ -111,31 +116,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
     const file = formData.get("file");
-    const rawCaseId = formData.get("caseId");
-    const rawClientHash = formData.get("clientSha256");
 
-    if (!file || typeof file === "string" || !(file instanceof Blob)) {
+    if (typeof File === "undefined" || !(file instanceof File)) {
       return NextResponse.json({ error: "Súbor nebol priložený v poli 'file'." }, { status: 400 });
     }
-    const fileName = (file instanceof File ? file.name : (file as { name?: string }).name) || "evidence.bin";
+    const formValidation = UploadFormSchema.safeParse({
+      caseId: formData.get("caseId"),
+      clientSha256: formData.get("clientSha256"),
+    });
 
-    const caseIdValidation = CaseIdSchema.safeParse(rawCaseId);
-    if (!caseIdValidation.success) {
+    if (!formValidation.success) {
       return NextResponse.json(
-        { error: "Neplatné CaseId.", details: caseIdValidation.error.issues },
+        { error: "Neplatné údaje formulára pre nahratie dôkazu.", details: formValidation.error.issues },
         { status: 400 }
       );
     }
-    const caseId = caseIdValidation.data;
-
-    const clientHashValidation = Sha256HashSchema.safeParse(rawClientHash);
-    if (!clientHashValidation.success) {
-      return NextResponse.json(
-        { error: "Neplatný formát klientskeho SHA-256 hashu.", details: clientHashValidation.error.issues },
-        { status: 400 }
-      );
-    }
-    const expectedClientHash = clientHashValidation.data;
+    const { caseId, clientSha256: expectedClientHash } = formValidation.data;
+    const fileName = file.name || "evidence.bin";
 
     if (file.size > MAX_FILE_SIZE_BYTES) {
       return NextResponse.json(
@@ -170,8 +167,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       sha256: serverHash,
     });
 
-    const evidenceId = randomUUID() as EvidenceId;
-    const storageKey = storageKeyRaw as S3StorageKey;
+    const evidenceId = EvidenceIdSchema.parse(randomUUID());
+    const storageKeyValidation = S3StorageKeySchema.safeParse(storageKeyRaw);
+    if (!storageKeyValidation.success) {
+      return NextResponse.json(
+        { error: "Úložisko vrátilo neplatný kľúč dôkazu.", details: storageKeyValidation.error.issues },
+        { status: 500 },
+      );
+    }
+    const storageKey = storageKeyValidation.data;
 
     // ─── 4. ZOSTAVENIE A VALIDÁCIA ZÁZNAMU ────────────────────────
     const evidenceItemRaw: unknown = {

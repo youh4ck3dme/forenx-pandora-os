@@ -19,14 +19,33 @@ const PresignRequestSchema = z.object({
   mimeType: z.string().min(1).default("application/octet-stream"),
   sha256Hash: z
     .string()
-    .regex(/^[a-f0-9]{64}$/i, "Neplatný formát SHA-256 hashu (očakáva sa 64 hex znakov)."),
+    .regex(
+      /^[a-f0-9]{64}$/i,
+      "Neplatný formát SHA-256 hashu (očakáva sa 64 hex znakov).",
+    ),
 });
+
+const PresignResponseSchema = z.object({
+  success: z.literal(true),
+  uploadUrl: z.string().url(),
+  storageKey: z.string().min(1),
+  bucket: z.string().min(1),
+  fileSizeBytes: z.number().int().positive(),
+  expiresInSeconds: z.literal(300),
+  requiredHeaders: z.object({
+    "Content-Type": z.string().min(1),
+    "x-amz-content-sha256": z.string().regex(/^[a-f0-9]{64}$/),
+    "x-amz-meta-sha256-checksum": z.string().regex(/^[a-f0-9]{64}$/),
+    "x-amz-meta-uploaded-by": z.string().min(1),
+    "x-amz-meta-case-id": z.string().min(1),
+  }).strict(),
+}).strict();
 
 /**
  * Získa používateľské ID z autorizačnej hlavičky alebo session.
  */
 async function authenticateRequest(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<{ userId: string | null; error?: string; status?: number }> {
   const isDev = process.env.NODE_ENV !== "production";
   const authHeader = request.headers.get("authorization");
@@ -70,7 +89,8 @@ async function authenticateRequest(
 
   return {
     userId: null,
-    error: "Neautorizovaný prístup: Chýba platná autorizačná relácia vyšetrovateľa.",
+    error:
+      "Neautorizovaný prístup: Chýba platná autorizačná relácia vyšetrovateľa.",
     status: 401,
   };
 }
@@ -88,7 +108,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!auth.userId) {
       return NextResponse.json(
         { error: auth.error || "Neautorizovaný prístup." },
-        { status: auth.status || 401 }
+        { status: auth.status || 401 },
       );
     }
     const currentUserId = auth.userId;
@@ -103,7 +123,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           error: "Neplatné parametre pre generovanie presigned URL.",
           details: validation.error.issues,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -118,9 +138,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (supabaseUrl && serviceRoleKey && !isDev) {
       try {
-        const { supabaseAdmin } = await import(
-          "@/integrations/supabase/client.server"
-        );
+        const { supabaseAdmin } =
+          await import("@/integrations/supabase/client.server");
         const { data: caseRecord, error: caseError } = await supabaseAdmin
           .from("cases")
           .select("id, user_id")
@@ -130,23 +149,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         if (caseError) {
           console.error(
             `[Vault Presign] Chyba pri overovaní prípadu ${caseId}:`,
-            caseError
+            caseError,
           );
-        } else if (
-          caseRecord &&
-          caseRecord.user_id &&
-          caseRecord.user_id !== currentUserId
-        ) {
-          // Používateľ sa pokúša nahrať dôkaz do spisu iného vyšetrovateľa
           return NextResponse.json(
             {
-              error: `Prístup zamietnutý: Nemáte oprávnenie nahrávať dôkazy do spisu ${caseId}.`,
+              error: "Overenie oprávnenia k spisu zlyhalo; nahratie nebolo povolené.",
             },
-            { status: 403 }
+            { status: 503 },
           );
         }
-      } catch (dbErr) {
-        console.warn("[Vault Presign] DB verification warning:", dbErr);
+        if (!caseRecord || caseRecord.user_id !== currentUserId) {
+          return NextResponse.json(
+            {
+              error: "Prístup zamietnutý: Nemáte oprávnenie nahrávať dôkazy do tohto spisu.",
+            },
+            { status: 403 },
+          );
+        }
+      } catch (dbError: unknown) {
+        console.error("[Vault Presign] DB verification failed:", dbError);
+        return NextResponse.json(
+          { error: "Overenie oprávnenia k spisu zlyhalo; nahratie nebolo povolené." },
+          { status: 503 },
+        );
       }
     }
 
@@ -168,7 +193,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       },
     });
 
-    return NextResponse.json({
+    const response = PresignResponseSchema.parse({
       success: true,
       uploadUrl,
       storageKey,
@@ -177,8 +202,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       expiresInSeconds: 300,
       requiredHeaders: {
         "Content-Type": mimeType,
+        "x-amz-content-sha256": cleanHash,
+        "x-amz-meta-sha256-checksum": cleanHash,
+        "x-amz-meta-uploaded-by": currentUserId,
+        "x-amz-meta-case-id": caseId,
       },
     });
+    return NextResponse.json(response);
   } catch (error: unknown) {
     const message =
       error instanceof Error

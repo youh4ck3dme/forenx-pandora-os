@@ -1,35 +1,37 @@
-export function isElectron() {
-    return typeof window !== 'undefined' && window.electron !== undefined
+import type {
+  DesktopEventChannel,
+  DesktopInvokeChannel,
+  DesktopSendChannel,
+  PandoraDesktopApi,
+} from "./desktop-api";
+
+export class DesktopUnavailableError extends Error {
+  constructor() {
+    super("This feature is available only in the PANDORA desktop application.");
+    this.name = "DesktopUnavailableError";
+  }
+}
+
+export function isElectron(): boolean {
+  return typeof window !== "undefined" && window.pandoraDesktop !== undefined;
+}
+
+function requireDesktop(): PandoraDesktopApi {
+  if (!isElectron()) throw new DesktopUnavailableError();
+  return window.pandoraDesktop!;
 }
 
 export const electron = {
-    send: (channel: string, data: any) => {
-        if (isElectron()) {
-            window.electron.send(channel, data)
-        } else {
-            console.log(`[PANDORA] Electron IPC Mock: ${channel}`, data)
-        }
-    },
-    on: (channel: string, func: (...args: any[]) => void) => {
-        if (isElectron()) {
-            window.electron.on(channel, func)
-        }
-    },
-    invoke: async (channel: string, ...args: any[]) => {
-        if (isElectron()) {
-            return await window.electron.invoke(channel, ...args)
-        }
-        return null
-    }
-}
-
-// Type declaration for window.electron
-declare global {
-    interface Window {
-        electron: {
-            send: (channel: string, data: any) => void
-            on: (channel: string, func: (...args: any[]) => void) => void
-            invoke: (channel: string, ...args: any[]) => Promise<any>
-        }
-    }
-}
+  send(channel: DesktopSendChannel, payload?: unknown): void {
+    requireDesktop().send(channel, payload);
+  },
+  on(channel: DesktopEventChannel, listener: (...args: never[]) => void): void {
+    requireDesktop().on(channel, listener);
+  },
+  off(channel: DesktopEventChannel, listener: (...args: never[]) => void): void {
+    requireDesktop().off(channel, listener);
+  },
+  invoke(channel: DesktopInvokeChannel, payload?: unknown): Promise<unknown> {
+    return requireDesktop().invoke(channel, payload);
+  },
+};

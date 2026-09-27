@@ -1,33 +1,31 @@
 import { z } from "zod";
 
-// ─── 1. BRANDED IDENTIFIERS ───────────────────────────────────────
-declare const BrandSymbol: unique symbol;
-export type Brand<T, TBrand extends string> = T & { readonly [BrandSymbol]: TBrand };
-
-export type CaseId = Brand<string, "CaseId">;
-export type EvidenceId = Brand<string, "EvidenceId">;
-export type Sha256Hash = Brand<string, "Sha256Hash">;
-export type S3StorageKey = Brand<string, "S3StorageKey">;
-
 export const CaseIdSchema = z
   .string()
   .min(1, "Neplatný alebo prázdny CaseId.")
-  .transform((val): CaseId => val as CaseId);
+  .max(128, "CaseId je príliš dlhé.")
+  .regex(/^[A-Za-z0-9_-]+$/, "CaseId obsahuje nepovolené znaky.")
+  .brand<"CaseId">();
+export type CaseId = z.infer<typeof CaseIdSchema>;
 
 export const EvidenceIdSchema = z
   .string()
   .min(1, "Neplatný formát EvidenceId.")
-  .transform((val): EvidenceId => val as EvidenceId);
+  .brand<"EvidenceId">();
+export type EvidenceId = z.infer<typeof EvidenceIdSchema>;
 
 export const Sha256HashSchema = z
   .string()
   .regex(/^[a-f0-9]{64}$/i, "Neplatný 64-znakový SHA-256 hex reťazec.")
-  .transform((val): Sha256Hash => val.toLowerCase() as Sha256Hash);
+  .transform((val) => val.toLowerCase())
+  .brand<"Sha256Hash">();
+export type Sha256Hash = z.infer<typeof Sha256HashSchema>;
 
 export const S3StorageKeySchema = z
   .string()
   .min(5, "Neplatný S3 Storage Key.")
-  .transform((val): S3StorageKey => val as S3StorageKey);
+  .brand<"S3StorageKey">();
+export type S3StorageKey = z.infer<typeof S3StorageKeySchema>;
 
 // ─── 2. DOMÉNOVÉ SCHÉMY DÔKAZOV ──────────────────────────────────
 export const EvidenceTagSchema = z.enum(["zmluva", "vypis", "screenshot", "komunikacia", "ine"]);

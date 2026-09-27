@@ -8,6 +8,7 @@ import {
 } from "@/forensic/core/transactions";
 import {
   roundMoney,
+  moneyToCents,
   sumByCurrency,
   sumMoney,
   sumVolume,
@@ -34,6 +35,11 @@ describe("peňažná aritmetika", () => {
     expect(sumMoney([0.1, 0.2])).toBe(0.3);
     expect(roundMoney(1.005)).toBe(1.01);
     expect(roundMoney(-1.005)).toBe(-1.01);
+  });
+
+  it("prevádza peniaze na celé centy a odmieta neplatné výpočty", () => {
+    expect(moneyToCents(1.005)).toBe(101);
+    expect(() => moneyToCents(Number.NaN)).toThrow("konečné");
   });
 
   it("objem používa absolútne hodnoty (záporná suma = opačný smer)", () => {

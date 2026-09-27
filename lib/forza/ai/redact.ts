@@ -12,7 +12,46 @@ import type { CaseAnalysis, Flag } from "@/forensic";
  * pred odoslaním zobrazuje presný náhľad odosielaných dát.
  */
 
-export const PROMPT_VERSION = "2026.09.1";
+export const PROMPT_VERSION = "2026.09.2";
+
+const PII_PATTERNS: readonly [RegExp, string][] = [
+  [/\b[A-Z]{2}\s?\d{2}(?:\s?[A-Z0-9]{4}){3,7}\b/gi, "[REDACTED_IBAN]"],
+  [/\b\d{6}\s*(?:\/|\|)\s*\d{3,4}\b/g, "[REDACTED_NATIONAL_ID]"],
+  [
+    /\b(?:rodn[ée]?\s*č[íi]slo|r[čc]|id(?:entifikačn[ée]?\s*č[íi]slo)?)\s*[:#]?\s*\d[\d\s/-]{6,18}\b/gi,
+    "[REDACTED_ID]",
+  ],
+  [
+    /\b(?:ul(?:ica)?\.?|n[áa]m(?:estie)?\.?|trieda|cesta)\s+[A-ZÁČĎÉÍĽĹŇÓÔŔŠŤÚÝŽ][\p{L}' -]{1,60}\s+\d{1,4}[A-Za-z]?(?:\/\d{1,4})?\b/giu,
+    "[REDACTED_ADDRESS]",
+  ],
+  [/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[REDACTED_EMAIL]"],
+  [/\b(?:\+?\d{1,3}[\s-]?)?(?:\d{3}[\s-]?){2,4}\d{2,4}\b/g, "[REDACTED_PHONE]"],
+];
+
+/** Redacts common PII before evidence-derived free text reaches an AI provider. */
+export function redactEvidenceText(value: string): string {
+  let redacted = value;
+  for (const [pattern, replacement] of PII_PATTERNS) {
+    redacted = redacted.replace(pattern, replacement);
+  }
+  return redacted;
+}
+
+/** Serializes untrusted case data without permitting it to terminate XML-like prompt delimiters. */
+export function serializeUntrustedAiPayload(payload: unknown): string {
+  return JSON.stringify(payload)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
+}
+
+/** Outcome claims require a documentary citation; unsupported text is not displayable. */
+export function isClearanceOrInnocenceClaim(value: string): boolean {
+  return /\b(?:nevinn\w*|oslobod\w*|zbaven\w*|not\s+guilty|innocen\w*|clear(?:ed|ance)?)\b/iu.test(
+    value,
+  );
+}
 
 export type Pseudonyms = {
   entity: Record<string, string>;
@@ -131,7 +170,7 @@ export function buildAiPayload(
     entities: includeEntities.map((e) => ({
       id: alias(e.id),
       kind: e.kind,
-      role: truncate(e.role, 60),
+      role: truncate(redactEvidenceText(e.role), 60),
       country: e.country,
     })),
     transactions: includeTx.map((t) => ({
@@ -142,7 +181,7 @@ export function buildAiPayload(
       method: t.method,
       from: alias(t.fromId),
       to: alias(t.toId),
-      description: truncate(t.description, 160),
+      description: truncate(redactEvidenceText(t.description), 160),
     })),
     findings: (scope.task === "explain_finding"
       ? flags
@@ -152,7 +191,7 @@ export function buildAiPayload(
     ).map((f) => ({
       ruleId: f.ruleId ?? f.code,
       kind: f.kind ?? "heuristika",
-      condition: f.condition ?? "",
+      condition: redactEvidenceText(f.condition ?? ""),
       severity: f.severity,
       evidence: (f.evidence ?? []).map((e) =>
         e.type === "transaction" ? txAlias(e.id) : alias(e.id),

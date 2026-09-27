@@ -8,6 +8,7 @@ import { Settings2, Type, Move, Palette, Trash2, Layout, Sliders, ChevronDown, S
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../../../lib/utils';
 import { useState } from 'react';
+import { electron, isElectron } from '@/lib/api';
 
 const InputGroup = ({ label, children, delay = 0 }: { label: string, children?: React.ReactNode, delay?: number }) => (
     <motion.div
@@ -68,9 +69,9 @@ export const PropertyPanel = () => {
 
         setIsGenerating(true);
         try {
-            if ((window as any).electron) {
-                const url = await (window as any).electron.invoke('ai:generate-image', { prompt: userPrompt, apiKey: openaiApiKey });
-                if (url) {
+            if (isElectron()) {
+                const url = await electron.invoke('ai:generate-image', { prompt: userPrompt, apiKey: openaiApiKey });
+                if (typeof url === "string") {
                     updateElement(selected.id, { src: url });
                 }
             }
@@ -90,7 +91,7 @@ export const PropertyPanel = () => {
 
         setIsRewriting(true);
         try {
-            if ((window as any).electron) {
+            if (isElectron()) {
                 // Fixed non-streaming helper for quick UI actions
                 const messages = [
                     { role: 'system', content: 'Si profesionálny webový copywriter a marketingový špecialista. Prepíš text tak, aby bol prémiový, pútavý a profesionálny. Odpovedaj IBA upraveným textom bez komentára.' },
@@ -100,21 +101,21 @@ export const PropertyPanel = () => {
                 // Since we don't have a direct non-streaming IPC easily, we use a timeout or specialized logic
                 // For now, using the streaming mechanism but collecting it
                 let text = "";
-                const onChunk = (data: any) => { text += data.chunk; };
+                const onChunk = (data: unknown) => { text += (data as { chunk?: string }).chunk ?? ""; };
 
                 // Register listeners BEFORE sending
                 const completionPromise = new Promise((resolve) => {
                     const onDone = () => {
-                        (window as any).electron.off('ai:chunk', onChunk);
-                        (window as any).electron.off('ai:done', onDone);
+                        electron.off('ai:chunk', onChunk);
+                        electron.off('ai:done', onDone);
                         resolve(text);
                     };
-                    (window as any).electron.on('ai:done', onDone);
+                    electron.on('ai:done', onDone);
                 });
 
-                (window as any).electron.on('ai:chunk', onChunk);
+                electron.on('ai:chunk', onChunk);
 
-                await (window as any).electron.send('ai:chat', { messages, apiKey: openaiApiKey, model: 'gpt-4o' });
+                electron.send('ai:chat', { messages, apiKey: openaiApiKey, model: 'gpt-4o' });
                 await completionPromise;
 
                 if (text) {

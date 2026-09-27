@@ -157,11 +157,11 @@ export const useBrowserStore = create<BrowserState>()(
       addTab: (tab: Tab) => set((state: BrowserState) => {
         if (state.tabs.length >= config.browser.maxTabs) return state
         const newTab = { ...tab, spaceId: state.activeSpace }
-        electron.send('tab:create', { id: newTab.id, url: newTab.url })
+        if (isElectron()) electron.send('tab:create', { id: newTab.id, url: newTab.url })
         return { tabs: [...state.tabs, newTab], activeTabId: newTab.id }
       }),
       closeTab: (id: string) => set((state: BrowserState) => {
-        electron.send('tab:close', { id })
+        if (isElectron()) electron.send('tab:close', { id })
         const tabToClose = state.tabs.find((t: Tab) => t.id === id)
         const newTabs = state.tabs.filter((t: Tab) => t.id !== id)
         const newClosedTabs = tabToClose ? [tabToClose, ...state.closedTabs].slice(0, 10) : state.closedTabs
@@ -179,11 +179,11 @@ export const useBrowserStore = create<BrowserState>()(
         return { tabs: newTabs, activeTabId: newActiveId, closedTabs: newClosedTabs }
       }),
       setActiveTab: (id: string) => {
-        electron.send('tab:switch', { id })
+        if (isElectron()) electron.send('tab:switch', { id })
         set({ activeTabId: id })
       },
       updateTab: (id: string, updates: Partial<Tab>, fromIpc = false) => set((state: BrowserState) => {
-        if (updates.url && !fromIpc) electron.send('tab:update', { id, url: updates.url })
+        if (updates.url && !fromIpc && isElectron()) electron.send('tab:update', { id, url: updates.url })
         return { tabs: state.tabs.map((t: Tab) => t.id === id ? { ...t, ...updates } : t) }
       }),
       toggleSidebar: () => set((state: BrowserState) => ({ sidebarOpen: !state.sidebarOpen })),
@@ -193,7 +193,7 @@ export const useBrowserStore = create<BrowserState>()(
         commandPaletteOpen: open !== undefined ? open : !state.commandPaletteOpen
       })),
       clearAllData: async () => {
-        await electron.invoke('session:clear-data')
+        if (isElectron()) await electron.invoke('session:clear-data')
         await setHistoryIDB([])
         await setBookmarksIDB([])
         set({ history: [], bookmarks: [], wallets: [], tabs: [{ id: Date.now().toString(), title: 'New Tab', url: 'pandora://newtab', lastAccessed: Date.now(), spaceId: 'default' }], activeTabId: Date.now().toString(), closedTabs: [] })
@@ -204,13 +204,15 @@ export const useBrowserStore = create<BrowserState>()(
         if (spaceTabs.length > 0) {
           const sorted = [...spaceTabs].sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))
           const nextTabId = sorted[0].id
-          electron.send('tab:switch', { id: nextTabId })
+          if (isElectron()) electron.send('tab:switch', { id: nextTabId })
           return { activeSpace: space, activeTabId: nextTabId }
         }
         const newTabId = Date.now().toString()
         const newTab = { id: newTabId, title: 'New Tab', url: 'pandora://newtab', lastAccessed: Date.now(), spaceId: space }
-        electron.send('tab:create', { id: newTab.id, url: newTab.url })
-        electron.send('tab:switch', { id: newTabId })
+        if (isElectron()) {
+          electron.send('tab:create', { id: newTab.id, url: newTab.url })
+          electron.send('tab:switch', { id: newTabId })
+        }
         return { activeSpace: space, tabs: [...state.tabs, newTab], activeTabId: newTabId }
       }),
       toggleCopilot: () => set((state: BrowserState) => ({ copilotOpen: !state.copilotOpen })),
@@ -276,9 +278,9 @@ export const useBrowserStore = create<BrowserState>()(
       setActiveWallet: (address: string | null) => set({ activeWallet: address }),
       updateWalletBalance: (address: string, balance: { eth: string; matic: string; ethUsd: string; maticUsd: string; totalUsd: string; lastUpdated: number }) =>
         set((state: BrowserState) => ({ walletBalances: { ...state.walletBalances, [address]: balance } })),
-      loadExtensions: async () => { const extensions = await electron.invoke('extension:list'); set({ extensions }) },
-      installExtension: async (path: string) => { await electron.invoke('extension:load', path); const extensions = await electron.invoke('extension:list'); set({ extensions }) },
-      toggleShield: async (enabled: boolean) => { await electron.invoke('shield:toggle', enabled); set({ shieldEnabled: enabled }) },
+      loadExtensions: async () => { if (!isElectron()) return; const extensions = await electron.invoke('extension:list'); if (Array.isArray(extensions)) set({ extensions: extensions as BrowserState['extensions'] }) },
+      installExtension: async (path: string) => { if (!isElectron()) throw new Error('Extension installation is available only in the desktop application.'); await electron.invoke('extension:load', path); const extensions = await electron.invoke('extension:list'); if (Array.isArray(extensions)) set({ extensions: extensions as BrowserState['extensions'] }) },
+      toggleShield: async (enabled: boolean) => { if (isElectron()) await electron.invoke('shield:toggle', enabled); set({ shieldEnabled: enabled }) },
       incrementBlockedCount: () => set((state: BrowserState) => ({ blockedCount: state.blockedCount + 1 })),
       updateBlockedStats: (category: 'ads' | 'trackers' | 'scripts') => set((state: BrowserState) => {
         const updates: Partial<BrowserState> = { blockedCount: state.blockedCount + 1 }
@@ -291,9 +293,9 @@ export const useBrowserStore = create<BrowserState>()(
       toggleHttpsEverywhere: (enabled: boolean) => set({ httpsEverywhere: enabled }),
       addDownload: (item: any) => set((state: BrowserState) => ({ downloads: [item, ...state.downloads] })),
       updateDownload: (id: string, updates: any) => set((state: BrowserState) => ({ downloads: state.downloads.map(d => d.id === id ? { ...d, ...updates } : d) })),
-      loadPasswords: async () => { const passwords = await electron.invoke('password:get'); if (passwords) set({ passwords }) },
-      addPassword: async (entry: any) => { await electron.invoke('password:save', entry); const passwords = await electron.invoke('password:get'); if (passwords) set({ passwords }) },
-      deletePassword: async (id: string) => { await electron.invoke('password:delete', id); const passwords = await electron.invoke('password:get'); if (passwords) set({ passwords }) },
+      loadPasswords: async () => { if (!isElectron()) return; const passwords = await electron.invoke('password:get'); if (Array.isArray(passwords)) set({ passwords }) },
+      addPassword: async (entry: any) => { if (!isElectron()) throw new Error('Password storage is available only in the desktop application.'); await electron.invoke('password:save', entry); const passwords = await electron.invoke('password:get'); if (Array.isArray(passwords)) set({ passwords }) },
+      deletePassword: async (id: string) => { if (!isElectron()) throw new Error('Password storage is available only in the desktop application.'); await electron.invoke('password:delete', id); const passwords = await electron.invoke('password:get'); if (Array.isArray(passwords)) set({ passwords }) },
       loadHistory: async () => { if (get().historyLoaded) return; try { const history = await getHistoryIDB(); set({ history, historyLoaded: true }) } catch (e) { console.error(e) } },
       addHistoryItem: async (url: string, title: string, fav?: string) => { await addHistoryItemIDB(url, title, fav); const history = await getHistoryIDB(); set({ history }) },
       deleteHistoryItem: async (id: string) => { await deleteHistoryItemIDB(id); set((state) => ({ history: state.history.filter(h => h.id !== id) })) },

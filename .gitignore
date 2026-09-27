@@ -73,6 +73,12 @@ scratch/
 *.sqlite
 *.sqlite3
 *.db
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.indexeddb
+*.localstorage
+*.websql
 *.dump
 
 # Deployment

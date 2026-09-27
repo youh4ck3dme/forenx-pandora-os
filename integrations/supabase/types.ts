@@ -140,6 +140,48 @@ export type Database = {
         };
         Relationships: [];
       };
+      evidence_items: {
+        Row: {
+          id: string;
+          investigator_id: string;
+          case_name: string;
+          file_name: string;
+          file_size: number;
+          mime_type: string;
+          s3_object_key: string;
+          sha256_hash: string;
+          legal_hold: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          investigator_id: string;
+          case_name: string;
+          file_name: string;
+          file_size: number;
+          mime_type: string;
+          s3_object_key: string;
+          sha256_hash: string;
+          legal_hold?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          investigator_id?: string;
+          case_name?: string;
+          file_name?: string;
+          file_size?: number;
+          mime_type?: string;
+          s3_object_key?: string;
+          sha256_hash?: string;
+          legal_hold?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       case_audit_log: {
         Row: {
           action: string;

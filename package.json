@@ -80,7 +80,6 @@
     "idb-keyval": "^6.2.2",
     "jszip": "^3.10.1",
     "mammoth": "^1.12.3",
-    "next-pwa": "^5.6.0",
     "openai": "^6.15.0",
     "pdf-parse": "^2.4.5",
     "pdfjs-dist": "^6.3.289",

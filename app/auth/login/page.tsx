@@ -49,7 +49,9 @@ export default function LoginPage() {
 
           const effectiveRpId =
             process.env.NEXT_PUBLIC_RP_ID ||
-            (window.location.hostname.endsWith("whoiswho.at") ? "whoiswho.at" : window.location.hostname);
+            (window.location.hostname.endsWith("whoiswho.at")
+              ? "whoiswho.at"
+              : window.location.hostname);
 
           const getOptions: PublicKeyCredentialRequestOptions = {
             challenge,
