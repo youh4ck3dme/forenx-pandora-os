@@ -153,14 +153,28 @@ export async function parseSseStream(
   const decoder = new TextDecoder("utf-8", { fatal: false });
   let buffer = "";
 
+  const onAbort = () => {
+    void reader.cancel().catch(() => {});
+  };
+
+  if (signal) {
+    if (signal.aborted) {
+      void reader.cancel().catch(() => {});
+      return err({ kind: "TimeoutError", timeoutMs: 0, message: "Čítanie streamu bolo prerušené klientom." });
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+  }
+
   try {
     while (true) {
       if (signal?.aborted) {
-        await reader.cancel();
         return err({ kind: "TimeoutError", timeoutMs: 0, message: "Čítanie streamu bolo prerušené klientom." });
       }
 
       const { done, value } = await reader.read();
+      if (signal?.aborted) {
+        return err({ kind: "TimeoutError", timeoutMs: 0, message: "Čítanie streamu bolo prerušené klientom." });
+      }
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
@@ -211,11 +225,17 @@ export async function parseSseStream(
 
     return ok(undefined);
   } catch (error: unknown) {
+    if (signal?.aborted) {
+      return err({ kind: "TimeoutError", timeoutMs: 0, message: "Čítanie streamu bolo prerušené klientom." });
+    }
     return err({
       kind: "StreamError",
       message: error instanceof Error ? error.message : "Zlyhanie pri čítaní sieťového streamu.",
     });
   } finally {
+    if (signal) {
+      signal.removeEventListener("abort", onAbort);
+    }
     reader.releaseLock();
   }
 }

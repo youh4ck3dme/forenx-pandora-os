@@ -200,14 +200,28 @@ export async function readSseStream(
   const decoder = new TextDecoder("utf-8", { fatal: false });
   let buffer = "";
 
+  const onAbort = () => {
+    void reader.cancel().catch(() => {});
+  };
+
+  if (signal) {
+    if (signal.aborted) {
+      void reader.cancel().catch(() => {});
+      return err({ kind: "Timeout", message: "Stream bol prerušený klientom.", timeoutMs: 0 });
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+  }
+
   try {
     while (true) {
       if (signal?.aborted) {
-        await reader.cancel();
         return err({ kind: "Timeout", message: "Stream bol prerušený klientom.", timeoutMs: 0 });
       }
 
       const { done, value } = await reader.read();
+      if (signal?.aborted) {
+        return err({ kind: "Timeout", message: "Stream bol prerušený klientom.", timeoutMs: 0 });
+      }
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
