@@ -2,6 +2,10 @@
  * Next.js compatibility shim for @tanstack/react-start.
  * Allows using createServerFn, createMiddleware, useServerFn, and getRequest
  * inside Next.js without pulling in TanStack Start's SSR Vite runtime / node:async_hooks.
+ *
+ * P0: handler sa NIKDY nespúšťa v prehliadači. Klient volá POST /api/fn/<id>
+ * (app/api/fn/[...id]/route.ts) s Bearer tokenom používateľa; middleware aj
+ * handler bežia na serveri so skutočnými hlavičkami requestu.
  */
 import { newTraceId } from "./forza/trace";
 import type { createClient } from "@supabase/supabase-js";
@@ -80,6 +84,12 @@ export function createMiddleware(_options?: { type?: string }): Middleware {
 
 export function getRequest(): { headers: Headers } | undefined {
   if (typeof window !== "undefined") return undefined;
+  // Request aktuálneho volania /api/fn/<id> (AsyncLocalStorage nastavené v
+  // lib/server-fn/request-context.server.ts — shim nesmie importovať node:*).
+  const current = (
+    globalThis as { __pandoraServerFnRequest?: { getStore(): { headers: Headers } | undefined } }
+  ).__pandoraServerFnRequest?.getStore();
+  if (current) return current;
   if (typeof Headers !== "undefined") {
     return { headers: new Headers() };
   }
@@ -93,6 +103,8 @@ export type ValidatorFn<TInput, TOutput> =
 export interface ServerFnCallable<TInput, TOutput> {
   (args?: { data?: TInput } | TInput | void): Promise<TOutput>;
   readonly _isServerFn: true;
+  /** Stabilný identifikátor pre /api/fn/<id> ("modul/export"). */
+  readonly id: string | undefined;
   readonly handler: (args: { data: unknown; context: ServerFnContext }) => Promise<TOutput> | TOutput;
 }
 
@@ -116,22 +128,73 @@ export interface ServerFnBuilder<TInput = unknown, TData = TInput> {
   ): ServerFnCallable<TInput, TOutput>;
 }
 
+export const SERVER_FN_ID_PATTERN = /^[a-z0-9-]+\/[A-Za-z0-9_]+$/;
+
+/** Prehliadač (nie vitest/jsdom): handler sa spúšťa iba na serveri. */
+function mustCallRemotely(): boolean {
+  return typeof window !== "undefined" && process.env.NODE_ENV !== "test";
+}
+
+/** Volanie serverovej funkcie cez /api/fn/<id> s Bearer tokenom používateľa. */
+export async function callServerFnRemote<TOutput>(
+  id: string | undefined,
+  data: unknown,
+  deps: {
+    fetch?: typeof fetch;
+    getToken?: () => Promise<string | null>;
+  } = {},
+): Promise<TOutput> {
+  if (!id || !SERVER_FN_ID_PATTERN.test(id)) {
+    throw new Error("Serverová funkcia nemá platný identifikátor.");
+  }
+  const getToken =
+    deps.getToken ??
+    (async () => (await import("@/lib/forza/access-audit")).getSupabaseSessionToken());
+  const token = await getToken();
+  // trailingSlash: true — bez koncovej lomky by 308 poslal telo (až 240 MB) dvakrát.
+  const response = await (deps.fetch ?? fetch)(`/api/fn/${id}/`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ data: data === undefined ? null : data }),
+  });
+  type Payload = { ok?: boolean; result?: unknown; error?: unknown };
+  let payload: Payload | null = null;
+  try {
+    payload = (await response.json()) as Payload;
+  } catch {
+    payload = null;
+  }
+  if (!response.ok || !payload?.ok) {
+    const message =
+      typeof payload?.error === "string" && payload.error
+        ? payload.error
+        : `Serverová funkcia zlyhala (HTTP ${response.status}).`;
+    throw new Error(message);
+  }
+  return payload.result as TOutput;
+}
+
 function createBuilder<TInput = unknown, TData = TInput>(
   middlewares: Array<Middleware | unknown> = [],
   validator: unknown = null,
+  id: string | undefined = undefined,
 ): ServerFnBuilder<TInput, TData> {
   return {
     middleware(mws) {
-      return createBuilder<TInput, TData>(mws || [], validator);
+      return createBuilder<TInput, TData>(mws || [], validator, id);
     },
     validator<TValInput, TValOutput = TValInput>(val: ValidatorFn<TValInput, TValOutput>) {
-      return createBuilder<TValInput, TValOutput>(middlewares, val);
+      return createBuilder<TValInput, TValOutput>(middlewares, val, id);
     },
     inputValidator<TValInput, TValOutput = TValInput>(val: ValidatorFn<TValInput, TValOutput>) {
-      return createBuilder<TValInput, TValOutput>(middlewares, val);
+      return createBuilder<TValInput, TValOutput>(middlewares, val, id);
     },
     outputValidator<TOut>(_val: unknown) {
-      return createBuilder<TInput, TData>(middlewares, validator);
+      return createBuilder<TInput, TData>(middlewares, validator, id);
     },
     handler<TOutput>(
       handlerFn: (args: { data: TData; context: ServerFnContext }) => Promise<TOutput> | TOutput,
@@ -143,6 +206,10 @@ function createBuilder<TInput = unknown, TData = TInput>(
           "data" in inputArgs
             ? (inputArgs as { data: unknown }).data
             : inputArgs;
+
+        if (mustCallRemotely()) {
+          return callServerFnRemote<TOutput>(id, rawData);
+        }
 
         let validData: unknown = rawData;
         if (validator !== null) {
@@ -199,6 +266,7 @@ function createBuilder<TInput = unknown, TData = TInput>(
 
       const result: ServerFnCallable<TInput, TOutput> = Object.assign(callable, {
         _isServerFn: true as const,
+        id,
         handler: handlerFn as (args: { data: unknown; context: ServerFnContext }) => Promise<TOutput> | TOutput,
       });
 
@@ -207,8 +275,12 @@ function createBuilder<TInput = unknown, TData = TInput>(
   };
 }
 
-export function createServerFn(_options?: { method?: "GET" | "POST" }): ServerFnBuilder<unknown, unknown> {
-  return createBuilder<unknown, unknown>();
+export function createServerFn(options?: {
+  method?: "GET" | "POST";
+  /** "modul/export" — povinné pre volanie z prehliadača (/api/fn/<id>). */
+  id?: string;
+}): ServerFnBuilder<unknown, unknown> {
+  return createBuilder<unknown, unknown>([], null, options?.id);
 }
 
 export function useServerFn<T>(fn: T): T {

@@ -23,7 +23,7 @@ function fail(
 }
 
 /** Vytvorí záznam o importe (stav „pripravený"). Transakcie sa ešte nezapisujú. */
-export const createImport = createServerFn({ method: "POST" })
+export const createImport = createServerFn({ method: "POST", id: "import/createImport" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) =>
     z
@@ -98,7 +98,7 @@ const commitRow = z.object({
 });
 
 /** Atomické potvrdenie: databázová funkcia zapíše všetky riadky, alebo žiadny. */
-export const commitImport = createServerFn({ method: "POST" })
+export const commitImport = createServerFn({ method: "POST", id: "import/commitImport" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) =>
     z
@@ -132,7 +132,7 @@ export const commitImport = createServerFn({ method: "POST" })
   });
 
 /** Označí import ako zlyhaný (napr. po zrušení pred potvrdením). */
-export const failImport = createServerFn({ method: "POST" })
+export const failImport = createServerFn({ method: "POST", id: "import/failImport" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) =>
     z
@@ -156,7 +156,7 @@ export const failImport = createServerFn({ method: "POST" })
  * Uloží originálny súbor do súkromného úložiska — až po informovanom súhlase používateľa.
  * Originál sa nikdy neprepisuje pri neskoršej editácii transakcií.
  */
-export const storeImportOriginal = createServerFn({ method: "POST" })
+export const storeImportOriginal = createServerFn({ method: "POST", id: "import/storeImportOriginal" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) =>
     z
@@ -206,7 +206,7 @@ export const storeImportOriginal = createServerFn({ method: "POST" })
   });
 
 /** Podpísaný odkaz na originál — len pre vlastníka importu. */
-export const getImportOriginalUrl = createServerFn({ method: "POST" })
+export const getImportOriginalUrl = createServerFn({ method: "POST", id: "import/getImportOriginalUrl" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => z.object({ importId: uuid }).parse(input))
   .handler(async ({ data, context }) => {

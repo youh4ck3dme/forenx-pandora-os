@@ -18,7 +18,7 @@ export type MyProfileRow = {
   onboardingCompleted: boolean;
 };
 
-export const getMyProfile = createServerFn({ method: "GET" })
+export const getMyProfile = createServerFn({ method: "GET", id: "profile/getMyProfile" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<MyProfileRow> => {
     const { supabase, userId } = context;
@@ -52,7 +52,7 @@ export const saveProfileSchema = z.object({
   complete: z.boolean().default(true),
 });
 
-export const saveMyProfile = createServerFn({ method: "POST" })
+export const saveMyProfile = createServerFn({ method: "POST", id: "profile/saveMyProfile" })
   .inputValidator((data: unknown) => saveProfileSchema.parse(data))
   .middleware([requireSupabaseAuth])
   .handler(async ({ data, context }) => {
@@ -131,7 +131,7 @@ async function ensureAvatarsBucket(
 }
 
 /** Nahratie avatara cez service role — obíde chýbajúce Storage RLS policies. */
-export const uploadMyAvatar = createServerFn({ method: "POST" })
+export const uploadMyAvatar = createServerFn({ method: "POST", id: "profile/uploadMyAvatar" })
   .inputValidator((data: unknown) => uploadAvatarSchema.parse(data))
   .middleware([requireSupabaseAuth])
   .handler(async ({ data, context }) => {
@@ -170,7 +170,7 @@ export const uploadMyAvatar = createServerFn({ method: "POST" })
     } as const;
   });
 
-export const removeMyAvatarFile = createServerFn({ method: "POST" })
+export const removeMyAvatarFile = createServerFn({ method: "POST", id: "profile/removeMyAvatarFile" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { userId } = context;
