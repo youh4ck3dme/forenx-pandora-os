@@ -100,6 +100,20 @@ describe("Forensic Evidence Vault (Hetzner S3 & Types)", () => {
       }
     });
 
+    it("rejects requests without a form-data body", async () => {
+      const mockReq = {
+        formData: async () => {
+          throw new TypeError("Unsupported content type");
+        },
+      } as unknown as NextRequest;
+
+      const res = await POST(mockReq);
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toMatchObject({
+        error: expect.stringContaining("multipart/form-data"),
+      });
+    });
+
     it("POST /api/vault rejects upload with integrity mismatch (Anti-tampering CWE-345)", async () => {
       const formData = new FormData();
       formData.append("file", new Blob(["tajny obsah spisu"], { type: "application/pdf" }), "zmluva.pdf");

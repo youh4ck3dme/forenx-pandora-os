@@ -101,7 +101,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (unavailable) return unavailable;
 
   try {
-    const formData = await request.formData();
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch {
+      return NextResponse.json(
+        { error: "Požiadavka musí obsahovať multipart/form-data alebo application/x-www-form-urlencoded telo." },
+        { status: 400 },
+      );
+    }
     const file = formData.get("file");
     const rawCaseId = formData.get("caseId");
     const rawClientHash = formData.get("clientSha256");
