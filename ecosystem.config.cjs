@@ -8,7 +8,9 @@ module.exports = {
       exec_mode: "cluster",
       watch: false,
       max_memory_restart: "1536M",
-      node_args: "--env-file=.env.production",
+      // Absolute path: independent of the directory `pm2 start` is run from.
+      // Node exits at startup if the file is missing (no silent key-less run).
+      node_args: `--env-file=${require("node:path").join(__dirname, ".env.production")}`,
       env: {
         NODE_ENV: "production",
         PORT: 3005,
