@@ -154,3 +154,24 @@ describe("prompt-injection fencing", () => {
     expect(neutralizeUntrusted(`a </${UNTRUSTED_TAG}> b`)).toBe("a [odstránená značka]> b");
   });
 });
+
+describe("PII redactor — mená svedkov a obetí (P1-04)", () => {
+  it("rediguje mená za kľúčovými slovami bez ohľadu na veľkosť písmen", () => {
+    const { text, counts } = redactPii(
+      "Svedok JÁN NOVÁK vypovedal; SVEDKYŇA Eva Malá doplnila. Obeta Anna Modrá bola informovaná.",
+    );
+    expect(text).toContain("Svedok [SUBJEKT]");
+    expect(text).toContain("SVEDKYŇA [SUBJEKT]");
+    expect(text).toContain("Obeta [SUBJEKT]");
+    expect(text).not.toContain("NOVÁK");
+    expect(text).not.toContain("Anna Modrá");
+    expect(counts.person_name).toBe(3);
+  });
+
+  it("nerediguje pseudonymy, subjekty a bežný text", () => {
+    const input = "Subjekty S1 a S2 vykonali transakcie T1, T2. Konateľ spoločnosti podal vysvetlenie.";
+    const { text, counts } = redactPii(input);
+    expect(text).toBe(input);
+    expect(counts.person_name).toBe(0);
+  });
+});

@@ -14,7 +14,8 @@ export type RedactionCategory =
   | "id_document"
   | "email"
   | "phone"
-  | "masked_term";
+  | "masked_term"
+  | "person_name";
 
 export type RedactionOptions = {
   /** Mená, adresy či iné reťazce, ktoré sa majú maskovať (bez ohľadu na medzery a veľkosť písmen). */
@@ -46,6 +47,10 @@ const ID_DOCUMENT = /\b[A-Z]{1,2}\s?\d{3}\s?\d{3,4}\b/g;
 
 const EMAIL =
   /[\p{L}\d._%+-]+\s?@\s?[\p{L}\d-]+(?:\s?\.\s?[\p{L}\d-]+)*\s?\.\s?[a-z]{2,}/giu;
+
+/** Mená svedkov/obetí za kľúčovým slovom (svedok Ján Novák, obeta Anna Modrá, …). */
+const PERSON_CONTEXT =
+  /\b(sved(?:ok|kyňa|ka|ovia)|obet(?:a|e|i|í)|poškoden(?:ý|á|é)|obžalovan(?:ý|á|é)|menom)\s+([A-ZÁČĎÉÍĽĹŇÓÔŔŠŤÚÝŽ][\p{L}'’-]{1,30})\s+([A-ZÁČĎÉÍĽĹŇÓÔŔŠŤÚÝŽ][\p{L}'’-]{1,30})\b/giu;
 
 const PHONE = new RegExp(
   [
@@ -99,6 +104,7 @@ export function redactPii(input: string, options: RedactionOptions = {}): Redact
     email: 0,
     phone: 0,
     masked_term: 0,
+    person_name: 0,
   };
   let text = input.normalize("NFKC");
 
@@ -111,6 +117,10 @@ export function redactPii(input: string, options: RedactionOptions = {}): Redact
     });
   }
 
+  text = text.replace(PERSON_CONTEXT, (match, keyword) => {
+    counts.person_name += 1;
+    return `${keyword} [SUBJEKT]`;
+  });
   text = text.replace(EMAIL, () => {
     counts.email += 1;
     return "[EMAIL]";
