@@ -526,10 +526,16 @@ export async function downloadDueDiligencePdf(
     const buffer = await res.arrayBuffer();
 
     // Vypočítame kontrolný súčet ak hlavička chýba, alebo pre overenie
-    const computedSha = crypto
-      .createHash("sha256")
-      .update(Buffer.from(buffer))
-      .digest("hex");
+    let computedSha = "";
+    if (typeof globalThis !== "undefined" && globalThis.crypto?.subtle) {
+      const hashBuffer = await globalThis.crypto.subtle.digest("SHA-256", buffer);
+      computedSha = Array.from(new Uint8Array(hashBuffer))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    } else {
+      const { createHash } = await import("crypto");
+      computedSha = createHash("sha256").update(Buffer.from(buffer)).digest("hex");
+    }
 
     return {
       buffer,

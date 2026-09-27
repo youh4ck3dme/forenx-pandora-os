@@ -203,7 +203,7 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
             <HardDrive className="w-4 h-4" />
             Hetzner S3 Evidence Vault
           </h2>
-          <p className="text-[11px] text-zinc-400 font-mono mt-0.5 truncate max-w-[200px]">
+          <p className="text-[11px] text-zinc-400 font-mono mt-0.5 truncate max-w-50">
             Spis: <span className="text-zinc-200 font-semibold">{effectiveCaseId}</span>
           </p>
         </div>
