@@ -24,7 +24,7 @@ const HEIC_TYPE = /^image\/(heic|heif)(-sequence)?$/i;
 
 /** Zoznam prípon a typov pre výber súborov (vrátane fotiek z iPhonu). */
 export const UPLOAD_ACCEPT =
-  ".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.json,.md,.html,.rtf,.png,.jpg,.jpeg,.webp,.tiff,.heic,.heif,image/*,application/pdf";
+  ".pdf,.doc,.docx,.xlsx,.txt,.csv,.json,.md,.html,.rtf,.png,.jpg,.jpeg,.webp,.tiff,.heic,.heif,image/*,application/pdf";
 
 /** Fotka z iPhonu (HEIC/HEIF) — prehliadače ju väčšinou nevedia dekódovať. */
 export function isHeicFile(file: { name: string; type?: string }): boolean {
