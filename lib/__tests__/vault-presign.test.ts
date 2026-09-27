@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
-import { POST } from "@/app/api/vault/presign/route";
+import { POST } from "../../app/api/vault/presign/route";
 
 describe("Direct-to-S3 Presigned Upload API (/api/vault/presign)", () => {
   const originalEnv = process.env;
