@@ -62,12 +62,12 @@ export async function prepareScannedPdfPages(
     throw new Error("Stránkový OCR je len pre PDF súbory.");
   }
 
-  // Worker z same-origin (Vite ?url) — CSP zakazuje cdn.jsdelivr.net.
+  // Worker z same-origin (bundler URL) — CSP zakazuje cdn.jsdelivr.net.
   const pdfjs = await import("pdfjs-dist");
-  const workerUrl = (
-    await import("pdfjs-dist/build/pdf.worker.min.mjs?url")
-  ).default;
-  pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+    "pdfjs-dist/build/pdf.worker.min.mjs",
+    import.meta.url,
+  ).toString();
 
   const data = new Uint8Array(await file.arrayBuffer());
   const doc = await pdfjs.getDocument({ data }).promise;
@@ -94,7 +94,7 @@ export async function prepareScannedPdfPages(
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas 2D nie je dostupný.");
 
-    await page.render({ canvasContext: ctx, viewport }).promise;
+    await page.render({ canvasContext: ctx, viewport, canvas }).promise;
 
     let quality = JPEG_QUALITY;
     let blob: Blob | null = await new Promise((resolve) =>
