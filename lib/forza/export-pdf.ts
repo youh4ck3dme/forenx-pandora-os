@@ -14,7 +14,7 @@ import {
   partitionAlternativeHypotheses,
   partitionDefenseAttacks,
   partitionEvidenceTraces,
-  partitionInvestigativeAnswers,
+  gatedInvestigativeAnswers,
   partitionLegalParagraphs,
   partitionSuspiciousFlows,
   partitionTimeline,
@@ -327,20 +327,19 @@ export function buildReportHTML(
 
   // Issue #16: odpoveď menuje osoby — bez väzby na overený dôkaz sa nevypíše
   // ani odpoveď, ani mená, ani miera istoty (ani medzi neoverenými tvrdeniami).
-  const answers = partitionInvestigativeAnswers(d, knownEvidence);
-  const questionCards = [...answers.bound, ...answers.unbound]
-    .sort((a, b) => a.questionNumber - b.questionNumber)
-    .map((q) =>
-      answers.bound.includes(q)
+  // Otázka má vždy kanonické znenie — text otázky od modelu sa nevypisuje.
+  const questionCards = gatedInvestigativeAnswers(d, knownEvidence)
+    .map(({ number, question, answer: q, bound }) =>
+      bound
         ? `
     <div class="question-card">
-      <h3>${q.questionNumber}. ${q.question}</h3>
+      <h3>${number}. ${question}</h3>
       <p>${q.answer}</p>
       <p class="question-meta"><strong>Identifikované osoby:</strong> ${q.identifiedPersons.join(", ")} · <strong>Miera istoty:</strong> ${q.confidenceLevel} % · <strong>Zdroj:</strong> <code>${formatSourceRef(q.sourceRef)}</code></p>
     </div>`
         : `
     <div class="question-card">
-      <h3>${q.questionNumber}. ${q.question}</h3>
+      <h3>${number}. ${question}</h3>
       <p class="legal-expl">${NO_BOUND_ANSWER_TEXT}</p>
     </div>`,
     )

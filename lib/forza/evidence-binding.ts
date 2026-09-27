@@ -197,22 +197,39 @@ export function partitionEvidenceTraces(
 }
 
 /**
- * Issue #16: odpovede na 3 vyšetrovacie otázky menujú osoby a mieru istoty.
- * Bez väzby na overený dôkaz sa nesmú exportovať ani odpoveď, ani mená.
+ * Kanonické znenie 3 vyšetrovacích otázok ÚBOK. Text `question` aj
+ * `questionNumber` dodáva model — môžu niesť meno alebo podvrhnutý záver,
+ * preto sa pri zobrazení používa výhradne toto znenie a poradie.
  */
-export function partitionInvestigativeAnswers(
+export const INVESTIGATIVE_QUESTIONS = [
+  { key: "q1_buyer_seller", number: 1, question: "Kto zbrane nakupoval a následne predával alebo odovzdával?" },
+  { key: "q2_planner_coordinator", number: 2, question: "Kto celý plán vymyslel, riadil alebo koordinoval?" },
+  { key: "q3_financier", number: 3, question: "Kto celý plán financoval?" },
+] as const;
+
+export type GatedInvestigativeAnswer = {
+  number: 1 | 2 | 3;
+  /** Kanonická otázka — nikdy text modelu. */
+  question: string;
+  answer: InvestigativeQuestionAnswer;
+  bound: boolean;
+};
+
+/**
+ * Issue #16: odpovede menujú osoby a mieru istoty — bez väzby na overený dôkaz
+ * sa nesmú zobraziť ani odpoveď, ani mená. Vracia ich v kanonickom poradí.
+ */
+export function gatedInvestigativeAnswers(
   dossier: ForensicDossier,
   knownEvidence: ReadonlySet<string>,
-): BoundPartition<InvestigativeQuestionAnswer> {
-  const bound: InvestigativeQuestionAnswer[] = [];
-  const unbound: InvestigativeQuestionAnswer[] = [];
+): GatedInvestigativeAnswer[] {
   const answers = dossier.investigativeAnswers;
-  if (!answers) return { bound, unbound };
-  for (const answer of [answers.q1_buyer_seller, answers.q2_planner_coordinator, answers.q3_financier]) {
-    if (!answer) continue;
-    (isBoundToEvidence(answer.sourceRef, knownEvidence) ? bound : unbound).push(answer);
-  }
-  return { bound, unbound };
+  if (!answers) return [];
+  return INVESTIGATIVE_QUESTIONS.flatMap(({ key, number, question }) => {
+    const answer = answers[key];
+    if (!answer) return [];
+    return [{ number, question, answer, bound: isBoundToEvidence(answer.sourceRef, knownEvidence) }];
+  });
 }
 
 /** Issue #16: záver o financovaní je zistením iba s väzbou na overený dôkaz. */

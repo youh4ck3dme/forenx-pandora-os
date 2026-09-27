@@ -8,7 +8,7 @@ import {
   listBoundFacts,
   partitionAdmissibilityAudit,
   partitionAlternativeHypotheses,
-  partitionInvestigativeAnswers,
+  gatedInvestigativeAnswers,
   partitionLegalParagraphs,
   partitionSuspiciousFlows,
   partitionTimeline,
@@ -443,7 +443,11 @@ describe("remaining free model text is gated by evidence binding (issue #16)", (
     expect(out).not.toContain(`${PERSON} 1`);
     expect(out).not.toContain(`${PERSON} 2`);
     expect(out).toContain(FINANCING);
-    expect(partitionInvestigativeAnswers(d, known).bound.map((q) => q.questionNumber)).toEqual([3]);
+    expect(
+      gatedInvestigativeAnswers(d, known)
+        .filter((q) => q.bound)
+        .map((q) => q.number),
+    ).toEqual([3]);
     expect(isFinancingConclusionBound(d, known)).toBe(true);
     expect(isFinancingConclusionBound(d, NO_VERIFIED_EVIDENCE)).toBe(false);
   });
@@ -466,6 +470,19 @@ describe("remaining free model text is gated by evidence binding (issue #16)", (
     const sectionIV = out.slice(out.indexOf("<h2>IV."), out.indexOf("<h2>V."));
     expect(sectionIV).toContain(NOTE);
     expect(partitionLegalParagraphs(d, known).unbound).toEqual([]);
+  });
+
+  it("an unbound answer never exports the model-supplied question text", () => {
+    const d = gatedDossier();
+    const q1 = d.investigativeAnswers!.q1_buyer_seller;
+    q1.question = `${PERSON} je vinný`;
+    q1.questionNumber = 3;
+    const out = buildReportHTML(d, known);
+    expect(out).not.toContain(PERSON);
+    const gated = gatedInvestigativeAnswers(d, known);
+    expect(gated.map((q) => q.number)).toEqual([1, 2, 3]);
+    expect(gated[0]!.question).toBe("Kto zbrane nakupoval a následne predával alebo odovzdával?");
+    expect(out).toContain("1. Kto zbrane nakupoval a následne predával alebo odovzdával?");
   });
 
   it("gated fields stay escaped", () => {
