@@ -1,0 +1,67 @@
+version: '3.8'
+
+# ==============================================================================
+# PΛND0RΛ Forensic OS — Production Docker Compose Orchestration
+# Architecture:
+#   Public Internet (80/443) -> Nginx Reverse Proxy (TLS + 250MB S3 limit)
+#   Nginx -> Next.js Standalone Runner (127.0.0.1:3005, loopback isolation)
+# ==============================================================================
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.production
+    container_name: pandora-forensic-app
+    restart: always
+    ports:
+      # Bound strictly to localhost/loopback to prevent direct exposure without Nginx
+      - "127.0.0.1:3005:3005"
+    env_file:
+      - .env.production
+    environment:
+      - NODE_ENV=production
+      - PORT=3005
+      - HOSTNAME=0.0.0.0
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3005/api/health/observe || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - pandora-internal
+
+  nginx:
+    image: nginx:alpine
+    container_name: pandora-forensic-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Mount production reference reverse proxy config
+      - ./deploy/vps/nginx-pandora.conf:/etc/nginx/conf.d/default.conf:ro
+      # Mount host Let's Encrypt certificates
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      # ACME challenge webroot for automated renewals
+      - /var/www/letsencrypt:/var/www/letsencrypt:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    networks:
+      - pandora-internal
+
+networks:
+  pandora-internal:
+    driver: bridge

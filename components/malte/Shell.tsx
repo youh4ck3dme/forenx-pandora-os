@@ -17,7 +17,10 @@ import { navItems, navGroups } from "@/components/malte/nav";
 import { severityLabel } from "@/lib/forza/forensic";
 import { useActiveCase } from "@/lib/hooks/useActiveCase";
 import { BRAND } from "@/config/brand";
-import { OFFLINE_AI_MESSAGE, useOnlineStatus } from "@/lib/hooks/useOnlineStatus";
+import {
+  OFFLINE_AI_MESSAGE,
+  useOnlineStatus,
+} from "@/lib/hooks/useOnlineStatus";
 
 function DesktopSidebar() {
   const pathname = usePathname();
@@ -64,10 +67,15 @@ function DesktopSidebar() {
           title="Prejsť späť do PΛND0RΛ Browser"
         >
           <span className="flex items-center gap-2">
-            <Globe size={14} className="text-blue-400 group-hover:rotate-12 transition-transform" />
+            <Globe
+              size={14}
+              className="text-blue-400 group-hover:rotate-12 transition-transform"
+            />
             <span>PΛND0RΛ Browser</span>
           </span>
-          <span className="text-[10px] text-blue-400/70 font-mono">Prejsť →</span>
+          <span className="text-[10px] text-blue-400/70 font-mono">
+            Prejsť →
+          </span>
         </Link>
       </div>
 
@@ -102,20 +110,29 @@ function DesktopSidebar() {
       <nav className="mt-5 flex-1 space-y-1 overflow-y-auto">
         {navGroups.map((group) => (
           <div key={group.title} className="pb-2">
-            <p className="px-3 pt-4 pb-1 text-label">{group.title}</p>
+            <p className="px-3 pt-4 pb-1 text-[11px] font-extrabold uppercase tracking-wider text-zinc-300">
+              {group.title}
+            </p>
             {group.items.map(({ to, label, icon: Icon }) => (
               <Link
                 key={to}
                 href={to}
                 className={cn(
-                  "flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground",
-                  pathname === to && "bg-accent text-accent-foreground font-semibold"
+                  "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/10 hover:text-white",
+                  pathname === to &&
+                    "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 shadow-xs",
                 )}
               >
-                <Icon className="h-4 w-4" aria-hidden />
+                <Icon
+                  className={cn(
+                    "h-4 w-4 shrink-0",
+                    pathname === to ? "text-amber-400" : "text-zinc-300",
+                  )}
+                  aria-hidden
+                />
                 {label}
                 {to === "/forza/prehlad" && criticalCount > 0 ? (
-                  <span className="ml-auto rounded-full bg-risk-high px-1.5 text-[10px] font-bold text-risk-high-foreground tnum">
+                  <span className="ml-auto rounded-full bg-red-500/25 border border-red-500/50 px-1.5 text-[10px] font-black text-red-200 tnum">
                     {criticalCount}
                   </span>
                 ) : null}
@@ -125,7 +142,7 @@ function DesktopSidebar() {
         ))}
       </nav>
 
-      <p className="px-3 pt-4 text-[10px] text-muted-foreground">
+      <p className="px-3 pt-4 text-xs font-medium text-zinc-400">
         {BRAND.name} v1.0 • vaše prípady sú súkromné
       </p>
     </aside>
@@ -257,7 +274,7 @@ export function BottomNav() {
               href={to}
               className={cn(
                 "group relative flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground",
-                pathname === to && "text-foreground! font-semibold"
+                pathname === to && "text-foreground! font-semibold",
               )}
             >
               <span className="relative">
@@ -276,7 +293,7 @@ export function BottomNav() {
                 data-ind
                 className={cn(
                   "absolute -top-2.5 h-1 w-8 rounded-full bg-foreground transition-opacity duration-300",
-                  pathname === to ? "opacity-100" : "opacity-0"
+                  pathname === to ? "opacity-100" : "opacity-0",
                 )}
               />
             </Link>
@@ -314,7 +331,7 @@ export function Card({
       id={id}
       {...rest}
       className={cn(
-        "rounded-lg border border-border/80 liquid-glass-card p-4 shadow-card transition-all duration-200",
+        "rounded-xl border border-white/20 bg-black/85 backdrop-blur-md liquid-glass-card p-4 shadow-card transition-all duration-200 text-white",
         onClick &&
           "cursor-pointer hover:shadow-elevated hover:border-primary/40",
         className,
@@ -341,12 +358,16 @@ export function Card({
 export function SectionTitle({
   children,
   action,
+  className,
 }: {
   children?: ReactNode;
   action?: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="flex items-center justify-between px-1 pt-1">
+    <div
+      className={cn("flex items-center justify-between px-1 pt-1", className)}
+    >
       <h2 className="text-sm font-semibold tracking-tight text-foreground">
         {children}
       </h2>

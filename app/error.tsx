@@ -3,6 +3,7 @@
 import { useEffect } from "react"
 import { AlertTriangle, RefreshCw } from "lucide-react"
 import { logger } from "@/lib/utils"
+import { reportClientError } from "@/components/forza/ObservabilityReporter"
 
 export default function Error({
   error,
@@ -13,6 +14,11 @@ export default function Error({
 }) {
   useEffect(() => {
     logger.error("Root error boundary caught error", error)
+    reportClientError({
+      message: `Boundary: ${error.message}`,
+      stack: error.stack,
+      route: typeof window !== "undefined" ? window.location.pathname : undefined,
+    })
   }, [error])
 
   return (

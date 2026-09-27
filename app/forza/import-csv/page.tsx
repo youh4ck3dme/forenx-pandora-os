@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import {
   CheckCircle2,
   FileUp,
@@ -41,7 +42,10 @@ import {
   type BankParseResult,
 } from "@/lib/forza/csv/bank-detector";
 import { parseBankCsvOffThread } from "@/lib/forza/csv-worker-client";
-import { IMPORT_MAX_BYTES, IMPORT_MAX_ROWS } from "@/lib/forza/import.functions";
+import {
+  IMPORT_MAX_BYTES,
+  IMPORT_MAX_ROWS,
+} from "@/lib/forza/import.functions";
 
 export default function ImportCsvPage() {
   return <CsvImportScreen />;
@@ -74,10 +78,7 @@ function CsvImportScreen() {
   const [isDragging, setIsDragging] = useState(false);
 
   // Large-Data: ťažké parsovanie beží mimo UI vlákna (worker/chunked).
-  const processCsvText = async (
-    text: string,
-    forcedDelim?: Delimiter,
-  ) => {
+  const processCsvText = async (text: string, forcedDelim?: Delimiter) => {
     setIsProcessing(true);
     const delim = forcedDelim || detectDelimiter(text).value || ";";
     setDelimiter(delim);
@@ -235,6 +236,15 @@ function CsvImportScreen() {
           <EmptyState
             title="Najprv vyberte alebo vytvorte prípad"
             detail="Transakcie z CSV súboru sa priradia k aktívnemu prípadu."
+            action={
+              <Button
+                asChild
+                size="sm"
+                className="bg-amber-500 hover:bg-amber-400 text-black font-bold"
+              >
+                <Link href="/forza/pripady">Vybrať alebo vytvoriť prípad</Link>
+              </Button>
+            }
           />
         </Screen>
         <BottomNav />
@@ -335,7 +345,7 @@ function CsvImportScreen() {
 
               {/* 1-Click Import tlačidlo */}
               {validCount > 0 && (
-                <div className="rounded-xl border border-primary/40 bg-gradient-to-br from-primary/10 to-primary/5 p-4 space-y-3 shadow-inner">
+                <div className="rounded-xl border border-primary/40 bg-linear-to-br from-primary/10 to-primary/5 p-4 space-y-3 shadow-inner">
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1.5 font-medium text-foreground">
                       <Sparkles className="h-4 w-4 text-primary" />
@@ -372,7 +382,9 @@ function CsvImportScreen() {
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span className="font-medium">Náhľad rozpoznaných dát</span>
                     <span>
-                      Zobrazené prvé {Math.min(3, bankParseResult.transactions.length)} z {bankParseResult.validCount}
+                      Zobrazené prvé{" "}
+                      {Math.min(3, bankParseResult.transactions.length)} z{" "}
+                      {bankParseResult.validCount}
                     </span>
                   </div>
                   <div className="divide-y divide-border/40 rounded-lg border border-border/60 bg-card/40 text-xs overflow-hidden">
@@ -383,7 +395,9 @@ function CsvImportScreen() {
                       >
                         <div className="min-w-0">
                           <p className="font-semibold text-foreground truncate">
-                            {tx.counterpartyName || tx.counterparty || "Partner"}
+                            {tx.counterpartyName ||
+                              tx.counterparty ||
+                              "Partner"}
                           </p>
                           <p className="text-[10px] text-muted-foreground truncate">
                             {tx.date} • {tx.description || "Bez popisu"}

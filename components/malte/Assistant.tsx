@@ -223,7 +223,7 @@ export function Assistant() {
       try {
         const res = await loadQuarantine({ data: { names } });
         if (res && res.files?.length) {
-          const files = res.files.map((f: any) =>
+          const files = res.files.map((f: { fileName: string; mime: string; base64: string }) =>
             quarantineBase64ToFile(f.fileName, f.mime, f.base64),
           );
           setBulkFiles((prev) => [...prev, ...files]);
@@ -305,7 +305,24 @@ export function Assistant() {
         };
         const results: FileExtractRow[] = [];
         const perFileErrors: Record<string, string> = {};
-        const extractOne = extractBulkTextFn;
+        const extractOne = async (payload: {
+          fileName: string;
+          fileBase64?: string;
+          textContent?: string;
+          consentVersion: string;
+        }) =>
+          extractBulkTextFn({
+            data: {
+              files: [
+                {
+                  fileName: payload.fileName,
+                  ...(payload.fileBase64 ? { fileBase64: payload.fileBase64 } : {}),
+                  ...(payload.textContent ? { textContent: payload.textContent } : {}),
+                },
+              ],
+              consentVersion: payload.consentVersion,
+            },
+          });
 
         for (const file of filesToProcess) {
           const isPdf = file.name.toLowerCase().endsWith(".pdf");

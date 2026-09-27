@@ -99,15 +99,24 @@ export async function registerEvidence(
   const existing = await deps.findByKey(expectedKey);
   if (existing) return { ok: true, created: false, row: existing };
 
-  const row = await deps.insert({
-    investigator_id: userId,
-    case_name: owner.name,
-    file_name: input.fileName,
-    file_size: input.fileSizeBytes,
-    mime_type: input.mimeType,
-    s3_object_key: expectedKey,
-    sha256_hash: sha,
-  });
+  let row;
+  try {
+    row = await deps.insert({
+      investigator_id: userId,
+      case_name: owner.name,
+      file_name: input.fileName,
+      file_size: input.fileSizeBytes,
+      mime_type: input.mimeType,
+      s3_object_key: expectedKey,
+      sha256_hash: sha,
+    });
+  } catch (error) {
+    // P0-03: konkurenčný commit toho istého objektu (unique index na
+    // s3_object_key) — druhý zápis je idempotentný, vráti existujúci riadok.
+    const raced = await deps.findByKey(expectedKey);
+    if (raced) return { ok: true, created: false, row: raced };
+    throw error;
+  }
   return { ok: true, created: true, row };
 }
 

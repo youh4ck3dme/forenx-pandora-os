@@ -1,13 +1,16 @@
 import { Perf } from "r3f-perf";
 import { Effects } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
-import { useControls } from "leva";
+import { Leva, useControls } from "leva";
 import { Particles } from "./particles";
 import { VignetteShader } from "./shaders/vignetteShader";
 import { getGPUInfo } from "@/lib/utils";
 
 // Get GPU tier for dynamic particle count
-const gpuInfo = typeof window !== 'undefined' ? getGPUInfo() : { particleSize: 256, tier: 2, description: 'SSR' }
+const gpuInfo =
+  typeof window !== "undefined"
+    ? getGPUInfo()
+    : { particleSize: 256, tier: 2, description: "SSR" };
 
 export const GL = ({ hovering }: { hovering: boolean }) => {
   const {
@@ -47,7 +50,8 @@ export const GL = ({ hovering }: { hovering: boolean }) => {
     manualTime: { value: 0, min: 0, max: 50, step: 0.01 },
   });
   return (
-    <div id="webgl">
+    <div id="webgl" className="w-full h-full relative">
+      <Leva collapsed hidden={process.env.NODE_ENV === "production"} />
       <Canvas
         dpr={[1, 1.5]}
         camera={{

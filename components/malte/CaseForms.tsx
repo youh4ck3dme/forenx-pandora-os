@@ -300,6 +300,8 @@ export function TransactionForm({
                   fromId,
                   toId,
                   payerId: payerId || null,
+                  originCountry: initial?.originCountry ?? "SK",
+                  destinationCountry: initial?.destinationCountry ?? "SK",
                   description,
                 },
               }),

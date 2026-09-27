@@ -20,7 +20,7 @@ export const GlobeCanvas = ({
         height: "100%",
         aspectRatio: "1",
         maxHeight: "100vh",
-        zIndex: 10,
+        zIndex: 0,
         ...style,
       }}
     >

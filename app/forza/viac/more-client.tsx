@@ -56,17 +56,17 @@ export default function More() {
 
         {navGroups.map((group) => (
           <div key={group.title} className="space-y-1.5">
-            <SectionTitle>{group.title}</SectionTitle>
-            <Card className="divide-y divide-border p-0">
+            <SectionTitle className="text-zinc-200 font-bold">{group.title}</SectionTitle>
+            <Card className="divide-y divide-white/10 p-0 bg-black/85 border-white/20">
               {group.items.map(({ to, label, icon: Icon }) => (
                 <Link
                   key={to}
                   href={to}
-                  className="flex items-center gap-3 p-3.5 text-xs font-semibold text-foreground hover:bg-accent transition-colors"
+                  className="flex items-center gap-3 p-3.5 text-xs font-semibold text-zinc-100 hover:bg-white/10 transition-colors"
                 >
-                  <Icon className="h-4 w-4 text-muted-foreground" aria-hidden />
+                  <Icon className="h-4 w-4 text-zinc-300" aria-hidden />
                   <span>{label}</span>
-                  <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground/60" />
+                  <ChevronRight className="ml-auto h-4 w-4 text-zinc-400" />
                 </Link>
               ))}
             </Card>

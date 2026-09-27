@@ -18,13 +18,20 @@ export class FaviconService {
             const parsed = new URL(url);
             const domain = parsed.hostname;
 
-            // Don't query Google S2 favicon service for local domains (avoids 404 from t3.gstatic.com)
+            // Don't query Google S2 favicon service for local domains or IP addresses (avoids 404 from t3.gstatic.com)
+            const isIp =
+                /^(\d{1,3}\.){3}\d{1,3}$/.test(domain) ||
+                domain.includes(':') ||
+                domain.endsWith('.local') ||
+                domain.endsWith('.internal');
+
             if (
                 domain === 'localhost' ||
                 domain === '127.0.0.1' ||
                 domain === '0.0.0.0' ||
                 domain === '[::1]' ||
-                !domain.includes('.')
+                !domain.includes('.') ||
+                isIp
             ) {
                 return '';
             }

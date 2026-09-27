@@ -5,6 +5,8 @@ import {
   normalizeAmountToCents,
   normalizeDate,
   parseBankCsv,
+  registerBankProfile,
+  bankRegistry,
 } from "../csv/bank-detector";
 
 describe("Bank CSV Auto-Mapping Engine (GAP 11)", () => {
@@ -224,6 +226,61 @@ describe("Bank CSV Auto-Mapping Engine (GAP 11)", () => {
       expect(result.validCount).toBe(2);
       expect(result.transactions[0]?.amountCents).toBe(-8990);
       expect(result.transactions[1]?.amountCents).toBe(125050);
+    });
+  });
+
+  describe("4. Strategy Pattern a dynamický register profilov bánk", () => {
+    it("umožňuje zaregistrovať novú banku (napr. Prima banka) bez zmeny existujúcich profilov", () => {
+      registerBankProfile({
+        id: "prima",
+        name: "Prima banka Slovensko",
+        country: "SK",
+        defaultDelimiter: ";",
+        defaultDecimalSeparator: ",",
+        defaultDateFormat: "DD.MM.YYYY",
+        defaultCurrency: "EUR",
+        signatures: [
+          {
+            field: "date",
+            name: "Dátum transakcie",
+            isCore: true,
+            matches: (h) => h === "datum transakcie prima",
+          },
+          {
+            field: "amount",
+            name: "Objem transakcie",
+            isCore: true,
+            matches: (h) => h === "objem transakcie prima",
+          },
+          {
+            field: "counterparty",
+            name: "Účet príjemcu",
+            isCore: true,
+            matches: (h) => h === "ucet prijemcu prima",
+          },
+          {
+            field: "description",
+            name: "Dôvod platby",
+            isCore: true,
+            matches: (h) => h === "dovod platby prima",
+          },
+        ],
+      });
+
+      const headers = [
+        "datum transakcie prima",
+        "objem transakcie prima",
+        "ucet prijemcu prima",
+        "dovod platby prima",
+      ];
+      const result = detectBankFormat(headers);
+      expect(result).not.toBeNull();
+      expect(result?.bankId).toBe("prima");
+      expect(result?.bankName).toBe("Prima banka Slovensko");
+      expect(result?.confidence).toBe(100);
+
+      // Cleanup
+      bankRegistry.reset();
     });
   });
 });

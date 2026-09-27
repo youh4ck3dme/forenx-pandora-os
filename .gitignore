@@ -89,3 +89,4 @@ scratch/
 !/android/app/
 /ios/
 !/ios/App/
+.mcp.json

@@ -35,10 +35,17 @@ function imageResponse(): Response {
   );
 }
 
-function sentBody(fetchMock: ReturnType<typeof vi.fn>): any {
+interface SentBody {
+  messages: Array<{ role: string; content: string }>;
+  prompt?: string;
+  contents?: Array<{ parts: Array<{ text: string }> }>;
+  [key: string]: unknown;
+}
+
+function sentBody(fetchMock: ReturnType<typeof vi.fn>): SentBody {
   const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
   expect(init?.body).toBeTruthy();
-  return JSON.parse(String(init?.body));
+  return JSON.parse(String(init?.body)) as SentBody;
 }
 
 beforeEach(() => {
@@ -67,12 +74,13 @@ describe("GDPR brána — redakcia PII pred odoslaním na externé API (P1-04)",
     const userMessage = body.messages.find(
       (m: { role: string }) => m.role === "user",
     );
-    expect(userMessage.content).toContain("[RODNÉ_ČÍSLO]");
-    expect(userMessage.content).toContain("[IBAN]");
-    expect(userMessage.content).toContain("Svedok [SUBJEKT]");
-    expect(userMessage.content).not.toContain("800101");
-    expect(userMessage.content).not.toContain("SK3112000000198742637541");
-    expect(userMessage.content).not.toContain("Ján Novák");
+    expect(userMessage).toBeDefined();
+    expect(userMessage?.content).toContain("[RODNÉ_ČÍSLO]");
+    expect(userMessage?.content).toContain("[IBAN]");
+    expect(userMessage?.content).toContain("Svedok [SUBJEKT]");
+    expect(userMessage?.content).not.toContain("800101");
+    expect(userMessage?.content).not.toContain("SK3112000000198742637541");
+    expect(userMessage?.content).not.toContain("Ján Novák");
   });
 
   it("mistral-client: systémová správa sa nerediguje", async () => {
@@ -124,10 +132,11 @@ describe("GDPR brána — redakcia PII pred odoslaním na externé API (P1-04)",
     const userMessage = body.messages.find(
       (m: { role: string }) => m.role === "user",
     );
-    expect(userMessage.content).toContain("[RODNÉ_ČÍSLO]");
-    expect(userMessage.content).toContain("[IBAN]");
-    expect(userMessage.content).not.toContain("800101");
-    expect(userMessage.content).not.toContain("Ján Novák");
+    expect(userMessage).toBeDefined();
+    expect(userMessage?.content).toContain("[RODNÉ_ČÍSLO]");
+    expect(userMessage?.content).toContain("[IBAN]");
+    expect(userMessage?.content).not.toContain("800101");
+    expect(userMessage?.content).not.toContain("Ján Novák");
   });
 
   it("ai-service (Gemini cesta): obsah je redigovaný pred fetch", async () => {
@@ -145,7 +154,7 @@ describe("GDPR brána — redakcia PII pred odoslaním na externé API (P1-04)",
       "generativelanguage.googleapis.com",
     );
     const body = sentBody(fetchMock);
-    const content = body.contents[0].parts[0].text;
+    const content = body.contents?.[0]?.parts[0]?.text;
     expect(content).toContain("obeta [SUBJEKT]");
     expect(content).toContain("[TELEFÓN]");
     expect(content).not.toContain("Anna Modrá");

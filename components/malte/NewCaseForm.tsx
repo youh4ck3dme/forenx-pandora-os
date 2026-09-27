@@ -9,7 +9,7 @@ import { useActiveCase } from "@/lib/hooks/useActiveCase";
 import { createCase } from "@/lib/forza/case-data";
 
 const inputClass =
-  "h-11 w-full rounded-xl border border-border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring";
+  "h-11 w-full rounded-xl border border-white/20 bg-black/60 backdrop-blur-md px-3.5 text-sm text-white placeholder:text-neutral-400 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/25";
 
 /**
  * Jediný formulár na založenie prípadu (používa ho obrazovka Prípady aj Sandbox).
@@ -67,12 +67,16 @@ export function NewCaseForm({
       }
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Prípad sa nepodarilo vytvoriť.";
+        error instanceof Error
+          ? error.message
+          : "Prípad sa nepodarilo vytvoriť.";
       toast.error(message, {
         action: {
           label: "Skúsiť znova",
           onClick: () =>
-            void handleSubmit({ preventDefault: () => undefined } as React.FormEvent),
+            void handleSubmit({
+              preventDefault: () => undefined,
+            } as React.FormEvent),
         },
       });
     } finally {
@@ -89,7 +93,9 @@ export function NewCaseForm({
         placeholder="Názov prípadu"
         className={inputClass}
         value={name}
-        onChange={(event: React.ChangeEvent<HTMLInputElement>) => setName(event.target.value)}
+        onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+          setName(event.target.value)
+        }
       />
       {withSubtitle ? (
         <input
@@ -97,11 +103,15 @@ export function NewCaseForm({
           placeholder="Krátky popis (nepovinné)"
           className={inputClass}
           value={subtitle}
-          onChange={(event: React.ChangeEvent<HTMLInputElement>) => setSubtitle(event.target.value)}
+          onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+            setSubtitle(event.target.value)
+          }
         />
       ) : null}
       <Button type="submit" className="min-h-11 w-full" disabled={busy}>
-        {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden /> : null}
+        {busy ? (
+          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden />
+        ) : null}
         {busy ? "Vytváram…" : submitLabel}
       </Button>
     </form>
