@@ -4,6 +4,7 @@ import {
   NO_VERIFIED_EVIDENCE,
   isBoundToEvidence,
   isValidEvidenceReference,
+  listBoundFacts,
   partitionAdmissibilityAudit,
   partitionAlternativeHypotheses,
   partitionSuspiciousFlows,
@@ -11,6 +12,7 @@ import {
   verifiedEvidenceIds,
 } from "../evidence-binding";
 import { buildReportHTML, escapeHtml } from "../export-pdf";
+import { NO_BOUND_FACTS_TEXT, buildJudgeClipboardText } from "../judge-text";
 import type { ForensicDossier, TimelineEvent } from "../types";
 
 /** Hash-overený dôkaz vo WORM ledgeri (evidence_items.id). */
@@ -232,6 +234,135 @@ describe("export gate", () => {
     const out = buildReportHTML(d, known);
     expect(out).toContain("Alternatívne hypotézy viazané na dôkazy");
     expect(out).toContain("Audit procesnej prípustnosti (§ 119 TP)");
+  });
+});
+
+describe("numbered conclusions are built only from bound claims (issue #13)", () => {
+  const INJECTED = "NARATIV_NEOVERENA_HYPOTEZA";
+  const d = dossierWith([boundEvent, unboundEvent]);
+  d.judgeReadyText = {
+    skutkovyStav: `${INJECTED} skutok`,
+    vyporiadanie: `${INJECTED} obhajoba`,
+    vedecke: `${INJECTED} stopy`,
+  };
+  const out = buildReportHTML(d, known);
+  const conclusionsStart = out.indexOf("<h2>I. Zistený skutkový stav");
+  const conclusions = out.slice(conclusionsStart);
+
+  it("never renders the model narrative inside sections I.–III.", () => {
+    expect(conclusionsStart).toBeGreaterThan(-1);
+    expect(conclusions).not.toContain(INJECTED);
+  });
+
+  it("keeps the narrative only as an explicitly unverified draft before the conclusions", () => {
+    const draftStart = out.indexOf("<h2>AI návrh textu odôvodnenia (neoverený");
+    expect(draftStart).toBeGreaterThan(-1);
+    expect(draftStart).toBeLessThan(conclusionsStart);
+    const draft = out.slice(draftStart, conclusionsStart);
+    expect(draft).toContain(`${INJECTED} skutok`);
+    expect(draft).toContain(`${INJECTED} obhajoba`);
+    expect(draft).toContain(`${INJECTED} stopy`);
+  });
+
+  it("section I lists bound events and flows with sources, never unbound ones", () => {
+    const sectionI = conclusions.slice(0, conclusions.indexOf("<h2>II."));
+    expect(sectionI).toContain("Zadržanie hotovosti pri kontrole");
+    expect(sectionI).toContain("Vklad hotovosti");
+    expect(sectionI).not.toContain("UTOK_BEZ_OPORY_V_EVENT");
+    expect(sectionI).not.toContain("Prevod bez dokladu");
+  });
+
+  it("without a verified ledger section I states that no fact can be established", () => {
+    const failClosed = buildReportHTML(d);
+    const sectionI = failClosed.slice(
+      failClosed.indexOf("<h2>I. Zistený skutkový stav"),
+      failClosed.indexOf("<h2>II."),
+    );
+    expect(sectionI).toContain("skutkový stav nemožno z AI analýzy uviesť");
+    expect(sectionI).not.toContain("Zadržanie hotovosti pri kontrole");
+    expect(sectionI).not.toContain(INJECTED);
+  });
+
+  it("sections II and III hold only bound defense attacks and traces; unbound ones are unverified claims", () => {
+    const g = dossierWith([boundEvent]);
+    const boundRef = { documentId: "zapisnica.pdf", evidenceId: VERIFIED, page: 4 };
+    g.defenseAttack.attacks = [
+      { id: "DA-1", defenseClaim: "OBHAJOBA_VIAZANA", risk: "VYSOKÉ", counterStrike: "Protiúder", evidenceGap: "—", sourceRef: boundRef },
+      { id: "DA-2", defenseClaim: "OBHAJOBA_NEVIAZANA", risk: "KRITICKÉ", counterStrike: "PROTIUDER_BEZ_OPORY", evidenceGap: "—" },
+    ];
+    g.evidenceStrength.traces = [
+      { id: "T-1", name: "STOPA_VIAZANA", lr: "10^6", strength: "Silná", light: "green", paragraph: "§ 119", sourceRef: boundRef },
+      { id: "T-2", name: "STOPA_NEVIAZANA", lr: "10^9", strength: "Nepriestrelné", light: "green", paragraph: "§ 119" },
+    ];
+    const html = buildReportHTML(g, known);
+    const sectionII = html.slice(html.indexOf("<h2>II."), html.indexOf("<h2>III."));
+    const sectionIII = html.slice(html.indexOf("<h2>III."), html.indexOf("<h2>IV."));
+    expect(sectionII).toContain("OBHAJOBA_VIAZANA");
+    expect(sectionII).not.toContain("OBHAJOBA_NEVIAZANA");
+    expect(sectionIII).toContain("STOPA_VIAZANA");
+    expect(sectionIII).not.toContain("STOPA_NEVIAZANA");
+
+    const unverifiedStart = html.indexOf("<h2>Neoverené tvrdenia (nie sú skutkom)</h2>");
+    const unverified = html.slice(unverifiedStart, html.indexOf("<h2>I. Zistený skutkový stav"));
+    expect(unverified).toContain("OBHAJOBA_NEVIAZANA");
+    expect(unverified).toContain("PROTIUDER_BEZ_OPORY");
+    expect(unverified).toContain("STOPA_NEVIAZANA");
+  });
+
+  it("without a verified ledger sections II and III state that nothing is bound", () => {
+    const html = buildReportHTML(d);
+    const sectionII = html.slice(html.indexOf("<h2>II."), html.indexOf("<h2>III."));
+    const sectionIII = html.slice(html.indexOf("<h2>III."), html.indexOf("<h2>IV."));
+    expect(sectionII).toContain("Žiadny bod obhajoby nie je viazaný na hash-overený dôkaz");
+    expect(sectionIII).toContain("Žiadna stopa nie je viazaná na hash-overený dôkaz");
+  });
+
+  it("omits the draft section when the model produced no narrative", () => {
+    const empty = dossierWith([boundEvent]);
+    empty.judgeReadyText = { skutkovyStav: "", vyporiadanie: " ", vedecke: "" };
+    expect(buildReportHTML(empty, known)).not.toContain("AI návrh textu odôvodnenia");
+  });
+});
+
+describe("clipboard § 168 text is gated like the report (issue #13)", () => {
+  const INJECTED = "NARATIV_NEOVERENA_HYPOTEZA";
+  const d = dossierWith([boundEvent, unboundEvent]);
+  d.judgeReadyText = {
+    skutkovyStav: `${INJECTED} skutok`,
+    vyporiadanie: "",
+    vedecke: `${INJECTED} stopy`,
+  };
+
+  it("section I holds only bound facts; the narrative follows as a labeled unverified draft", () => {
+    const text = buildJudgeClipboardText(d, known);
+    const draftStart = text.indexOf("AI NÁVRH TEXTU ODÔVODNENIA — NEOVERENÝ");
+    expect(draftStart).toBeGreaterThan(-1);
+    const sectionI = text.slice(0, draftStart);
+    expect(sectionI).toContain("I. ZISTENÝ SKUTKOVÝ STAV");
+    expect(sectionI).toContain("Zadržanie hotovosti pri kontrole");
+    expect(sectionI).toContain("Vklad hotovosti");
+    expect(sectionI).not.toContain("UTOK_BEZ_OPORY_V_EVENT");
+    expect(sectionI).not.toContain("Prevod bez dokladu");
+    expect(sectionI).not.toContain(INJECTED);
+    const draft = text.slice(draftStart);
+    expect(draft).toContain(`${INJECTED} skutok`);
+    expect(draft).toContain(`${INJECTED} stopy`);
+    expect(draft).not.toContain("II. Vyporiadanie");
+  });
+
+  it("without a verified ledger no fact is stated", () => {
+    const text = buildJudgeClipboardText(d, NO_VERIFIED_EVIDENCE);
+    expect(text).toContain(NO_BOUND_FACTS_TEXT);
+    expect(text).not.toContain("Zadržanie hotovosti pri kontrole");
+  });
+
+  it("listBoundFacts returns bound events and flows with their sources", () => {
+    const facts = listBoundFacts(d, known);
+    expect(facts.map((fact) => fact.text)).toEqual([
+      "Zadržanie hotovosti pri kontrole",
+      `Subjekt A ➔ Subjekt B, ${(400).toLocaleString("sk-SK")} € — Vklad hotovosti`,
+    ]);
+    expect(facts.every((fact) => fact.source.length > 0)).toBe(true);
   });
 });
 

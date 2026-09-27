@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useActiveCase } from "@/lib/hooks/useActiveCase";
 import { createCase } from "@/lib/forza/case-data";
+import { isSessionExpiredError } from "@/lib/forza/session-expired";
 
 const inputClass =
   "h-11 w-full rounded-xl border border-white/20 bg-black/60 backdrop-blur-md px-3.5 text-sm text-white placeholder:text-neutral-400 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/25";
@@ -66,6 +67,15 @@ export function NewCaseForm({
         router.push("/forza/prehlad?start=1");
       }
     } catch (error) {
+      if (isSessionExpiredError(error)) {
+        toast.error("Relácia vypršala. Prihláste sa znova.", {
+          action: {
+            label: "Prihlásiť sa",
+            onClick: () => router.push("/auth/login"),
+          },
+        });
+        return;
+      }
       const message =
         error instanceof Error
           ? error.message

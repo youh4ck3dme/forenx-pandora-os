@@ -279,7 +279,7 @@ function Sandbox() {
           <Card className="space-y-3">
             <StepProgress step={1} label="Založenie prípadu" />
             <p className="text-sm font-semibold">Vytvorte prípad pre Sandbox</p>
-            <NewCaseForm />
+            <NewCaseForm goToHub={false} />
           </Card>
         ) : (
           <>

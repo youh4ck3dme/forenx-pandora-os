@@ -5,10 +5,14 @@ import { AI_DISCLAIMER } from "@/config/brand";
 import { sha256Hex } from "./provenance/sha256";
 import { canonicalSha256 } from "./provenance/canonical";
 import { buildReportManifest, type ReportManifest } from "./provenance/report-manifest";
+import { NO_BOUND_FACTS_TEXT, judgeNarrativeParts } from "./judge-text";
 import {
   NO_VERIFIED_EVIDENCE,
+  listBoundFacts,
   partitionAdmissibilityAudit,
   partitionAlternativeHypotheses,
+  partitionDefenseAttacks,
+  partitionEvidenceTraces,
   partitionSuspiciousFlows,
   partitionTimeline,
 } from "./evidence-binding";
@@ -275,7 +279,12 @@ export function buildReportHTML(
   </table>`
       : "";
 
-  const tracesRows = d.evidenceStrength.traces
+  // Issue #13: do záverov II. a III. idú iba body obhajoby a stopy viazané na
+  // hash-overený dôkaz; neviazané sa vypíšu len medzi neoverenými tvrdeniami.
+  const traces = partitionEvidenceTraces(d, knownEvidence);
+  const attacks = partitionDefenseAttacks(d, knownEvidence);
+
+  const tracesRows = traces.bound
     .map((t) => {
       const src = formatSourceRef(t.sourceRef) || "—";
       return `
@@ -291,7 +300,7 @@ export function buildReportHTML(
     })
     .join("");
 
-  const attacksHtml = d.defenseAttack.attacks
+  const attacksHtml = attacks.bound
     .map((a) => {
       const src = formatSourceRef(a.sourceRef);
       return `
@@ -503,13 +512,53 @@ export function buildReportHTML(
       (defect) =>
         `<strong>${defect.paragraph}:</strong> ${defect.description} <em>(vadu sa nepodarilo viazať na existujúci dôkaz a stranu alebo odsek)</em>`,
     ),
+    ...attacks.unbound.map(
+      (a) =>
+        `<strong>Bod obhajoby (${a.risk}):</strong> ${a.defenseClaim} — navrhovaný protiúder: ${a.counterStrike} <em>(bez platnej väzby na dôkaz)</em>`,
+    ),
+    ...traces.unbound.map(
+      (t) =>
+        `<strong>Stopa ${t.id} — ${t.name}:</strong> LR ${t.lr}, ${t.strength} <em>(hodnotenie stopy bez platnej väzby na dôkaz)</em>`,
+    ),
   ];
   const unverifiedClaimsHtml =
     unverifiedClaims.length > 0
       ? `
   <h2>Neoverené tvrdenia (nie sú skutkom)</h2>
-  <p class="legal-expl">Nasledujúce hypotézy a posúdenia nemajú platný odkaz na existujúce evidence_id a konkrétnu stranu alebo odsek; nesmú sa považovať za skutkové zistenia.</p>
+  <p class="legal-expl">Nasledujúce hypotézy, posúdenia, body obhajoby a hodnotenia stôp nemajú platný odkaz na existujúce evidence_id a konkrétnu stranu alebo odsek; nesmú sa považovať za skutkové zistenia.</p>
   <ul>${unverifiedClaims.map((claim) => `<li>${claim}</li>`).join("")}</ul>`
+      : "";
+
+  // Issue #13: číslované závery (I.–III.) sa skladajú výlučne z tvrdení
+  // viazaných na hash-overený dôkaz; naratív modelu (judgeReadyText) sa nikdy
+  // nevypisuje ako skutkový záver.
+  const boundFacts = listBoundFacts(d, knownEvidence);
+  const boundFactsHtml =
+    boundFacts.length > 0
+      ? `<p class="legal-expl">Skutkový stav tvoria výlučne okolnosti viazané na hash-overený dôkaz z WORM ledgera (evidence_id a strana alebo odsek).</p>
+  <ul>${boundFacts
+    .map(
+      (fact) =>
+        `<li><strong>${fact.when}:</strong> ${fact.text} <em>(zdroj: <code>${fact.source}</code>)</em></li>`,
+    )
+    .join("")}</ul>`
+      : `<p class="legal-expl">${NO_BOUND_FACTS_TEXT}</p>`;
+
+  const narrativeParts = judgeNarrativeParts(d);
+  const narrativeDraftHtml =
+    narrativeParts.length > 0
+      ? `
+  <h2>AI návrh textu odôvodnenia (neoverený — nie je súčasťou záverov)</h2>
+  <p class="legal-expl">Voľný text vygenerovaný modelom bez väzby na konkrétne dôkazy. Môže obsahovať neoverené tvrdenia; do záverov I.–III. sa nepreberá a pred akýmkoľvek použitím musí byť overený voči originálu spisu.</p>
+  ${narrativeParts
+    .map(
+      (part) => `
+  <div class="section">
+    <h3>${part.label} — návrh</h3>
+    <p>${part.text}</p>
+  </div>`,
+    )
+    .join("")}`
       : "";
 
   return `<!DOCTYPE html>
@@ -626,21 +675,21 @@ ${admissibilityHtml}
 
 ${unverifiedClaimsHtml}
 
+${narrativeDraftHtml}
+
 <h2>I. Zistený skutkový stav (§ 119 ods. 1 Trestného poriadku)</h2>
 <div class="section">
-  <p>${d.judgeReadyText.skutkovyStav}</p>
+  ${boundFactsHtml}
 </div>
 
 <h2>II. Vyporiadanie sa s obhajobou obvineného (§ 168 TP)</h2>
 <div class="section">
-  <p>${d.judgeReadyText.vyporiadanie}</p>
   <h3>Identifikované body útoku obhajoby a dôkazné protiúdery:</h3>
-  ${attacksHtml}
+  ${attacksHtml || `<p class="legal-expl">Žiadny bod obhajoby nie je viazaný na hash-overený dôkaz — neoverené body sú uvedené medzi neoverenými tvrdeniami.</p>`}
 </div>
 
 <h2>III. Vedecké zhodnotenie stôp</h2>
 <div class="section">
-  <p>${d.judgeReadyText.vedecke}</p>
   <h3>Dôkazová matica stôp (§ 119 ods. 2 TP & ENFSI metodika)</h3>
   <table>
     <thead>
@@ -654,7 +703,7 @@ ${unverifiedClaimsHtml}
         <th style="width:22%">Zdroj</th>
       </tr>
     </thead>
-    <tbody>${tracesRows}</tbody>
+    <tbody>${tracesRows || `<tr><td colspan="7"><em>Žiadna stopa nie je viazaná na hash-overený dôkaz — neoverené hodnotenia stôp sú uvedené medzi neoverenými tvrdeniami.</em></td></tr>`}</tbody>
   </table>
 </div>
 

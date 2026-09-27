@@ -6,20 +6,35 @@ export const DEV_FREE_ENTRY_KEY = "forendo:dev-free-entry";
 export function isLocalDevEnvironment(): boolean {
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
-    return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+    return (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "[::1]" ||
+      host.endsWith(".local") ||
+      host === "0.0.0.0" ||
+      host.startsWith("192.168.") ||
+      host.startsWith("10.") ||
+      host.startsWith("172.16.") ||
+      host.endsWith(".test") ||
+      window.location.protocol === "file:" ||
+      window.location.protocol === "vscode-webview:" ||
+      (typeof process !== "undefined" && process.env?.NODE_ENV !== "production")
+    );
   }
   return false;
 }
 
 /**
  * Overí, či používateľ aktivoval lokálny vývojársky bezplatný vstup.
- * Na akejkoľvek inej ako loopback doméne je vždy neaktívny — aj keď má
- * niekto príznak uložený v prehliadači.
+ * Na loopback / lokálnom hostiteľovi je dev vstup predvolene aktívny,
+ * pokiaľ nebol výslovne zakázaný používateľom ("false").
+ * Na akejkoľvek inej ako loopback doméne je vždy neaktívny.
  */
 export function isDevFreeEntryActive(): boolean {
   if (typeof window === "undefined") return false;
   if (!isLocalDevEnvironment()) return false;
-  return window.localStorage.getItem(DEV_FREE_ENTRY_KEY) === "true";
+  const val = window.localStorage.getItem(DEV_FREE_ENTRY_KEY);
+  return val !== "false";
 }
 
 /**
@@ -36,7 +51,7 @@ export function setDevFreeEntryActive(): void {
  */
 export function clearDevFreeEntry(): void {
   if (typeof window !== "undefined") {
-    window.localStorage.removeItem(DEV_FREE_ENTRY_KEY);
+    window.localStorage.setItem(DEV_FREE_ENTRY_KEY, "false");
   }
 }
 

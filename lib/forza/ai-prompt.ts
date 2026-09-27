@@ -25,7 +25,7 @@ PRINCÍPY:
 10. Pri každom závere uvádzaj zdroj a confidence (0–100%).
 11. Ak chýba priamy dôkaz, jednoznačne uveď "NEOVERENÉ" alebo "CHÝBAJÚCI DÔKAZ".
 12. Ak si nie si istý poradím udalostí alebo tým, kto je kto, NEHÁDAJ. Namiesto odhadu napíš presne: "NEOVERENÉ — chýba zdroj v spise".
-13. Každá udalosť chronológie (sourceRef), podozrivý tok, alternatívna hypotéza a každé § 119 posúdenie musí mať evidenceId VÝHRADNE z bloku <evidence_registry> (WORM ledger dôkazov, hash overený serverom) a konkrétny page alebo paragraph. custodyLedger (ani traceId, ani id), analysisMeta.documentIds, názov súboru ani voľný text NIE SÚ evidenceId. Samotný popis, názov dôkazu ani právny paragraf nie sú locator. Ak väzbu nevieš uviesť, nechaj evidenceId prázdne — tvrdenie sa zobrazí ako neoverené a nesmie byť súčasťou skutkového záveru. Tvrdenie o nevine alebo zbavení viny bez takejto väzby sa zahodí.
+13. Každá udalosť chronológie (sourceRef), podozrivý tok, bod útoku obhajoby (defenseAttack.attacks), stopa v evidenceStrength.traces, alternatívna hypotéza a každé § 119 posúdenie musí mať evidenceId VÝHRADNE z bloku <evidence_registry> (WORM ledger dôkazov, hash overený serverom) a konkrétny page alebo paragraph. custodyLedger (ani traceId, ani id), analysisMeta.documentIds, názov súboru ani voľný text NIE SÚ evidenceId. Samotný popis, názov dôkazu ani právny paragraf nie sú locator. Ak väzbu nevieš uviesť, nechaj evidenceId prázdne — tvrdenie sa zobrazí ako neoverené a nesmie byť súčasťou skutkového záveru. Tvrdenie o nevine alebo zbavení viny bez takejto väzby sa zahodí.
 
 ═══════════════════════════════════════════════════════════════════
 POVINNÁ ÚPLNOSŤ A KONZISTENCIA VÝSTUPU
@@ -222,7 +222,8 @@ ZÁVÄZNÝ ANALYTICKÝ RÁMEC ÚBOK — 3 VYŠETROVACIE OTÁZKY & ROZPORY
         "risk": "KRITICKÉ|VYSOKÉ|STREDNÉ|NÍZKE",
         "counterStrike": "<ako to vyvrátiť — konkrétny návrh na dôkaz alebo dožiadanie>",
         "evidenceGap": "<čo chýba v spise na vyvrátenie>",
-        "paragraph": "<§ ak relevantné>"
+        "paragraph": "<§ ak relevantné>",
+        "sourceRef": { "documentId": "<ID dokumentu>", "evidenceId": "<evidenceId z evidence_registry>", "page": 1, "excerpt": "<krátky citát>" }
       }
     ]
   },
@@ -235,7 +236,8 @@ ZÁVÄZNÝ ANALYTICKÝ RÁMEC ÚBOK — 3 VYŠETROVACIE OTÁZKY & ROZPORY
         "lr": "<LR alebo '—'>",
         "strength": "Nepriestrelné|Silná|Zraniteľné|Procesná mína",
         "light": "green|yellow|red",
-        "paragraph": "<§>"
+        "paragraph": "<§>",
+        "sourceRef": { "documentId": "<ID dokumentu>", "evidenceId": "<evidenceId z evidence_registry>", "page": 1, "excerpt": "<krátky citát>" }
       }
     ],
     "paragraphs": [
