@@ -1,98 +1,230 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { generateCompletion, generateImage, readStream } from '../services/ai-service'
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  generateCompletionStream,
+  generateCompletion,
+  generateImage,
+  readSseStream,
+  readStream,
+  makeApiKey,
+} from "../services/ai-service";
 
-describe('ai-service', () => {
-  const apiKey = 'test-api-key'
+function createMockResponse(body: unknown, init: ResponseInit = {}): Response {
+  const status = init.status ?? 200;
+  const headers = new Headers(init.headers);
+
+  if (typeof body === "string") {
+    return new Response(body, { status, headers });
+  }
+
+  if (body instanceof ReadableStream) {
+    return new Response(body, { status, headers });
+  }
+
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...init.headers },
+  });
+}
+
+describe("ai-service (Ruthlessly Hardened)", () => {
+  const apiKey = makeApiKey("test-valid-api-key-12345");
 
   beforeEach(() => {
-    vi.clearAllMocks()
-    global.fetch = vi.fn()
-  })
+    vi.clearAllMocks();
+  });
 
   afterEach(() => {
-    vi.restoreAllMocks()
-  })
+    vi.restoreAllMocks();
+  });
 
-  describe('generateCompletion', () => {
-    it('should throw error if apiKey is missing', async () => {
-      await expect(generateCompletion([], '')).rejects.toThrow('API kľúč chýba.')
-    })
-
-    it('should make correct api call', async () => {
-      const mockResponse = {
-        ok: true,
-        body: 'stream'
+  describe("generateCompletionStream", () => {
+    it("vracia AuthMissing ak je API kľúč prázdny", async () => {
+      const result = await generateCompletionStream([], "");
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.kind).toBe("AuthMissing");
       }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+    });
 
-      await generateCompletion([{ role: 'user', content: 'Hi' }], apiKey)
+    it("správne zostaví požiadavku s modelom mistral-large-latest", async () => {
+      const mockStream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.close();
+        },
+      });
 
-      expect(fetch).toHaveBeenCalledWith('https://api.mistral.ai/v1/chat/completions', expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-            'Authorization': `Bearer ${apiKey}`
-        }),
-        body: expect.stringContaining('"model":"mistral-large-latest"')
-      }))
-    })
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(createMockResponse(mockStream)));
 
-    it('should handle api error', async () => {
-      const mockResponse = {
-        ok: false,
-        json: async () => ({ error: { message: 'Quota exceeded' } })
+      const result = await generateCompletionStream([{ role: "user", content: "Analyzuj spis" }], apiKey);
+
+      expect(result.ok).toBe(true);
+      expect(fetch).toHaveBeenCalledWith(
+        "https://api.mistral.ai/v1/chat/completions",
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            Authorization: `Bearer ${apiKey}`,
+          }),
+          body: expect.stringContaining('"model":"mistral-large-latest"'),
+        })
+      );
+    });
+
+    it("správne zostaví požiadavku pre Google Gemini (gemini-3.7-flash)", async () => {
+      const mockStream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.close();
+        },
+      });
+
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(createMockResponse(mockStream)));
+
+      const result = await generateCompletionStream(
+        [{ role: "user", content: "Audituj bezpečnosť" }],
+        apiKey,
+        { model: "gemini-3.7-flash" }
+      );
+
+      expect(result.ok).toBe(true);
+      expect(fetch).toHaveBeenCalledWith(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:streamGenerateContent?alt=sse",
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            "X-goog-api-key": apiKey,
+          }),
+          body: expect.stringContaining('"system_instruction"'),
+        })
+      );
+    });
+
+    it("správne zachytí a vráti RateLimited chybu (429)", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          createMockResponse(
+            { error: { message: "Prekročený limit volaní" } },
+            { status: 429 }
+          )
+        )
+      );
+
+      const result = await generateCompletionStream([{ role: "user", content: "Test" }], apiKey);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.kind).toBe("RateLimited");
+        expect(result.error.message).toBe("Prekročený limit volaní");
       }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+    });
 
-      await expect(generateCompletion([{ role: 'user', content: 'Hi' }], apiKey)).rejects.toThrow('Quota exceeded')
-    })
-  })
+    it("legacy generateCompletion vyhodí chybu pri zlyhaní API", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          createMockResponse(
+            { error: { message: "Quota exceeded" } },
+            { status: 429 }
+          )
+        )
+      );
 
-  describe('generateImage', () => {
-    it('should return image url on success', async () => {
-      const mockResponse = {
-        ok: true,
-        json: async () => ({ data: [{ url: 'https://example.com/img.png' }] })
-      }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+      await expect(
+        generateCompletion([{ role: "user", content: "Hi" }], apiKey)
+      ).rejects.toThrow("Quota exceeded");
+    });
+  });
 
-      const url = await generateImage('cat', apiKey)
-      expect(url).toBe('https://example.com/img.png')
-    })
+  describe("readSseStream & readStream", () => {
+    it("bezpečne zvládne fragmentovaný stream a token [DONE] bez pádu", async () => {
+      const encoder = new TextEncoder();
+      const chunks = [
+        'data: {"choices": [{"delta": {"con', // Fragment 1 (neúplný JSON)
+        'tent": "Forenzná"}}]}\n\n',           // Fragment 2
+        'data: {"choices": [{"delta": {"content": " analýza"}}]}\n\n',
+        ': ping keep-alive\n\n',             // SSE komentár
+        'data: [DONE]\n\n',                  // Ukončenie streamu
+      ];
 
-    it('should throw if api errors', async () => {
-         const mockResponse = {
-            ok: false,
-            json: async () => ({ error: { message: 'Image gen failed' } })
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const chunk of chunks) {
+            controller.enqueue(encoder.encode(chunk));
           }
-          vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+          controller.close();
+        },
+      });
 
-          await expect(generateImage('cat', apiKey)).rejects.toThrow('Image gen failed')
-    })
-  })
+      const receivedChunks: string[] = [];
+      const result = await readSseStream(stream, (text) => receivedChunks.push(text));
 
-  describe('readStream', () => {
-    it('should parse SSE chunks correctly', async () => {
+      expect(result.ok).toBe(true);
+      expect(receivedChunks).toEqual(["Forenzná", " analýza"]);
+    });
+
+    it("správne spracuje Gemini SSE stream formát", async () => {
+      const encoder = new TextEncoder();
+      const geminiChunks = [
+        'data: {"candidates": [{"content": {"parts": [{"text": "PΛND0RΛ "}]}}]}\n\n',
+        'data: {"candidates": [{"content": {"parts": [{"text": "OS"}]}}]}\n\n',
+        'data: [DONE]\n\n',
+      ];
+
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const chunk of geminiChunks) {
+            controller.enqueue(encoder.encode(chunk));
+          }
+          controller.close();
+        },
+      });
+
+      const received: string[] = [];
+      const result = await readSseStream(stream, (text) => received.push(text));
+
+      expect(result.ok).toBe(true);
+      expect(received.join("")).toBe("PΛND0RΛ OS");
+    });
+
+    it("legacy readStream číta dáta a neuvoľňuje výnimky pri [DONE]", async () => {
+      const encoder = new TextEncoder();
       const chunks = [
         'data: {"choices": [{"delta": {"content": "Hello"}}]}\n\n',
-        'data: {"choices": [{"delta": {"content": " World"}}]}\n\n'
-      ]
+        'data: [DONE]\n\n',
+      ];
 
-      const encoder = new TextEncoder()
-      const stream = new ReadableStream({
+      const stream = new ReadableStream<Uint8Array>({
         start(controller) {
-          chunks.forEach(chunk => controller.enqueue(encoder.encode(chunk)))
-          controller.close()
-        }
-      })
+          for (const c of chunks) controller.enqueue(encoder.encode(c));
+          controller.close();
+        },
+      });
 
-      const reader = stream.getReader()
-      const onChunk = vi.fn()
+      const onChunk = vi.fn();
+      await readStream(stream.getReader(), onChunk);
 
-      await readStream(reader, onChunk)
+      expect(onChunk).toHaveBeenCalledTimes(1);
+      expect(onChunk).toHaveBeenCalledWith("Hello");
+    });
+  });
 
-      expect(onChunk).toHaveBeenCalledTimes(2)
-      expect(onChunk).toHaveBeenNthCalledWith(1, 'Hello')
-      expect(onChunk).toHaveBeenNthCalledWith(2, ' World')
-    })
-  })
-})
+  describe("generateImage", () => {
+    it("vráti validnú URL na úspešné volanie", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          createMockResponse({
+            data: [{ url: "https://storage.pandora.io/images/generated-evidence.png" }],
+          })
+        )
+      );
+
+      const url = await generateImage("graf tokov", apiKey);
+      expect(url).toBe("https://storage.pandora.io/images/generated-evidence.png");
+    });
+
+    it("vyhodí zrozumiteľnú chybu pri chýbajúcom kľúči", async () => {
+      await expect(generateImage("cat", "")).rejects.toThrow("API kľúč chýba.");
+    });
+  });
+});
