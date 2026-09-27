@@ -60,6 +60,13 @@ const EXTRA = ["MISTRAL_API_KEY_CHAT", "MISTRAL_API_KEY_ANALYSIS", "FORENX_ADMIN
 export const FORBIDDEN_IN_PRODUCTION = ["VAULT_FALLBACK_SECRET"];
 
 const PLACEHOLDER = /your[-_]|placeholder|changeme|example\.(com|invalid)|xxx|<[^>]*>|\.\.\.|…/i;
+const isPlaceholder = (key, value) => {
+  // Hetzner's documented S3 hostname literally contains "your-objectstorage".
+  if (key === "S3_ENDPOINT" && /^https:\/\/[a-z0-9-]+\.your-objectstorage\.com(?:\/|$)/i.test(value)) {
+    return false;
+  }
+  return PLACEHOLDER.test(value);
+};
 
 export function parseEnv(text) {
   const out = new Map();
@@ -109,7 +116,7 @@ export function checkEnv(env, keys) {
     }
   }
   for (const [key, value] of env) {
-    if (value && PLACEHOLDER.test(value)) {
+    if (value && isPlaceholder(key, value)) {
       problems.push({ level: "error", key, issue: "vyzerá ako placeholder zo šablóny" });
     }
     if (key.startsWith("NEXT_PUBLIC_") && SECRET.has(key.slice("NEXT_PUBLIC_".length))) {
