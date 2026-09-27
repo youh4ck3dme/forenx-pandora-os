@@ -22,8 +22,8 @@ export default function ForzaLayout({ children }: { children: ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <ActiveCaseProvider>
         <CaseStoreProvider>
-          <div className="min-h-screen bg-background text-foreground">
-            <Suspense fallback={<div className="min-h-screen bg-background" />}>
+          <div className="min-h-dvh bg-background text-foreground">
+            <Suspense fallback={<div className="min-h-dvh bg-background" />}>
               {children}
             </Suspense>
           </div>

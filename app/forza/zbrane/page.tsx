@@ -21,16 +21,28 @@ import { BRAND } from "@/config/brand";
 import { DevilsAdvocatePanel } from "@/components/features/forensic/DevilsAdvocatePanel";
 import { AdmissibilityAuditView } from "@/components/features/forensic/AdmissibilityAuditView";
 import { CustodyLedgerViewer } from "@/components/features/forensic/CustodyLedgerViewer";
+import { EmptyState, ForzaModuleSkeleton } from "@/components/malte/EmptyState";
+import { Button } from "@/components/ui/button";
 
 export default function ZbranePage() {
   return <Weapons />;
 }
 
 function Weapons() {
-  const { activeCase, analysis, dossier, refresh } = useActiveCase();
+  const { activeCase, analysis, dossier, refresh, loading } = useActiveCase();
   const names = new Map(activeCase.entities.map((e) => [e.id, e.name]));
   const batches = detectSerialBatches(activeCase.weapons);
   const matches = analysis.weapons.filter((w) => w.europolMatch).length;
+
+  if (loading) {
+    return (
+      <PhoneFrame>
+        <AppHeader title="Zbrane" back />
+        <Screen><ForzaModuleSkeleton /></Screen>
+        <BottomNav />
+      </PhoneFrame>
+    );
+  }
 
   return (
     <PhoneFrame>
@@ -60,8 +72,15 @@ function Weapons() {
 
         <SectionTitle>Evidencia</SectionTitle>
 
-        <Card className="divide-y divide-border p-0">
-          {analysis.weapons.map(
+        {analysis.weapons.length === 0 ? (
+          <EmptyState
+            title="Zatiaľ žiadne zbrane"
+            detail="Pridajte prvú zbraň vyššie po pridaní držiteľa a dodávateľa do prípadu."
+            action={<Button asChild size="sm" variant="outline"><a href="/forza/pripady">Pridať subjekty</a></Button>}
+          />
+        ) : (
+          <Card className="divide-y divide-border p-0">
+            {analysis.weapons.map(
             ({
               weapon,
               europolMatch,
@@ -111,8 +130,9 @@ function Weapons() {
                 ) : null}
               </div>
             ),
-          )}
-        </Card>
+            )}
+          </Card>
+        )}
 
         {batches.length > 0 ? (
           <>

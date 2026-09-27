@@ -1,8 +1,9 @@
 import type React from "react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useActiveCase } from "@/lib/hooks/useActiveCase";
 import { createCase } from "@/lib/forza/case-data";
@@ -36,15 +37,17 @@ export function NewCaseForm({
   const [name, setName] = useState("");
   const [subtitle, setSubtitle] = useState("");
   const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (busy) return; // ochrana proti dvojitému odoslaniu
+    if (submitting.current) return;
     const trimmed = name.trim();
     if (!trimmed) {
       toast.error("Zadajte názov prípadu.");
       return;
     }
+    submitting.current = true;
     setBusy(true);
     try {
       const id = await createCase({
@@ -63,12 +66,17 @@ export function NewCaseForm({
         router.push("/forza/prehlad?start=1");
       }
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Prípad sa nepodarilo vytvoriť.",
-      );
+      const message =
+        error instanceof Error ? error.message : "Prípad sa nepodarilo vytvoriť.";
+      toast.error(message, {
+        action: {
+          label: "Skúsiť znova",
+          onClick: () =>
+            void handleSubmit({ preventDefault: () => undefined } as React.FormEvent),
+        },
+      });
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
@@ -93,6 +101,7 @@ export function NewCaseForm({
         />
       ) : null}
       <Button type="submit" className="min-h-11 w-full" disabled={busy}>
+        {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden /> : null}
         {busy ? "Vytváram…" : submitLabel}
       </Button>
     </form>

@@ -37,7 +37,7 @@ function DesktopSidebar() {
   if (isEmbedded) return null;
 
   return (
-    <aside className="forensic-sidebar sticky top-0 hidden h-screen w-[288px] shrink-0 flex-col border-r border-border surface-glass px-4 py-6 lg:flex">
+    <aside className="forensic-sidebar sticky top-0 hidden h-dvh w-[288px] shrink-0 flex-col border-r border-border surface-glass px-4 py-6 lg:flex">
       <div className="flex items-center gap-2 px-2">
         <Image
           src="/branding/forenx-icon-256.png"
@@ -135,11 +135,11 @@ function DesktopSidebar() {
 /** Responzívny shell: telefónny rám na mobile, pracovná plocha na desktope. */
 export function PhoneFrame({ children }: { children?: ReactNode }) {
   return (
-    <div className="ambient-shell relative z-1 min-h-screen overflow-x-clip lg:flex">
+    <div className="ambient-shell relative z-1 min-h-dvh overflow-x-clip lg:flex">
       <DesktopSidebar />
       <div className="flex min-w-0 flex-1 justify-center py-0 sm:px-4 sm:py-10 lg:px-6 lg:py-8">
         <div className="ambient-stage w-full min-w-0 max-w-[min(100%,560px)] sm:overflow-clip sm:rounded-[2.5rem] sm:border sm:border-border sm:shadow-elevated lg:max-w-[min(100%,1180px)] lg:rounded-3xl xl:max-w-[min(100%,1320px)] 2xl:max-w-[min(100%,1480px)]">
-          <div className="relative flex min-h-screen flex-col sm:min-h-215 lg:min-h-[calc(100vh-4rem)]">
+          <div className="relative flex min-h-dvh flex-col sm:min-h-215 lg:min-h-[calc(100dvh-4rem)]">
             <OfflineBanner />
             {children}
           </div>

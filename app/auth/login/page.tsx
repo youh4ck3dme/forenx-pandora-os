@@ -47,11 +47,15 @@ export default function LoginPage() {
           const challenge = new Uint8Array(32);
           crypto.getRandomValues(challenge);
 
+          const effectiveRpId =
+            process.env.NEXT_PUBLIC_RP_ID ||
+            (window.location.hostname.endsWith("whoiswho.at") ? "whoiswho.at" : window.location.hostname);
+
           const getOptions: PublicKeyCredentialRequestOptions = {
             challenge,
             timeout: 60000,
             userVerification: "required",
-            rpId: window.location.hostname,
+            rpId: effectiveRpId,
           };
 
           const credential = await navigator.credentials.get({
@@ -83,8 +87,8 @@ export default function LoginPage() {
     <div className="relative min-h-svh w-full overflow-hidden">
       <GL hovering={false} />
 
-      <div className="absolute inset-0 z-[1] pointer-events-none">
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/50" />
+      <div className="absolute inset-0 z-1 pointer-events-none">
+        <div className="absolute inset-0 bg-linear-to-t from-black via-transparent to-black/50" />
       </div>
 
       <div className="relative z-10 flex flex-col items-center justify-center min-h-svh px-6">
@@ -112,7 +116,7 @@ export default function LoginPage() {
         </div>
 
         <div className="w-full max-w-sm relative group">
-          <div className="absolute -inset-1 bg-gradient-to-r from-purple-600 via-blue-500 to-cyan-400 rounded-2xl opacity-20 group-hover:opacity-40 blur-xl transition-opacity duration-1000" />
+          <div className="absolute -inset-1 bg-linear-to-r from-purple-600 via-blue-500 to-cyan-400 rounded-2xl opacity-20 group-hover:opacity-40 blur-xl transition-opacity duration-1000" />
           <div className="relative bg-[#0a0a0f]/80 backdrop-blur-2xl border border-white/10 rounded-2xl p-8 shadow-2xl shadow-purple-500/10">
             <h1 className="text-[17px] font-bold text-foreground mb-1">
               Welcome Back
@@ -123,7 +127,7 @@ export default function LoginPage() {
 
             {savedUser && (
               <div className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/10 mb-6 group/user transition-colors hover:bg-white/10">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center ring-1 ring-white/10 group-hover/user:ring-purple-500/50 transition-all">
+                <div className="w-10 h-10 rounded-full bg-linear-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center ring-1 ring-white/10 group-hover/user:ring-purple-500/50 transition-all">
                   <User className="w-5 h-5 text-purple-400" />
                 </div>
                 <div>
@@ -143,7 +147,7 @@ export default function LoginPage() {
                 <button
                   onClick={handleBiometricLogin}
                   disabled={isLoading}
-                  className="relative w-24 h-24 rounded-full bg-gradient-to-b from-white/10 to-white/5 border border-white/10 flex items-center justify-center transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 group-hover/bio:border-purple-500/50"
+                  className="relative w-24 h-24 rounded-full bg-linear-to-b from-white/10 to-white/5 border border-white/10 flex items-center justify-center transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 group-hover/bio:border-purple-500/50"
                 >
                   <div className="absolute inset-0 rounded-full bg-purple-500/5 animate-pulse" />
                   {isLoading ? (
@@ -170,7 +174,7 @@ export default function LoginPage() {
               <button
                 onClick={handleBiometricLogin}
                 disabled={isLoading}
-                className="w-full py-3.5 bg-gradient-to-r from-purple-600 via-blue-600 to-cyan-500 text-white font-bold text-sm rounded-xl hover:shadow-[0_0_20px_rgba(147,51,234,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2 relative overflow-hidden"
+                className="w-full py-3.5 bg-linear-to-r from-purple-600 via-blue-600 to-cyan-500 text-white font-bold text-sm rounded-xl hover:shadow-[0_0_20px_rgba(147,51,234,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2 relative overflow-hidden"
               >
                 <div className="absolute inset-0 bg-white/20 translate-y-full hover:translate-y-0 transition-transform duration-300" />
                 {isLoading ? (

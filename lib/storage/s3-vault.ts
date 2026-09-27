@@ -365,3 +365,73 @@ export function listCaseDocumentsFallback(caseId: string): CaseVaultItem[] {
 
   return items
 }
+
+/**
+ * 5. Vygeneruje predpodpísanú URL pre priamy upload (HTTP PUT) z prehliadača do Hetzner/AWS S3.
+ * Obchádza 4.5 MB serverless limit Vercelu a podporuje súbory až do 250 MB.
+ */
+export async function getPresignedUploadUrl(
+  storageKey: string,
+  options: {
+    mimeType?: string
+    sha256?: string
+    expiresIn?: number
+    metadata?: Record<string, string>
+  } = {}
+): Promise<string> {
+  const expiresIn = options.expiresIn ?? 300
+  if (!storageKey || !storageKey.trim()) {
+    throw new Error('Chýba storageKey pre vygenerovanie predpodpísanej upload URL.')
+  }
+
+  const config = getS3Config()
+
+  if (!config) {
+    // In-memory / Mock Presigned PUT URL pre vývoj a testy
+    const expiresAt = Date.now() + expiresIn * 1000
+    const mockSig = sha256Hex(`fallback-put:${storageKey}:${expiresAt}`).substring(0, 32)
+    return `https://hel1.your-objectstorage.com/forenx-vault-sk/${encodeURI(storageKey)}?vault_mode=fallback_put&expires=${expiresAt}&sig=${mockSig}`
+  }
+
+  // AWS SigV4 Presigned PUT URL
+  const dateObj = new Date()
+  const amzDate = dateObj.toISOString().replace(/[:-]|\.\d{3}/g, '')
+  const dateStamp = amzDate.substring(0, 8)
+  const host = new URL(config.endpoint).host
+  const credentialScope = `${dateStamp}/${config.region}/s3/aws4_request`
+
+  const queryParams = new URLSearchParams({
+    'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+    'X-Amz-Credential': `${config.accessKeyId}/${credentialScope}`,
+    'X-Amz-Date': amzDate,
+    'X-Amz-Expires': expiresIn.toString(),
+    'X-Amz-SignedHeaders': 'host',
+  })
+
+  queryParams.sort()
+  const canonicalQuery = queryParams.toString()
+  const canonicalUri = `/${config.bucket}/${storageKey}`
+  const canonicalHeaders = `host:${host}\n`
+  const signedHeaders = 'host'
+
+  const canonicalRequest = [
+    'PUT',
+    canonicalUri,
+    canonicalQuery,
+    canonicalHeaders,
+    signedHeaders,
+    'UNSIGNED-PAYLOAD',
+  ].join('\n')
+
+  const stringToSign = [
+    'AWS4-HMAC-SHA256',
+    amzDate,
+    credentialScope,
+    sha256Hex(canonicalRequest),
+  ].join('\n')
+
+  const signingKey = getSigningKey(config.secretAccessKey, dateStamp, config.region)
+  const signature = crypto.createHmac('sha256', signingKey).update(stringToSign, 'utf8').digest('hex')
+
+  return `${config.endpoint}/${config.bucket}/${storageKey}?${canonicalQuery}&X-Amz-Signature=${signature}`
+}

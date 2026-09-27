@@ -23,7 +23,7 @@ import {
 } from "@/components/malte/Shell";
 import { RiskFilter } from "@/components/malte/RiskFilter";
 import { openCommandPalette } from "@/components/malte/CommandPalette";
-import { EmptyState } from "@/components/malte/EmptyState";
+import { EmptyState, ForzaModuleSkeleton } from "@/components/malte/EmptyState";
 import {
   DetectorSheet,
   type DetectorTarget,
@@ -35,6 +35,13 @@ import { BRAND } from "@/config/brand";
 import { fetchWhoIsWhoCompanyRegistry, fetchWhoIsWhoDdReportPdf } from "@/lib/forza/whoiswho.functions";
 import { toast } from "sonner";
 import { upsertEntity } from "@/lib/forza/case-data";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 type KindFilter = "all" | "person" | "company" | "shell";
 
@@ -43,7 +50,7 @@ export default function OsobyPage() {
 }
 
 function People() {
-  const { activeCase, analysis, refresh } = useActiveCase();
+  const { activeCase, analysis, refresh, loading } = useActiveCase();
   const { state } = useCaseStore();
   const [target, setTarget] = useState<DetectorTarget | null>(null);
   const [kind, setKind] = useState<KindFilter>("all");
@@ -58,6 +65,16 @@ function People() {
     graph?: { counts: { nodes: number; edges: number } } | null;
   } | null>(null);
   const [isDownloadingReport, setIsDownloadingReport] = useState(false);
+
+  if (loading) {
+    return (
+      <PhoneFrame>
+        <AppHeader title="Subjekty a firmy" />
+        <Screen><ForzaModuleSkeleton /></Screen>
+        <BottomNav />
+      </PhoneFrame>
+    );
+  }
 
   const handleDownloadDdReport = async (ico: string) => {
     try {
@@ -159,7 +176,9 @@ function People() {
           : `Firma "${prof.legalName}" bola aktualizovaná.`,
       );
     } catch (err) {
-      toast.error("Uloženie profilu firmy zlyhalo.");
+      toast.error("Uloženie profilu firmy zlyhalo.", {
+        action: { label: "Skúsiť znova", onClick: () => void confirmImport(mode) },
+      });
     } finally {
       setIsImporting(false);
     }
@@ -197,7 +216,7 @@ function People() {
       />
       <Screen>
         <Card className="space-y-3 border-amber-500/30 bg-amber-500/5">
-          <div className="flex items-center gap-2 text-amber-500">
+          <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
             <ShieldCheck className="h-4 w-4 shrink-0" />
             <span className="text-xs font-bold uppercase tracking-wider">
               WhoIsWho SK • Automatické preverenie RPO / RÚZ / RPVS
@@ -251,21 +270,26 @@ function People() {
           </div>
         </Card>
 
-        {previewSnapshot && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-            <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+        <Dialog
+          open={Boolean(previewSnapshot)}
+          onOpenChange={(open) => {
+            if (!open && !isImporting) setPreviewSnapshot(null);
+          }}
+        >
+          {previewSnapshot ? (
+            <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto space-y-4">
               <div className="flex items-start justify-between border-b border-border pb-3">
                 <div>
-                  <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">
+                  <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest dark:text-amber-300">
                     WhoIsWho Snapshot Náhľad
                   </span>
-                  <h2 className="text-base font-bold text-foreground mt-0.5">
+                  <DialogTitle className="mt-0.5">
                     {previewSnapshot.profile.legalName}
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
+                  </DialogTitle>
+                  <DialogDescription className="text-xs">
                     IČO: {previewSnapshot.profile.ico} • Krajina:{" "}
                     {previewSnapshot.profile.country || selectedCountry}
-                  </p>
+                  </DialogDescription>
                 </div>
                 <RiskChip
                   level={
@@ -294,7 +318,7 @@ function People() {
 
                 <div className="p-3 rounded-lg border border-border/80 bg-accent/30 space-y-2">
                   <p className="font-semibold text-foreground flex items-center gap-1.5">
-                    <ShieldCheck className="h-4 w-4 text-amber-400" />
+                    <ShieldCheck className="h-4 w-4 text-amber-700 dark:text-amber-300" />
                     Detegované rizikové príznaky (
                     {previewSnapshot.risk?.flags.length ?? 0}):
                   </p>
@@ -314,8 +338,8 @@ function People() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-[11px] text-emerald-400 flex items-center gap-1">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                    <p className="text-[11px] text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-300" />
                       Žiadne rizikové príznaky neboli v registroch zistené.
                     </p>
                   )}
@@ -344,7 +368,8 @@ function People() {
                   onClick={() => confirmImport("new")}
                   className="h-9 w-full rounded-md gradient-brand font-medium text-foreground text-xs disabled:opacity-50"
                 >
-                  {isImporting ? "Ukladám..." : "Vytvoriť novú firmu v prípade"}
+                  {isImporting ? <Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
+                  {isImporting ? "Ukladám…" : "Vytvoriť novú firmu v prípade"}
                 </button>
                 <button
                   type="button"
@@ -352,7 +377,8 @@ function People() {
                   onClick={() => confirmImport("update")}
                   className="h-9 w-full rounded-md border border-border bg-secondary font-medium text-secondary-foreground text-xs hover:bg-secondary/80 disabled:opacity-50"
                 >
-                  {isImporting ? "Ukladám..." : "Aktualizovať existujúcu firmu"}
+                  {isImporting ? <Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
+                  {isImporting ? "Ukladám…" : "Aktualizovať existujúcu firmu"}
                 </button>
                 <button
                   type="button"
@@ -363,9 +389,9 @@ function People() {
                   Zrušiť import
                 </button>
               </div>
-            </div>
-          </div>
-        )}
+            </DialogContent>
+          ) : null}
+        </Dialog>
 
         <div className="flex gap-1 overflow-x-auto py-1 text-xs">
           {(
@@ -471,8 +497,9 @@ function People() {
           {visible.length === 0 ? (
             <Card>
               <EmptyState
-                title="Žiadny subjekt nezodpovedá filtru"
-                detail="Skúste zmeniť typ subjektu alebo uvoľniť rizikový filter."
+                title={analysis.entities.length === 0 ? "Zatiaľ žiadne subjekty" : "Žiadny subjekt nezodpovedá filtru"}
+                detail={analysis.entities.length === 0 ? "Pridajte subjekt v sekcii Prípady alebo importujte firmu podľa IČO vyššie." : "Skúste zmeniť typ subjektu alebo uvoľniť rizikový filter."}
+                action={analysis.entities.length === 0 ? <Button asChild size="sm"><a href="/forza/pripady">Pridať subjekt</a></Button> : undefined}
               />
             </Card>
           ) : null}

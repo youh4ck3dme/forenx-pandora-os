@@ -3,7 +3,7 @@
 import { TransactionList } from "@/components/malte/RecordLists";
 import { AddPanel, TransactionForm } from "@/components/malte/CaseForms";
 import { useActiveCase } from "@/hooks/useActiveCase";
-import { EmptyState } from "@/components/malte/EmptyState";
+import { EmptyState, ForzaModuleSkeleton } from "@/components/malte/EmptyState";
 import { useState, useMemo } from "react";
 import {
   AlertTriangle,
@@ -11,6 +11,7 @@ import {
   CalendarClock,
   Globe2,
   Layers,
+  Loader2,
 } from "lucide-react";
 import {
   AppHeader,
@@ -57,7 +58,7 @@ const flagTone = {
 };
 
 function StatementAnalysis() {
-  const { activeCase, analysis, refresh, revisions } = useActiveCase();
+  const { activeCase, analysis, refresh, revisions, loading } = useActiveCase();
   const { transactions, totals, crossBorder } = analysis;
   const { state, countExport } = useCaseStore();
   const [target, setTarget] = useState<DetectorTarget | null>(null);
@@ -66,6 +67,7 @@ function StatementAnalysis() {
   >(null);
   const [dimitriWarnings, setDimitriWarnings] = useState<string[]>([]);
   const [rawDimitriPayload, setRawDimitriPayload] = useState<unknown>(null);
+  const [isImportingDimitri, setIsImportingDimitri] = useState(false);
 
   const balanceSeries = useMemo(() => {
     let running = 0;
@@ -74,6 +76,16 @@ function StatementAnalysis() {
       return running;
     });
   }, [activeCase.transactions]);
+
+  if (loading) {
+    return (
+      <PhoneFrame>
+        <AppHeader title="Analýza transakcií" />
+        <Screen><ForzaModuleSkeleton /></Screen>
+        <BottomNav />
+      </PhoneFrame>
+    );
+  }
 
   const handleDimitriFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -100,7 +112,8 @@ function StatementAnalysis() {
   };
 
   const confirmDimitriImport = async () => {
-    if (!dimitriReport || !rawDimitriPayload) return;
+    if (!dimitriReport || !rawDimitriPayload || isImportingDimitri) return;
+    setIsImportingDimitri(true);
     try {
       const { importDimitriCheckerReport } =
         await import("@/lib/forza/dimitri.functions");
@@ -117,7 +130,11 @@ function StatementAnalysis() {
       setDimitriReport(null);
       setRawDimitriPayload(null);
     } catch (err) {
-      toast.error(`Import zlyhal: ${(err as Error).message}`);
+      toast.error(`Import zlyhal: ${(err as Error).message}`, {
+        action: { label: "Skúsiť znova", onClick: () => void confirmDimitriImport() },
+      });
+    } finally {
+      setIsImportingDimitri(false);
     }
   };
 
@@ -149,6 +166,7 @@ function StatementAnalysis() {
           <EmptyState
             title="Žiadne transakcie v prípade"
             detail="Pridajte transakcie ručne vyššie alebo nahrajte bankový výpis."
+            action={<Button asChild size="sm"><a href="/forza/import-csv">Importovať bankový výpis</a></Button>}
           />
         </Screen>
         <BottomNav />
@@ -196,12 +214,14 @@ function StatementAnalysis() {
             )}
 
             <div className="flex gap-2">
-              <Button size="sm" onClick={confirmDimitriImport}>
-                Schváliť a importovať do prípadu
+              <Button size="sm" disabled={isImportingDimitri} onClick={confirmDimitriImport}>
+                {isImportingDimitri ? <Loader2 className="animate-spin" aria-hidden /> : null}
+                {isImportingDimitri ? "Importujem…" : "Schváliť a importovať do prípadu"}
               </Button>
               <Button
                 size="sm"
                 variant="outline"
+                disabled={isImportingDimitri}
                 onClick={() => setDimitriReport(null)}
               >
                 Zrušiť
