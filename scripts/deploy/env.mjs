@@ -30,6 +30,7 @@ export const SECRET = new Set([
   "WHOISWHO_API_KEY",
   "ICO_ATLAS_API_KEY",
   "FORENX_AI_WORKER_KEY",
+  "CRON_SECRET",
 ]);
 
 /** Bez týchto produkcia nefunguje (vault v produkcii bez S3 zámerne zlyhá). */
@@ -53,7 +54,7 @@ export const REQUIRED = [
 export const MISTRAL_ANY = ["MISTRAL_API_KEY", "MISTRAL_API_KEY_CHAT", "MISTRAL_API_KEY_ANALYSIS"];
 
 /** Premenné, ktoré kód číta, hoci v šablóne nie sú. */
-const EXTRA = ["MISTRAL_API_KEY_CHAT", "MISTRAL_API_KEY_ANALYSIS", "FORENX_ADMIN_EMAILS"];
+const EXTRA = ["MISTRAL_API_KEY_CHAT", "MISTRAL_API_KEY_ANALYSIS", "FORENX_ADMIN_EMAILS", "CRON_SECRET"];
 
 /** Nesmie byť nastavené v produkcii (fallback vault je v produkcii zakázaný). */
 export const FORBIDDEN_IN_PRODUCTION = ["VAULT_FALLBACK_SECRET"];
@@ -125,6 +126,10 @@ export function checkEnv(env, keys) {
   const srv = env.get("SUPABASE_URL");
   if (pub && srv && pub !== srv) {
     problems.push({ level: "error", key: "SUPABASE_URL", issue: "nezhoduje sa s NEXT_PUBLIC_SUPABASE_URL" });
+  }
+  const cron = env.get("CRON_SECRET");
+  if (cron && cron.length < 32) {
+    problems.push({ level: "error", key: "CRON_SECRET", issue: "musí mať aspoň 32 znakov (kratší endpoint odmietne)" });
   }
   const base = env.get("NEXT_PUBLIC_BASE_URL");
   if (base && !base.startsWith("https://")) {

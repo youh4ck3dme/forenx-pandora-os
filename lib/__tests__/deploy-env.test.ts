@@ -63,6 +63,14 @@ describe("deploy env helper", () => {
     expect(checkEnv(both, exampleKeys()).filter((p) => p.level === "error")).toEqual([]);
   });
 
+  it("rejects a CRON_SECRET the worker endpoint would refuse", () => {
+    const env = validEnv();
+    env.set("CRON_SECRET", "too-short");
+    expect(checkEnv(env, exampleKeys()).map((p) => p.key)).toContain("CRON_SECRET");
+    env.set("CRON_SECRET", "c".repeat(64));
+    expect(checkEnv(env, exampleKeys()).filter((p) => p.level === "error")).toEqual([]);
+  });
+
   it("reports missing, placeholder, leaked and forbidden values without echoing them", () => {
     const env = validEnv();
     env.delete("S3_SECRET_ACCESS_KEY");

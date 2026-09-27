@@ -8,7 +8,7 @@
 -- v subtransakcii, ktorá sa na konci VŽDY vráti späť. V databáze nič neostane.
 -- Výsledkom je tabuľka: check | status (PASS / FAIL / FINDING) | detail.
 --   FAIL    = politika nechráni to, čo má
---   FINDING = správanie podľa politík, ale riziko pre forenznú integritu
+--   (od migrácie 20260927234500_evidence_ledger_worm sú hash, S3 kľúč a mazanie chránené → PASS)
 -- =============================================================================
 
 create temp table if not exists _rls_check (
@@ -51,6 +51,18 @@ begin
   res := res || format('Žiadna politika USING (true)%s%s%s%s', chr(31),
     case when n = 0 then 'PASS' else 'FAIL' end, chr(31), n || ' podozrivých');
 
+  select count(*) into n from pg_trigger
+   where tgrelid = 'public.evidence_items'::regclass and not tgisinternal
+     and tgname in ('evidence_items_worm_guard', 'evidence_items_delete_guard', 'evidence_items_insert_guard', 'evidence_items_audit_insert');
+  res := res || format('WORM / delete / audit triggery%s%s%s%s zo 4', chr(31),
+    case when n = 4 then 'PASS' else 'FAIL' end, chr(31), n);
+
+  select count(*) into n from information_schema.role_table_grants
+   where table_schema = 'public' and table_name = 'evidence_items'
+     and privilege_type = 'DELETE' and grantee in ('anon', 'authenticated');
+  res := res || format('Priamy DELETE odobratý klientom%s%s%s%s grantov DELETE pre anon/authenticated', chr(31),
+    case when n = 0 then 'PASS' else 'FAIL' end, chr(31), n);
+
   -- --------------------------------------------------------------- behaviour
   begin
     -- Setup ako vlastník DB (obchádza RLS), potom prepnutie na rolu authenticated.
@@ -89,15 +101,22 @@ begin
     res := res || format('Cudzí používateľ nevidí dôkazy%s%s%s%s riadkov', chr(31),
       case when n = 0 then 'PASS' else 'FAIL' end, chr(31), n);
 
-    update public.evidence_items set case_name = 'HACK' where id = e_open;
-    get diagnostics n = row_count;
-    res := res || format('Cudzí používateľ nezmení dôkaz%s%s%s%s riadkov', chr(31),
-      case when n = 0 then 'PASS' else 'FAIL' end, chr(31), n);
-
-    delete from public.evidence_items where id = e_open;
-    get diagnostics n = row_count;
-    res := res || format('Cudzí používateľ nezmaže dôkaz%s%s%s%s riadkov', chr(31),
-      case when n = 0 then 'PASS' else 'FAIL' end, chr(31), n);
+    begin
+      update public.evidence_items set case_name = 'HACK' where id = e_open;
+      get diagnostics n = row_count;
+      res := res || format('Cudzí používateľ nezmení dôkaz%s%s%s%s riadkov', chr(31),
+        case when n = 0 then 'PASS' else 'FAIL' end, chr(31), n);
+    exception when insufficient_privilege or check_violation or raise_exception then
+      res := res || format('Cudzí používateľ nezmení dôkaz%sPASS%s%s', chr(31), chr(31), 'zamietnuté: ' || sqlerrm);
+    end;
+    begin
+      delete from public.evidence_items where id = e_open;
+      get diagnostics n = row_count;
+      res := res || format('Cudzí používateľ nezmaže dôkaz%s%s%s%s riadkov', chr(31),
+        case when n = 0 then 'PASS' else 'FAIL' end, chr(31), n);
+    exception when insufficient_privilege or check_violation or raise_exception then
+      res := res || format('Cudzí používateľ nezmaže dôkaz%sPASS%s%s', chr(31), chr(31), 'zamietnuté: ' || sqlerrm);
+    end;
 
     begin
       insert into public.evidence_items
@@ -116,15 +135,22 @@ begin
     res := res || format('Vlastník vidí svoje dôkazy%s%s%s%s riadkov (očakávané 2)', chr(31),
       case when n = 2 then 'PASS' else 'FAIL' end, chr(31), n);
 
-    update public.evidence_items set case_name = 'RLS-CHECK' where id = e_hold;
-    get diagnostics n = row_count;
-    res := res || format('Legal hold: vlastník nezmení dôkaz%s%s%s%s riadkov', chr(31),
-      case when n = 0 then 'PASS' else 'FAIL' end, chr(31), n);
-
-    delete from public.evidence_items where id = e_hold;
-    get diagnostics n = row_count;
-    res := res || format('Legal hold: vlastník nezmaže dôkaz%s%s%s%s riadkov', chr(31),
-      case when n = 0 then 'PASS' else 'FAIL' end, chr(31), n);
+    begin
+      update public.evidence_items set file_name = 'x.pdf' where id = e_hold;
+      get diagnostics n = row_count;
+      res := res || format('Legal hold: vlastník nezmení dôkaz%s%s%s%s riadkov', chr(31),
+        case when n = 0 then 'PASS' else 'FAIL' end, chr(31), n);
+    exception when insufficient_privilege or check_violation or raise_exception then
+      res := res || format('Legal hold: vlastník nezmení dôkaz%sPASS%s%s', chr(31), chr(31), 'zamietnuté: ' || sqlerrm);
+    end;
+    begin
+      delete from public.evidence_items where id = e_hold;
+      get diagnostics n = row_count;
+      res := res || format('Legal hold: vlastník nezmaže dôkaz%s%s%s%s riadkov', chr(31),
+        case when n = 0 then 'PASS' else 'FAIL' end, chr(31), n);
+    exception when insufficient_privilege or check_violation or raise_exception then
+      res := res || format('Legal hold: vlastník nezmaže dôkaz%sPASS%s%s', chr(31), chr(31), 'zamietnuté: ' || sqlerrm);
+    end;
 
     begin
       update public.evidence_items set legal_hold = false where id = e_hold;
@@ -142,7 +168,7 @@ begin
        where id = e_open;
       get diagnostics n = row_count;
       res := res || format('Nemennosť hashu a S3 kľúča%s%s%s%s', chr(31),
-        case when n = 0 then 'PASS' else 'FINDING' end, chr(31),
+        case when n = 0 then 'PASS' else 'FAIL' end, chr(31),
         case when n = 0 then 'zmena zamietnutá'
              else 'vlastník môže prepísať sha256_hash a s3_object_key dôkazu bez legal hold' end);
     exception when others then
@@ -153,7 +179,7 @@ begin
       delete from public.evidence_items where id = e_open;
       get diagnostics n = row_count;
       res := res || format('Zmazanie dôkazu bez legal hold%s%s%s%s', chr(31),
-        case when n = 0 then 'PASS' else 'FINDING' end, chr(31),
+        case when n = 0 then 'PASS' else 'FAIL' end, chr(31),
         case when n = 0 then 'zmazanie zamietnuté'
              else 'vlastník môže zmazať záznam z ledgeru (bez auditnej stopy)' end);
     exception when others then
