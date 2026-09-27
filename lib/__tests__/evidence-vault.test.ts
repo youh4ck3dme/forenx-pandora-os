@@ -83,6 +83,23 @@ describe("Forensic Evidence Vault (Hetzner S3 & Types)", () => {
       expect(json.items).toEqual([]);
     });
 
+    it("fails closed when production S3 credentials are absent", async () => {
+      const originalEnv = process.env;
+      process.env = { ...originalEnv, NODE_ENV: "production" };
+      delete process.env.S3_ACCESS_KEY_ID;
+      delete process.env.S3_SECRET_ACCESS_KEY;
+      delete process.env.AWS_ACCESS_KEY_ID;
+      delete process.env.AWS_SECRET_ACCESS_KEY;
+
+      try {
+        const req = new NextRequest("http://localhost:3000/api/vault?caseId=CASE-001");
+        const res = await GET(req);
+        expect(res.status).toBe(503);
+      } finally {
+        process.env = originalEnv;
+      }
+    });
+
     it("POST /api/vault rejects upload with integrity mismatch (Anti-tampering CWE-345)", async () => {
       const formData = new FormData();
       formData.append("file", new Blob(["tajny obsah spisu"], { type: "application/pdf" }), "zmluva.pdf");
