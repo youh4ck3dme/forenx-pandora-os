@@ -308,22 +308,43 @@ export interface CustodyLedgerVerificationResult {
 }
 
 // ─── DEVIL'S ADVOCATE & ALTERNATÍVNE HYPOTÉZY (OS O6) ──────────────
+export interface HypothesisSourceRef {
+  evidenceId: string;
+  paragraph?: string;
+  page?: number;
+  description?: string;
+}
+
 export interface AlternativeHypothesis {
   id: string;
   title: string;
   scenario: string; // Celý alternatívny nevinný príbeh
   evidence: string[]; // Ktoré podozrivé stopy/transakcie legitímne vysvetľuje
+  sourceReferences?: HypothesisSourceRef[]; // Exaktné prepojenie na dôkazy v spise
+  legalAuthority?: string; // Právny základ exkulpačného tvrdenia (napr. "§ 10 ods. 1 TP", "in dubio pro reo")
   requiredTraces: string[]; // Aké stopy by v spise museli existovať, ak je pravdivá
   rebuttal: string; // Konkrétny procesný úkon na vyvrátenie verzie
   probabilityScore: number; // 0–100; pracovný odhad, nie pravdepodobnosť viny
 }
 
 // ─── PROCESNÁ PRÍPUSTNOSŤ (§ 119 TP, OS O8) ────────────────────────
+export type DefectClassification =
+  | "unlawful_acquisition" // § 119 ods. 3 TP — dôkaz získaný nezákonným donútením / hrozbou
+  | "missing_caution" // Chýbajúce zákonné poučenie (§ 121 ods. 2 TP)
+  | "unauthorized_organ" // Úkon vykonaný nepríslušným orgánom
+  | "chain_of_custody_break" // Porušenie reťazca zaistenia stôp / integrity
+  | "formal_flaw"; // Formálna alebo odstrániteľná procesná vada
+
 export interface AdmissibilityAuditDefect {
+  id?: string;
   severity: "critical" | "curable" | "formal"; // kritická = absolútna neprípustnosť; odstrániteľná; formálna
   paragraph: string; // napr. "§ 119 ods. 3 TP", "§ 142 TP"
+  legalAuthority?: string; // Judikatúra / ustanovenie TP (napr. "Nález ÚS SR II. ÚS 399/2014")
+  sourceEvidenceId?: string; // Väzba na ID zaisteného dôkazu / listiny (napr. "doc-01", "tx-88")
+  defectType?: DefectClassification;
   description: string;
-  remedyAction: string; // Ako vadu odstrániť na pojednávaní
+  remedyAction: string; // Ako vadu odstrániť alebo procesne zhojiť na pojednávaní
+  remediationRisk?: "high" | "medium" | "low"; // Zostávajúce riziko po vykonaní nápravy
 }
 
 export interface AdmissibilityAuditResult {
@@ -331,4 +352,5 @@ export interface AdmissibilityAuditResult {
   score: number; // 0-100
   defects: AdmissibilityAuditDefect[];
   courtReadySummary: string;
+  remediationPlan?: Array<{ defectId?: string; action: string; priority: "high" | "medium" | "low" }>;
 }

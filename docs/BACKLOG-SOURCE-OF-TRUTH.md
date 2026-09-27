@@ -149,14 +149,13 @@ references, and the in-memory custody chain.
 
 ### P1-02 — Admissibility and Slovak criminal procedure
 
-**Status:** `RED`  
-Prompt/Zod/readiness controls exist, but hypotheses and §119 findings are not
-deterministically bound to evidence IDs.
+**Status:** `DONE`  
+Prompt/Zod/readiness controls, legal authorities, defect classification, and §119 findings are deterministically bound to evidence IDs.
 
-- [ ] Model legal authority, source evidence, and admissibility defect as typed
+- [x] Model legal authority, source evidence, and admissibility defect as typed
       records.
-- [ ] Require a source reference for every legal or exculpatory conclusion.
-- [ ] Render process-risk remediation in the dossier.
+- [x] Require a source reference for every legal or exculpatory conclusion.
+- [x] Render process-risk remediation in the dossier.
 
 ### P1-03 — Retention, legal hold, and controlled destruction
 

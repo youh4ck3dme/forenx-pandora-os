@@ -67,14 +67,35 @@ export function AdmissibilityAuditView({
         ) : (
           audit.defects.map((defect) => (
             <article key={`${defect.paragraph}-${defect.description}`} className={`rounded-lg border p-3 ${defectStyle[defect.severity]}`}>
-              <p className="flex items-center gap-1.5 text-xs font-bold">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                {defect.paragraph}
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <p className="flex items-center gap-1.5 text-xs font-bold">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  {defect.paragraph}
+                </p>
+                <div className="flex items-center gap-1">
+                  {defect.sourceEvidenceId && (
+                    <span className="rounded bg-black/30 px-1.5 py-0.5 font-mono text-[10px] text-cyan-300">
+                      Dôkaz: #{defect.sourceEvidenceId}
+                    </span>
+                  )}
+                  {defect.legalAuthority && (
+                    <span className="rounded bg-black/30 px-1.5 py-0.5 text-[10px] font-medium text-foreground/80">
+                      {defect.legalAuthority}
+                    </span>
+                  )}
+                </div>
+              </div>
               <p className="mt-1 text-xs leading-relaxed">{defect.description}</p>
-              <p className="mt-2 text-[11px] leading-relaxed opacity-90">
-                <strong>Náprava:</strong> {defect.remedyAction}
-              </p>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-current/10 pt-2 text-[11px] leading-relaxed opacity-95">
+                <p>
+                  <strong>Procesná náprava:</strong> {defect.remedyAction}
+                </p>
+                {defect.remediationRisk && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider">
+                    Riziko: {defect.remediationRisk}
+                  </span>
+                )}
+              </div>
             </article>
           ))
         )}
