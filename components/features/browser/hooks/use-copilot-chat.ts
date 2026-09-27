@@ -2,6 +2,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useBrowserStore } from '@/lib/store';
 import { generateImage, generateCompletion, readStream, ChatMessage } from '@/lib/services';
+import { electron, isElectron } from '@/lib/api';
 
 export function useCopilotChat() {
     const { mistralApiKey, openaiApiKey, copilotModel, tabs, activeTabId } = useBrowserStore();
@@ -20,7 +21,7 @@ export function useCopilotChat() {
     // We'll attach transient listeners per request or global ones?
     // Global approach is safer for Electron events.
     useEffect(() => {
-        if (typeof window === 'undefined' || !(window as any).electron) return;
+        if (!isElectron()) return;
 
         const handleChunk = ({ chunk }: { chunk: string }) => {
             setMessages((prev) => {
@@ -42,13 +43,14 @@ export function useCopilotChat() {
             setIsLoading(false);
         };
 
-        (window as any).electron.on('ai:chunk', handleChunk);
-        (window as any).electron.on('ai:done', handleDone);
-        (window as any).electron.on('ai:error', handleError);
-
-        // No cleanup exposed by our simple API wrapper, but React effects re-running isn't ideal without off()
-        // Our preload.ts wrapper is simple wrapper around ipcRenderer.on, so adding multiple listeners is a risk if this component remounts.
-        // However, for this MVP phase, it's acceptable as Copilot is a singleton usage in the sidebar.
+        electron.on('ai:chunk', handleChunk);
+        electron.on('ai:done', handleDone);
+        electron.on('ai:error', handleError);
+        return () => {
+            electron.off('ai:chunk', handleChunk);
+            electron.off('ai:done', handleDone);
+            electron.off('ai:error', handleError);
+        };
 
     }, []);
 
@@ -63,7 +65,7 @@ export function useCopilotChat() {
 
         // --- Image Generation Detect ---
         if (lowerContent.startsWith('/imagine ') || lowerContent.startsWith('/genpic ') || lowerContent.startsWith('generuj ') || lowerContent.startsWith('generate ')) {
-            if (!openaiApiKey && (window as any).electron) {
+            if (!openaiApiKey && isElectron()) {
                 // Even for simulation, let's complain about key if logic demands it, or just use Electron
             }
 
@@ -73,8 +75,8 @@ export function useCopilotChat() {
                 setMessages((prev) => [...prev, assistantMsg]);
 
                 let imageUrl: string | undefined;
-                if ((window as any).electron) {
-                    imageUrl = await (window as any).electron.invoke('ai:generate-image', { prompt, apiKey: openaiApiKey });
+                if (isElectron()) {
+                    imageUrl = await electron.invoke('ai:generate-image', { prompt, apiKey: openaiApiKey }) as string | undefined;
                 } else {
                     // Fallback for web mode
                     imageUrl = await generateImage(prompt, openaiApiKey || '');
@@ -100,15 +102,15 @@ export function useCopilotChat() {
         // --- Context Gathering ---
         let context = "";
         try {
-            if ((window as any).electron) {
-                const liveContent = await (window as any).electron.invoke('tab:getContent');
+            if (isElectron()) {
+                const liveContent = await electron.invoke('tab:getContent') as { content?: string; title?: string } | null;
                 if (liveContent?.content) {
                     context = `OBSAH AKTUÁLNEJ STRÁNKY ("${liveContent.title || 'Neznáma'}"):\n\n${liveContent.content.substring(0, 8000)}`;
                 } else {
                     // Fallback to history if live fail
                     const tab = tabs.find(t => t.id === activeTabId);
                     if (tab?.url) {
-                        const doc = await (window as any).electron.invoke('history:getContent', tab.url);
+                        const doc = await electron.invoke('history:getContent', tab.url) as { content?: string } | null;
                         if (doc?.content) {
                             context = `OBSAH AKTUÁLNEJ STRÁNKY ("${tab.title || 'Neznáma'}"):\n\n${doc.content.substring(0, 5000)}`;
                         }
@@ -126,15 +128,15 @@ export function useCopilotChat() {
         // --- Chat Request ---
         const effectiveKey = mistralApiKey || openaiApiKey;
 
-        if ((window as any).electron) {
+        if (isElectron()) {
             // Prepare UI for stream
             const assistantMsg: ChatMessage = { role: 'assistant', content: '' };
             setMessages((prev) => [...prev, assistantMsg]);
 
-            (window as any).electron.send('ai:chat', {
+            electron.send('ai:chat', {
                 messages: historyWithContext,
                 apiKey: effectiveKey,
-                model: copilotModel || 'mistral-large-latest'
+                model: copilotModel === 'gemini-pro' ? 'gemini-pro' : 'gpt-4o'
             });
         } else {
             // Web Mode: Real Mistral API streaming

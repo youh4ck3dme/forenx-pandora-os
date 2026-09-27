@@ -48,7 +48,7 @@ describe("vault fallback signatures", () => {
   });
 
   it("rejects expired and malformed signatures", async () => {
-    const url = await getPresignedUploadUrl("cases/c1/up.pdf", { expiresIn: 60 });
+    const url = await getPresignedUploadUrl("cases/c1/up.pdf", { expiresIn: 60, sha256: "a".repeat(64) });
     const { expires, sig } = params(url);
     expect(verifyFallbackSignature("put", "cases/c1/up.pdf", expires, sig)).toBe(true);
     expect(verifyFallbackSignature("put", "cases/c1/up.pdf", expires, sig, expires + 1)).toBe(false);
@@ -57,19 +57,19 @@ describe("vault fallback signatures", () => {
 
   it("rejects a short configured secret", async () => {
     process.env.VAULT_FALLBACK_SECRET = "short";
-    await expect(getPresignedDossierUrl("k", 60)).rejects.toThrow(/aspoň 32/);
+    await expect(getPresignedDossierUrl("cases/c1/k.pdf", 60)).rejects.toThrow(/aspoň 32/);
   });
 
   it("fails hard in production when S3 is not configured", async () => {
     (process.env as Record<string, string>).NODE_ENV = "production";
-    await expect(getPresignedDossierUrl("k", 60)).rejects.toThrow(/v produkcii zakázaný/);
-    await expect(getPresignedUploadUrl("k")).rejects.toThrow(/v produkcii zakázaný/);
+    await expect(getPresignedDossierUrl("cases/c1/k.pdf", 60)).rejects.toThrow(/v produkcii zakázaný/);
+    await expect(getPresignedUploadUrl("cases/c1/k.pdf", { sha256: "a".repeat(64) })).rejects.toThrow(/v produkcii zakázaný/);
     await expect(
       uploadCaseDocument("case-1", {
         name: "a.pdf",
         buffer: Buffer.from("x"),
         mimeType: "application/pdf",
-        sha256: "a".repeat(64),
+        sha256: "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881", // sha256("x")
       }),
     ).rejects.toThrow(/v produkcii zakázaný/);
   });

@@ -137,6 +137,11 @@ describe("Bank CSV Auto-Mapping Engine (GAP 11)", () => {
       expect(normalizeAmount("-1 250,50 €")).toBe(-1250.5);
       expect(normalizeAmount("100")).toBe(100);
     });
+
+    it("odmieta tiché zaokrúhlenie a nebezpečne veľké sumy", () => {
+      expect(normalizeAmountToCents("12,345")).toBeNull();
+      expect(normalizeAmountToCents("999999999999999999999999")).toBeNull();
+    });
   });
 
   describe("3. Parsovanie reálnych vzoriek CSV bankových výpisov", () => {

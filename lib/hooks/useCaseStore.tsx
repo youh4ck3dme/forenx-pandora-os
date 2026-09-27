@@ -152,17 +152,6 @@ export function CaseStoreProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("storage", onStorage);
 
-    // Notify Electron main process for native chrome sync
-    try {
-      if (typeof window !== "undefined" && (window as any).electronAPI?.setTheme) {
-        const systemDark = media.matches;
-        const isDark = state.theme === "dark" || (state.theme === "system" && systemDark);
-        (window as any).electronAPI.setTheme(isDark ? "dark" : "light");
-      }
-    } catch {
-      // ignore — not running in Electron
-    }
-
     return () => {
       media.removeEventListener("change", onMediaChange);
       window.removeEventListener("storage", onStorage);

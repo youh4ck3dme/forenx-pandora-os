@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
-import { POST } from "@/app/api/vault/presign/route";
+import { POST } from "../../app/api/vault/presign/route";
 
 describe("Direct-to-S3 Presigned Upload API (/api/vault/presign)", () => {
   const originalEnv = process.env;
@@ -71,7 +71,8 @@ describe("Direct-to-S3 Presigned Upload API (/api/vault/presign)", () => {
   });
 
   it("generates valid SigV4 presigned upload URL and deterministic storage key", async () => {
-    const validHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const validHash =
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
     const req = new NextRequest("http://localhost:3000/api/vault/presign", {
       method: "POST",
       headers: {
@@ -93,7 +94,9 @@ describe("Direct-to-S3 Presigned Upload API (/api/vault/presign)", () => {
 
     expect(json.success).toBe(true);
     expect(json.uploadUrl).toBeDefined();
-    expect(json.storageKey).toBe(`cases/CASE-KS-2026-881/evidence/${validHash}-rozsudok.pdf`);
+    expect(json.storageKey).toBe(
+      `cases/CASE-KS-2026-881/evidence/${validHash}-rozsudok.pdf`,
+    );
     expect(json.expiresInSeconds).toBe(300);
     expect(json.requiredHeaders["Content-Type"]).toBe("application/pdf");
   });

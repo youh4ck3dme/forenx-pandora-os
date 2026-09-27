@@ -162,13 +162,26 @@
   }
 }
 
+html,
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  height: 100dvh;
+  width: 100vw;
+  overflow: hidden; /* Zakáže globálny scroll */
+  overscroll-behavior: none; /* Zamedzí "pull-to-refresh" na mobiloch */
+
+  /* Safe Area podpora (iOS notch) */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 #webgl {
@@ -186,7 +199,6 @@ body {
 
 /* Added animations for Welcome Page */
 @keyframes float {
-
   0%,
   100% {
     transform: translateY(0px) rotate(0deg);
@@ -198,7 +210,6 @@ body {
 }
 
 @keyframes float-delayed {
-
   0%,
   100% {
     transform: translateY(0px) rotate(0deg);
@@ -210,7 +221,6 @@ body {
 }
 
 @keyframes gradient {
-
   0%,
   100% {
     background-position: 0% 50%;

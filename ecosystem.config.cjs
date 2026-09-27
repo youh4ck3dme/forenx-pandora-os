@@ -7,10 +7,10 @@ module.exports = {
       instances: "max",
       exec_mode: "cluster",
       watch: false,
-      max_memory_restart: "1G",
+      max_memory_restart: "1536M",
       env: {
         NODE_ENV: "production",
-        PORT: 3000,
+        PORT: 3005,
         // Loopback only: reachable exclusively through the nginx reverse proxy.
         HOSTNAME: "127.0.0.1"
       },

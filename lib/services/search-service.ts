@@ -158,7 +158,7 @@ export class SearchService {
       // Electron Mode
       if (typeof window !== 'undefined') {
         const result = await electron.invoke('search:suggestions', query)
-        if (result) return result
+        if (Array.isArray(result)) return result as Suggestion[]
       }
 
       // Web Mode: API routes are disabled for static export.

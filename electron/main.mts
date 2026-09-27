@@ -49,6 +49,27 @@ interface ShieldLog {
 }
 let shieldLogs: ShieldLog[] = []
 
+function isAllowedRendererUrl(rawUrl: string): boolean {
+    try {
+        const url = new URL(rawUrl)
+        if (app.isPackaged) return url.protocol === 'app:'
+        return (
+            (url.protocol === 'http:' || url.protocol === 'https:') &&
+            (url.hostname === 'localhost' || url.hostname === '127.0.0.1')
+        )
+    } catch {
+        return false
+    }
+}
+
+function protectRenderer(webContents: Electron.WebContents): void {
+    webContents.on('will-navigate', (event, navigationUrl) => {
+        if (!isAllowedRendererUrl(navigationUrl)) event.preventDefault()
+    })
+    webContents.on('will-attach-webview', (event) => event.preventDefault())
+    webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+}
+
 // URL categorization helper
 function categorizeBlockedUrl(url: string): 'ads' | 'trackers' | 'scripts' {
     const lowerUrl = url.toLowerCase()
@@ -203,6 +224,7 @@ if (!gotTheLock) {
             webPreferences: {
                 nodeIntegration: false,
                 contextIsolation: true,
+                sandbox: true,
             },
             backgroundColor: '#00000000' // transparent
         })
@@ -300,6 +322,7 @@ function createWindow() {
         icon: path.join(__dirname, '../public/apple-icon.png')
     })
     const mainWindowWebContentsId = mainWindow.webContents.id
+    protectRenderer(mainWindow.webContents)
 
     // Clear cache and service workers on startup to prevent hijacking from old projects
     session.defaultSession.clearCache()
@@ -325,6 +348,10 @@ function createWindow() {
                 }
 
                 let filePath = path.normalize(path.join(__dirname, '../out', relativePath))
+                const outputRoot = path.resolve(__dirname, '../out')
+                if (!filePath.startsWith(`${outputRoot}${path.sep}`) && filePath !== outputRoot) {
+                    return new Response('Not Found', { status: 404 })
+                }
 
                 // If it's a directory or doesn't have an extension, try index.html
                 if (!path.extname(filePath)) {

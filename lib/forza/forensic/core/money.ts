@@ -11,23 +11,37 @@
  */
 
 export const MONEY_SCALE = 2;
+const CENT_FACTOR = 10 ** MONEY_SCALE;
+
+export function moneyToCents(value: number): number {
+  if (!Number.isFinite(value)) {
+    throw new Error("Peňažná hodnota musí byť konečné číslo.");
+  }
+  const scaled = Number((Math.abs(value) * CENT_FACTOR).toPrecision(12));
+  const cents = Math.sign(value) * Math.round(scaled);
+  if (!Number.isSafeInteger(cents)) {
+    throw new Error("Peňažná hodnota presahuje bezpečný rozsah centov.");
+  }
+  return cents;
+}
+
+export function centsToMoney(cents: number): number {
+  if (!Number.isSafeInteger(cents)) {
+    throw new Error("Suma v centoch musí byť bezpečné celé číslo.");
+  }
+  return cents / CENT_FACTOR;
+}
 
 /** Zaokrúhli na 2 desatinné miesta (half-up na kladných aj záporných hodnotách). */
 export function roundMoney(value: number): number {
-  const factor = 10 ** MONEY_SCALE;
   // toPrecision odstráni binárnu odchýlku (1.005 je v plávajúcej čiarke 1.00499…),
   // aby zaokrúhlenie zodpovedalo desatinnému zápisu, ktorý zadal používateľ.
-  const scaled = Number((Math.abs(value) * factor).toPrecision(12));
-  return (Math.sign(value) * Math.round(scaled)) / factor;
+  return centsToMoney(moneyToCents(value));
 }
 
 /** Súčet v jednej mene — sčítava v centoch, aby nevznikala chyba plávajúcej čiarky. */
 export function sumMoney(values: number[]): number {
-  const cents = values.reduce(
-    (sum, value) => sum + Math.round(value * 10 ** MONEY_SCALE),
-    0,
-  );
-  return cents / 10 ** MONEY_SCALE;
+  return centsToMoney(values.reduce((sum, value) => sum + moneyToCents(value), 0));
 }
 
 /** Objem = súčet absolútnych hodnôt (smer neurčuje veľkosť toku). */
@@ -39,12 +53,18 @@ export function sumVolume(values: number[]): number {
 export function sumByCurrency<T extends { amount: number; currency: string }>(
   items: T[],
 ): Record<string, number> {
-  const out: Record<string, number> = {};
+  const centsByCurrency: Record<string, number> = {};
   for (const item of items) {
     const key = item.currency || "EUR";
-    out[key] = sumMoney([out[key] ?? 0, Math.abs(item.amount)]);
+    centsByCurrency[key] =
+      (centsByCurrency[key] ?? 0) + moneyToCents(Math.abs(item.amount));
   }
-  return out;
+  return Object.fromEntries(
+    Object.entries(centsByCurrency).map(([currency, cents]) => [
+      currency,
+      centsToMoney(cents),
+    ]),
+  );
 }
 
 export function formatMoney(value: number, currency: string): string {

@@ -6,7 +6,9 @@ import { mapCaseRows } from "@/lib/case-mapper";
 import {
   buildAiPayload,
   buildPseudonyms,
+  isClearanceOrInnocenceClaim,
   PROMPT_VERSION,
+  serializeUntrustedAiPayload,
   type AiPayload,
 } from "@/lib/ai/redact";
 import { parseAiJson } from "@/lib/ai/parse-json";
@@ -462,8 +464,7 @@ async function runAiTaskInner(
       };
     }
 
-    // "<" escapovaný ako \u003c: obsah nemôže uzavrieť blok <data>.
-    const serialized = JSON.stringify(payload).replace(/</g, "\\u003c");
+    const serialized = serializeUntrustedAiPayload(payload);
     if (serialized.length > 60_000) {
       await supabaseAdmin
         .from("ai_usage")
@@ -551,6 +552,16 @@ async function runAiTaskInner(
         allowed.has(id),
       );
     }
+    const hasSourceRef =
+      Array.isArray(output["cited"]) && output["cited"].length > 0;
+    if (!hasSourceRef) {
+      for (const key of ["summary", "explanation", "courtReadySummary"]) {
+        const value = output[key];
+        if (typeof value === "string" && isClearanceOrInnocenceClaim(value)) {
+          delete output[key];
+        }
+      }
+    }
     if (Array.isArray(output["suggestions"])) {
       output["suggestions"] = (
         output["suggestions"] as { transaction: string }[]
@@ -564,7 +575,13 @@ async function runAiTaskInner(
       }[];
       // Odfiltruj prázdne / vymyslené hypotézy bez názvu a scenára.
       output["hypotheses"] = hyps.filter(
-        (h) => Boolean(h.title?.trim()) && Boolean(h.scenario?.trim()),
+        (h) =>
+          Boolean(h.title?.trim()) &&
+          Boolean(h.scenario?.trim()) &&
+          (hasSourceRef ||
+            !isClearanceOrInnocenceClaim(
+              `${h.title ?? ""} ${h.scenario ?? ""}`,
+            )),
       );
     }
     if (Array.isArray(output["defects"])) {
