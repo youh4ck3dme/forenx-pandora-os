@@ -9,6 +9,7 @@ import {
   type MistralPurpose,
   type MistralResult,
 } from "./mistral.server";
+import { applyPrivacyGateway } from "./privacy-gateway";
 
 export type LlmProvider = "mistral";
 export type LlmResult = MistralResult & { provider?: LlmProvider };
@@ -35,8 +36,11 @@ export async function callLlm(options: {
   fetchImpl?: typeof fetch;
 }): Promise<LlmResult> {
   const purpose = options.purpose ?? "chat";
+  // Centrálna brána: žiadna nesystémová správa neodíde bez redakcie PII.
+  const { messages } = applyPrivacyGateway(options.messages);
   const result = await callMistral({
     ...options,
+    messages,
     purpose,
     timeoutMs: options.timeoutMs ?? timeoutForPurpose(purpose),
   });

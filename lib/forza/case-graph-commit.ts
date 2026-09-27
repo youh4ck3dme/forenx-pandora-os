@@ -6,10 +6,12 @@ import type {
 } from "@/lib/forza/case-graph-plan";
 
 const uuidSchema = z.string().uuid();
+const isoDate = z.string().regex(/^d{4}-d{2}-d{2}$/);
 
 const graphCommitInputSchema = z
   .object({
     actor: uuidSchema,
+    correlationId: z.string().min(1).max(100).optional(),
     caseId: uuidSchema,
     entities: z.array(
       z
@@ -48,6 +50,8 @@ const graphCommitInputSchema = z
           from_id: uuidSchema,
           to_id: uuidSchema,
           label: z.string().min(1).max(80),
+          valid_from: isoDate.nullable(),
+          valid_to: isoDate.nullable(),
         })
         .strict(),
     ),
@@ -64,6 +68,7 @@ const graphCommitSuccessSchema = z
 
 export type GraphCommitInput = {
   actor: string;
+  correlationId?: string;
   caseId: string;
   entities: GraphEntityInsert[];
   events: GraphEventInsert[];
@@ -110,6 +115,7 @@ export type GraphCommitRpc = (args: {
   _entities: GraphEntityInsert[];
   _events: GraphEventInsert[];
   _relations: GraphRelationInsert[];
+  _correlation?: string;
 }) => Promise<RpcResponse>;
 
 export async function commitAiGraph(
@@ -127,13 +133,15 @@ export async function commitAiGraph(
     };
   }
 
-  const { actor, caseId, entities, events, relations } = parsedInput.data;
+  const { actor, caseId, correlationId, entities, events, relations } =
+    parsedInput.data;
   const { data, error } = await rpc({
     _actor: actor,
     _case: caseId,
     _entities: entities,
     _events: events,
     _relations: relations,
+    ...(correlationId ? { _correlation: correlationId } : {}),
   });
   if (error) {
     if (error.code === "42883") {

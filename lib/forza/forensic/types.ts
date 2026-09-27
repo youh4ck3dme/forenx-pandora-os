@@ -287,7 +287,8 @@ export type CaseAnalysis = {
     /** Objem podľa jednotlivých mien — bez konverzie. */
     volumeByCurrency: Record<string, number>;
     currencies: string[];
-    cashRatio: number;
+    /** null = neaplikovateľné (nulový objem). */
+    cashRatio: number | null;
     weapons: number;
     europolMatches: number;
   };

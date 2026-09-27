@@ -236,18 +236,18 @@ function StatementAnalysis() {
               Metóda platieb
             </p>
             <DonutChart
-              incomeRatio={totals.volume > 0 ? 1 - totals.cashRatio : 1}
+              incomeRatio={1 - (totals.cashRatio ?? 0)}
               caption="bezhotovostne"
             />
             <Legend
               color="var(--primary)"
               label="Banka"
-              value={formatEur(totals.volume * (1 - totals.cashRatio))}
+              value={formatEur(totals.volume * (1 - (totals.cashRatio ?? 0)))}
             />
             <Legend
               color="var(--risk-medium)"
               label="Hotovosť"
-              value={formatEur(totals.volume * totals.cashRatio)}
+              value={formatEur(totals.volume * (totals.cashRatio ?? 0))}
             />
           </Card>
 

@@ -11,6 +11,7 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PORT: 3005,
+        // Loopback only: reachable exclusively through the nginx reverse proxy.
         HOSTNAME: "127.0.0.1"
       },
       error_file: "./logs/pm2-error.log",

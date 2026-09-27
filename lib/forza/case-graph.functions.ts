@@ -26,6 +26,7 @@ const inputSchema = z.object({
     .array(
       z.object({
         date: z.string().trim().max(60).optional(),
+        endDate: z.string().trim().max(60).optional(),
         event: z.string().trim().max(400).optional(),
         detail: z.string().trim().max(1000).optional(),
         actors: z.array(z.string().trim().max(160)).max(20).optional(),
@@ -86,7 +87,7 @@ export const applyAiResultsToCase = createServerFn({ method: "POST" })
           .eq("case_id", data.caseId),
         supabase
           .from("case_relations")
-          .select("from_id, to_id, label")
+          .select("from_id, to_id, label, valid_from, valid_to")
           .eq("case_id", data.caseId),
       ]);
     if (entitiesError || eventsError || relationsError) {
@@ -110,6 +111,7 @@ export const applyAiResultsToCase = createServerFn({ method: "POST" })
       async (args) => await supabaseAdmin.rpc("commit_ai_case_graph", args),
       {
         actor: context.userId,
+        correlationId: crypto.randomUUID(),
         caseId: data.caseId,
         entities: plan.entities,
         events: plan.events,

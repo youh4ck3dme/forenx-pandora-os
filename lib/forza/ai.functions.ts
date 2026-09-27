@@ -1,5 +1,4 @@
 import { createServerFn } from "@tanstack/react-start";
-import readXlsxFile from "read-excel-file/node";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { analyzeCase, type CaseAnalysis } from "@/forensic";
@@ -1498,13 +1497,22 @@ export async function runForensicAutopilotInner(
     ...(data.priorDossier && retrySet ? [data.priorDossier] : []),
     ...partials,
   ] as unknown as ForensicDossier[];
-  const parsed = (
+  const merged = (
     mergeInputs.length === 1
       ? mergeInputs[0]
       : mergeForensicDossiers(
           mergeInputs as unknown as Parameters<typeof mergeForensicDossiers>[0],
         )
   ) as ForensicDossier;
+  // SourceRef musí ukazovať na skutočný dokument analýzy; pri explicitne
+  // známych dokumentoch sa odkazy na neexistujúce dokumenty odstránia.
+  const { enforceSourceRefIntegrity } = await import("./source-ref-integrity");
+  const parsed = data.documentIds?.length
+    ? enforceSourceRefIntegrity(
+        merged,
+        data.documentIds.map((id) => ({ id })),
+      ).value
+    : merged;
 
   parsed.facts.timeline = parsed.facts.timeline ?? [];
   parsed.facts.traces = parsed.facts.traces ?? [];

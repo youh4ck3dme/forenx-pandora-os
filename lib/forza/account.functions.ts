@@ -155,8 +155,12 @@ export const deleteMyAccount = createServerFn({ method: "POST" })
       await run("ai_usage", () =>
         supabaseAdmin.from("ai_usage").delete().eq("user_id", userId),
       );
+      await run("source_snapshots", () =>
+        supabaseAdmin.from("source_snapshots").delete().eq("user_id", userId),
+      );
+      // Auditný log je append-only; vymazať sa dá len celá reťaz používateľa.
       await run("case_audit_log", () =>
-        supabaseAdmin.from("case_audit_log").delete().eq("user_id", userId),
+        supabaseAdmin.rpc("erase_user_audit_log", { _user: userId }),
       );
 
       // Originály nahratých súborov v privátnom úložisku.

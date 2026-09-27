@@ -128,13 +128,17 @@ export function flagTransaction(tx: Transaction, all: Transaction[]): Flag[] {
   return flags;
 }
 
-export function cashRatio(transactions: Transaction[]): number {
-  if (transactions.length === 0) return 0;
+/**
+ * Podiel hotovosti na objeme. `null` = neaplikovateľné (žiadny objem) —
+ * nikdy 0 %, ktoré by v reporte tvrdilo neexistujúci fakt, ani NaN/Infinity.
+ */
+export function cashRatio(transactions: Transaction[]): number | null {
+  const total = sumVolume(transactions.map((t) => t.amount));
+  if (total === 0) return null;
   const cash = sumVolume(
     transactions.filter((t) => t.method === "cash").map((t) => t.amount),
   );
-  const total = sumVolume(transactions.map((t) => t.amount));
-  return total === 0 ? 0 : cash / total;
+  return cash / total;
 }
 
 /** Čistý súčet podpísaných súm v jednej mene (kladné aj záporné korekcie). */
@@ -153,5 +157,5 @@ export function monitorTransaction(
 }
 
 export function isCashIntensive(transactions: Transaction[]): boolean {
-  return cashRatio(transactions) >= TX_RULES.cashIntensiveRatio;
+  return (cashRatio(transactions) ?? 0) >= TX_RULES.cashIntensiveRatio;
 }

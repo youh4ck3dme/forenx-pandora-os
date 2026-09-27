@@ -148,7 +148,7 @@ export function analyzeCase(forensicCase: ForensicCase): CaseAnalysis {
     }
 
     const ownCash = cashRatio(own);
-    if (own.length >= 3 && ownCash >= 0.8) {
+    if (own.length >= 3 && ownCash !== null && ownCash >= 0.8) {
       flags.push({
         code: "CASH_INTENSIVE",
         label: "Hotovostné podnikanie",

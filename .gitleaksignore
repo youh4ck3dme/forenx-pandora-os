@@ -1,0 +1,11 @@
+# Reviewed false positives (2026-09-27). Exact fingerprints only
+# (commit:file:rule:line) — any NEW finding, even in these files, still fails CI.
+# Placeholder Supabase keys ("eyJh…your…") in the env template:
+952996f882a3e953dfe442d9ce685302f05c57e9:.env.production.example:generic-api-key:31
+952996f882a3e953dfe442d9ce685302f05c57e9:.env.production.example:generic-api-key:33
+# Empty values (KEY=""):
+952996f882a3e953dfe442d9ce685302f05c57e9:.env.production.example:generic-api-key:79
+6b2e5d07c2655872c581f1f52c1e4c4456ed33fb:.env.example:generic-api-key:41
+# Human-readable test fixtures, not credentials:
+3aaa296be940c63fab126b55ca4a7253a744d416:lib/ai/__tests__/fault-injection.test.ts:generic-api-key:20
+438bb4a85402b86acf16cc64c954398f63853944:lib/ai/__tests__/mistral-client.test.ts:generic-api-key:24

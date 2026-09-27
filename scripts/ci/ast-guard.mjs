@@ -15,7 +15,7 @@ function checkSourceFile(file, program, violations) {
 
   function visit(node) {
     if (node.kind === ts.SyntaxKind.AnyKeyword) {
-      const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+      const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
       violations.push({
         file,
         line: line + 1,
@@ -26,7 +26,7 @@ function checkSourceFile(file, program, violations) {
     }
 
     if (node.kind === ts.SyntaxKind.NonNullExpression) {
-      const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+      const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
       violations.push({
         file,
         line: line + 1,
@@ -39,7 +39,7 @@ function checkSourceFile(file, program, violations) {
     if (ts.isAsExpression(node)) {
       const targetType = node.type.getText(sourceFile);
       if (targetType === "any") {
-        const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+        const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
         violations.push({
           file,
           line: line + 1,
@@ -52,7 +52,7 @@ function checkSourceFile(file, program, violations) {
       if (ts.isAsExpression(node.expression)) {
         const innerType = node.expression.type.getText(sourceFile);
         if (innerType === "unknown" || innerType === "any") {
-          const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+          const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
           violations.push({
             file,
             line: line + 1,
@@ -71,7 +71,7 @@ function checkSourceFile(file, program, violations) {
       !file.includes("ai-service.ts") &&
       !file.includes("forensic-sync.ts")
     ) {
-      const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+      const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
       violations.push({
         file,
         line: line + 1,
