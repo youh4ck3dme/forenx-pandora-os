@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { applyPrivacyGateway, type GatewayMessage } from "@/lib/forza/ai/privacy-gateway";
+import { redactPii } from "@/lib/forza/ai/pii-redactor";
 import {
   ApiKey,
   ImageUrl,
@@ -76,6 +78,12 @@ export async function createChatCompletionStream(
   const model: ModelName = ModelNameSchema.parse(options.model ?? "mistral-large-latest");
   const timeoutMs = options.timeoutMs ?? DEFAULT_STREAM_TIMEOUT_MS;
 
+  // GDPR brána (P1-04): nesystémové správy prejdú redakciou PII (rodné čísla,
+  // IBAN, mená svedkov/obetí, e-maily, telefóny) pred odoslaním poskytovateľovi.
+  const { messages: redactedMessages } = applyPrivacyGateway(
+    msgValidation.data as GatewayMessage[],
+  );
+
   const controller = new AbortController();
   const timeoutTimer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -93,7 +101,7 @@ export async function createChatCompletionStream(
       },
       body: JSON.stringify({
         model,
-        messages: msgValidation.data,
+        messages: redactedMessages,
         temperature: options.temperature ?? 0.2,
         max_tokens: options.maxTokens ?? 4096,
         stream: true,
@@ -269,6 +277,9 @@ export async function generateMistralImage(
     });
   }
 
+  // GDPR brána (P1-04): redakcia PII z promptu pred odoslaním poskytovateľovi.
+  const safePrompt = redactPii(trimmedPrompt).text;
+
   const timeoutMs = options.timeoutMs ?? DEFAULT_IMAGE_TIMEOUT_MS;
   const controller = new AbortController();
   const timeoutTimer = setTimeout(() => controller.abort(), timeoutMs);
@@ -284,7 +295,7 @@ export async function generateMistralImage(
         "Content-Type": "application/json",
         "Authorization": `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ prompt: trimmedPrompt }),
+      body: JSON.stringify({ prompt: safePrompt }),
       signal: controller.signal,
     });
 

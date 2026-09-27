@@ -25,6 +25,8 @@ import {
   ChatMessage,
   CompletionOptions,
 } from "./ai-types";
+import { applyPrivacyGateway, type GatewayMessage } from "@/lib/forza/ai/privacy-gateway";
+import { redactPii } from "@/lib/forza/ai/pii-redactor";
 
 export * from "./ai-types";
 
@@ -65,11 +67,18 @@ Pravidlá odpovede:
  * Zostavenie požiadavky podľa cieľového poskytovateľa (Mistral, OpenAI, Gemini)
  */
 function buildRequestPayload(
-  messages: readonly ChatMessage[],
+  messagesIn: readonly ChatMessage[],
   apiKey: string,
   options: CompletionOptions
 ): { url: string; headers: Record<string, string>; body: string } {
   const model = options.model ?? "mistral-large-latest";
+
+  // GDPR brána (P1-04): nesystémové správy prejdú redakciou PII (rodné čísla,
+  // IBAN, mená svedkov/obetí, e-maily, telefóny) pred odoslaním poskytovateľovi
+  // — bez ohľadu na to, či cieľ je Mistral, OpenAI alebo Gemini.
+  const { messages } = applyPrivacyGateway(
+    [...messagesIn] as unknown as GatewayMessage[],
+  );
 
   // 1. Google Gemini (napr. gemini-3.7-flash, gemini-3.6-flash, gemini-flash-latest)
   if (model.includes("gemini")) {
@@ -304,6 +313,9 @@ export async function generateImage(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
+  // GDPR brána (P1-04): redakcia PII z promptu pred odoslaním poskytovateľovi.
+  const safePrompt = redactPii(prompt).text;
+
   try {
     const response = await fetch("https://api.openai.com/v1/images/generations", {
       method: "POST",
@@ -313,7 +325,7 @@ export async function generateImage(
       },
       body: JSON.stringify({
         model: "dall-e-3",
-        prompt,
+        prompt: safePrompt,
         n: 1,
         size: "1024x1024",
         quality: "standard",

@@ -22,6 +22,7 @@ export function applyPrivacyGateway<T extends GatewayMessage>(
     email: 0,
     phone: 0,
     masked_term: 0,
+    person_name: 0,
   };
   const out = messages.map((message) => {
     if (message.role === "system") return message;
