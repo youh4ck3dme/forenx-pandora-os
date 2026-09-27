@@ -153,6 +153,11 @@ export type Database = {
           legal_hold: boolean;
           created_at: string;
           updated_at: string;
+          hash_verification_status: string;
+          hash_verified_at: string | null;
+          verified_sha256: string | null;
+          verified_size: number | null;
+          verification_error: string | null;
         };
         Insert: {
           id?: string;
@@ -166,6 +171,11 @@ export type Database = {
           legal_hold?: boolean;
           created_at?: string;
           updated_at?: string;
+          hash_verification_status?: string;
+          hash_verified_at?: string | null;
+          verified_sha256?: string | null;
+          verified_size?: number | null;
+          verification_error?: string | null;
         };
         Update: {
           id?: string;
@@ -179,6 +189,11 @@ export type Database = {
           legal_hold?: boolean;
           created_at?: string;
           updated_at?: string;
+          hash_verification_status?: string;
+          hash_verified_at?: string | null;
+          verified_sha256?: string | null;
+          verified_size?: number | null;
+          verification_error?: string | null;
         };
         Relationships: [];
       };
@@ -1087,6 +1102,20 @@ export type Database = {
           _correlation: string | null;
           _record: string | null;
           _target_table: string;
+        };
+        Returns: string;
+      };
+      delete_evidence_item_audited: {
+        Args: { _item: string; _reason: string; _correlation?: string };
+        Returns: string;
+      };
+      record_evidence_verification: {
+        Args: {
+          _item: string;
+          _status: string;
+          _verified_sha256: string | null;
+          _verified_size: number | null;
+          _error?: string | null;
         };
         Returns: string;
       };

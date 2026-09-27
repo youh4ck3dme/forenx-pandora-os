@@ -19,9 +19,10 @@ describe("supabase/verify/evidence_items_rls.sql", () => {
     const byName = Object.fromEntries(rows.map((row) => [row.check_name, row.status]));
     expect(rows.length).toBeGreaterThanOrEqual(15);
     expect(rows.filter((row) => row.status === "FAIL")).toEqual([]);
-    // Current policies: isolation and legal hold hold, but the ledger itself is mutable.
-    expect(byName["Nemennosť hashu a S3 kľúča"]).toBe("FINDING");
-    expect(byName["Zmazanie dôkazu bez legal hold"]).toBe("FINDING");
+    // With the WORM migration nothing is a FINDING any more.
+    expect(rows.filter((row) => row.status !== "PASS")).toEqual([]);
+    expect(byName["Nemennosť hashu a S3 kľúča"]).toBe("PASS");
+    expect(byName["Zmazanie dôkazu bez legal hold"]).toBe("PASS");
 
     const leftovers = await db.query<{ n: number }>(
       "select (select count(*) from public.evidence_items)::int + (select count(*) from auth.users where email like 'rls-check-%')::int as n",

@@ -30,6 +30,7 @@ export const SECRET = new Set([
   "WHOISWHO_API_KEY",
   "ICO_ATLAS_API_KEY",
   "FORENX_AI_WORKER_KEY",
+  "CRON_SECRET",
 ]);
 
 /** Bez týchto produkcia nefunguje (vault v produkcii bez S3 zámerne zlyhá). */
@@ -50,7 +51,7 @@ export const REQUIRED = [
 export const MISTRAL_ANY = ["MISTRAL_API_KEY", "MISTRAL_API_KEY_CHAT", "MISTRAL_API_KEY_ANALYSIS"];
 
 /** Premenné, ktoré kód číta, hoci v šablóne nie sú. */
-const EXTRA = ["MISTRAL_API_KEY_CHAT", "MISTRAL_API_KEY_ANALYSIS", "FORENX_ADMIN_EMAILS"];
+const EXTRA = ["MISTRAL_API_KEY_CHAT", "MISTRAL_API_KEY_ANALYSIS", "FORENX_ADMIN_EMAILS", "CRON_SECRET"];
 
 /** Nesmie byť nastavené v produkcii (fallback vault je v produkcii zakázaný). */
 export const FORBIDDEN_IN_PRODUCTION = ["VAULT_FALLBACK_SECRET"];
