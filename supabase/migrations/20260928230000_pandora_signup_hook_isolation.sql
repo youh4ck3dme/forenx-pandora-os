@@ -9,7 +9,9 @@
 --   function public.pandora_handle_new_user()
 --   trigger  auth.users.pandora_on_auth_user_created
 -- The legacy trigger on_auth_user_created is retired only when it provably belongs
--- to Pandora (its function writes both public.profiles and public.user_roles).
+-- to Pandora: its function is public.handle_new_user() and its body is EXACTLY one
+-- of Pandora's released versions (md5 of the whitespace-normalised body). Touching
+-- the same tables is not proof of ownership — another app may write them too.
 -- A foreign trigger/function is left untouched. Nothing is dropped from another app.
 -- Both hooks are idempotent (ON CONFLICT DO NOTHING), so running side by side is safe.
 
@@ -72,9 +74,9 @@ begin
   end if;
 
   select p.prosrc into _src from pg_proc p where p.oid = _fn;
+  -- Known Pandora bodies: 20260915190356 (initial) and 20260925143000 (admin allowlist).
   if _fn = to_regprocedure('public.handle_new_user()')
-     and _src like '%public.profiles%'
-     and _src like '%public.user_roles%' then
+     and md5(btrim(regexp_replace(_src, '[[:space:]]+', ' ', 'g'))) = any (array['0248868212ba18dc2a56835ccb041efc', '61da00d897181d13de4eef8d1f4f3895']) then
     begin
       drop trigger on_auth_user_created on auth.users;
       raise notice 'pandora: retired legacy trigger on_auth_user_created (replaced by pandora_on_auth_user_created)';

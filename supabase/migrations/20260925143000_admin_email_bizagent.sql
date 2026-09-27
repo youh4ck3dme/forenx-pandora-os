@@ -2,8 +2,9 @@
 -- Updates signup trigger and grants admin to existing matching profiles.
 --
 -- Shared-database guard (added 2026-09-28): public.handle_new_user() is a common
--- Supabase-template name. It is (re)defined here ONLY when it does not exist or is
--- Pandora's own (writes public.profiles and public.user_roles); another app's
+-- Supabase-template name. It is (re)defined here ONLY when it does not exist or its
+-- body is exactly one of Pandora's released versions (md5 of the whitespace-
+-- normalised body); another app's
 -- function of the same name is never overwritten. Where this migration was already
 -- applied, the change has no effect. From 20260928230000 Pandora uses its own
 -- pandora_handle_new_user() / pandora_on_auth_user_created instead.
@@ -16,7 +17,7 @@ declare
 begin
   if _fn is not null then
     select prosrc into _src from pg_proc where oid = _fn;
-    if not (_src like '%public.profiles%' and _src like '%public.user_roles%') then
+    if not md5(btrim(regexp_replace(_src, '[[:space:]]+', ' ', 'g'))) = any (array['0248868212ba18dc2a56835ccb041efc', '61da00d897181d13de4eef8d1f4f3895']) then
       raise notice 'pandora: public.handle_new_user() belongs to another application; not replaced';
       return;
     end if;

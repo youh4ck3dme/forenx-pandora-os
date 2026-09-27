@@ -4,7 +4,12 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { freshDatabase, migrationFiles } from "./harness";
-import { generatePreflightSql, loadMigrations, parseMigration } from "../../scripts/deploy/db-preflight.mjs";
+import {
+  generatePreflightSql,
+  knownSignupHookHashes,
+  loadMigrations,
+  parseMigration,
+} from "../../scripts/deploy/db-preflight.mjs";
 
 const MIGRATIONS_DIR = path.resolve(__dirname, "../migrations");
 const readMigration = (prefix: string) => {
@@ -93,6 +98,43 @@ describe("Pandora signup hook isolation", () => {
     expect(await signup(db, "legacy@test.local")).toEqual({ profiles: 1, roles: ["user"] });
   }, 120_000);
 
+  it("a foreign function that also writes profiles/user_roles is NOT treated as Pandora's", async () => {
+    const db = await freshDatabase();
+    await db.exec(`
+      create table public.whoiswho_accounts (id uuid primary key, email text);
+      create or replace function public.handle_new_user() returns trigger
+        language plpgsql security definer set search_path = public as $$
+      begin
+        insert into public.whoiswho_accounts (id, email) values (new.id, new.email);
+        insert into public.profiles (id, email) values (new.id, new.email) on conflict (id) do nothing;
+        insert into public.user_roles (user_id, role) values (new.id, 'user') on conflict do nothing;
+        return new;
+      end $$;
+      drop trigger if exists on_auth_user_created on auth.users;
+      create trigger on_auth_user_created after insert on auth.users
+        for each row execute function public.handle_new_user();
+    `);
+    await db.exec(ADMIN_EMAIL());
+    await db.exec(ISOLATION());
+    const src = await db.query<{ src: string }>("select prosrc as src from pg_proc where oid = to_regprocedure('public.handle_new_user()')");
+    expect(src.rows[0]?.src).toContain("whoiswho_accounts");
+    expect(await authTriggers(db)).toContain("on_auth_user_created -> handle_new_user");
+    await signup(db, "both@test.local");
+    const foreign = await db.query<{ n: number }>("select count(*)::int as n from public.whoiswho_accounts where email = 'both@test.local'");
+    expect(foreign.rows[0]?.n).toBe(1);
+  }, 120_000);
+
+  it("the hash constants in the migrations match every Pandora hook version in the repo", () => {
+    const hashes = knownSignupHookHashes();
+    expect(hashes.length).toBeGreaterThanOrEqual(2);
+    for (const sql of [ISOLATION(), ADMIN_EMAIL()]) {
+      const literal = sql.match(/array\['([0-9a-f]{32})'(?:, '([0-9a-f]{32})')*\]/);
+      const inMigration = [...sql.matchAll(/'([0-9a-f]{32})'/g)].map((m) => m[1]).sort();
+      expect(literal).not.toBeNull();
+      expect(inMigration).toEqual(hashes);
+    }
+  });
+
   it("is idempotent", async () => {
     const db = await freshDatabase();
     await db.exec(ISOLATION());
@@ -125,7 +167,12 @@ describe("db-preflight.mjs", () => {
     expect(guarded.functions.map((f: { name: string }) => f.name)).not.toContain("handle_new_user");
     expect(guarded.allFunctions).toContain("handle_new_user");
     const evidence = parseMigration(readMigration("20260927120000"));
-    expect(evidence.tables).toEqual([{ name: "evidence_items", ifNotExists: false }]);
+    expect(evidence.tables).toHaveLength(1);
+    expect(evidence.tables[0]).toMatchObject({ name: "evidence_items", ifNotExists: false });
+    expect(evidence.tables[0].columns).toEqual(expect.arrayContaining(["investigator_id", "sha256_hash"]));
+    const initial = parseMigration(readMigration("20260915190356"));
+    expect(initial.triggers).toContainEqual({ name: "on_auth_user_created", table: "auth.users" });
+    expect(initial.functions.map((fn: { name: string }) => fn.name)).toContain("handle_new_user");
   });
 
   it("GO on an up-to-date Pandora-only database", async () => {
@@ -167,6 +214,34 @@ describe("db-preflight.mjs", () => {
     expect(by("auth.users trigger pandora_on_auth_user_created")).toMatchObject({ status: "PASS" });
     expect(by("auth.users bez Pandora profilu")).toMatchObject({ status: "INFO", detail: "1 používateľov" });
     expect(verdict(rows)).toBe("GO S VAROVANÍM");
+  }, 120_000);
+
+  it("NO-GO when the original signup migration is pending on a DB with a foreign hook", async () => {
+    const db = await freshDatabase();
+    await installForeignApp(db);
+    const rows = await runPreflight(db, allVersions().filter((v) => v !== "20260915190356"));
+    const by = (name: string) => rows.find((r) => r.check_name === name);
+    expect(by("public.handle_new_user()")).toMatchObject({ status: "FAIL" });
+    expect(by("public.handle_new_user()")?.detail).toContain("20260915190356");
+    expect(by("Kolízia triggera on_auth_user_created")).toMatchObject({ status: "FAIL" });
+    expect(verdict(rows)).toBe("NO-GO");
+  }, 120_000);
+
+  it("NO-GO for a foreign table hidden behind CREATE TABLE IF NOT EXISTS", async () => {
+    const db = await freshDatabase();
+    await db.exec("drop table public.subscriptions cascade; create table public.subscriptions (id serial primary key, plan_code text);");
+    const rows = await runPreflight(db, allVersions().filter((v) => v !== "20260916151306"));
+    const row = rows.find((r) => r.check_name === "Cudzia tabuľka subscriptions");
+    expect(row).toMatchObject({ status: "FAIL" });
+    expect(row?.detail).toContain("user_id");
+    expect(verdict(rows)).toBe("NO-GO");
+  }, 120_000);
+
+  it("warns (not fails) for an existing Pandora-shaped table behind IF NOT EXISTS", async () => {
+    const db = await freshDatabase();
+    const rows = await runPreflight(db, allVersions().filter((v) => v !== "20260916151306"));
+    expect(rows.find((r) => r.check_name === "Existujúca tabuľka subscriptions")).toMatchObject({ status: "WARN" });
+    expect(rows.find((r) => r.check_name === "Cudzia tabuľka subscriptions")).toBeUndefined();
   }, 120_000);
 
   it("without migration history every migration is pending → table collisions → NO-GO", async () => {
