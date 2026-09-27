@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { BookmarksPanel } from './panels/bookmarks-panel'
 import { HistoryPanel } from './panels/history-panel'
 import { DownloadsPanel } from './panels/downloads-panel'
+import { EvidenceVaultPanel } from './panels/evidence-vault-panel'
 import { SettingsPanel } from './panels/settings-panel'
 import { WalletPanel } from './panels/wallet-panel'
 
@@ -35,7 +36,7 @@ export function Sidebar() {
                     {[
                         { id: 'bookmarks', icon: Scale, label: 'Forendo' },
                         { id: 'history', icon: Clock, label: 'History' },
-                        { id: 'downloads', icon: Download, label: 'Downloads' },
+                        { id: 'downloads', icon: Download, label: 'Evidence Vault' },
                         { id: 'shield', icon: ShieldCheck, label: 'Shield' },
                         { id: 'wallet', icon: Wallet, label: 'Wallet' },
                         { id: 'settings', icon: Settings, label: 'Settings' },
@@ -68,7 +69,7 @@ export function Sidebar() {
                 <AnimatePresence mode="wait">
                     {sidebarView === 'bookmarks' && <BookmarksPanel key="bookmarks" />}
                     {sidebarView === 'history' && <HistoryPanel key="history" />}
-                    {sidebarView === 'downloads' && <DownloadsPanel key="downloads" />}
+                    {sidebarView === 'downloads' && <EvidenceVaultPanel key="downloads" />}
                     {sidebarView === 'shield' && <ShieldPanel key="shield" />}
                     {sidebarView === 'settings' && <SettingsPanel key="settings" />}
                     {sidebarView === 'wallet' && <WalletPanel key="wallet" />}

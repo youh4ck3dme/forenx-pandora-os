@@ -1,0 +1,75 @@
+import { z } from "zod";
+
+// ─── 1. BRANDED IDENTIFIERS ───────────────────────────────────────
+declare const BrandSymbol: unique symbol;
+export type Brand<T, TBrand extends string> = T & { readonly [BrandSymbol]: TBrand };
+
+export type CaseId = Brand<string, "CaseId">;
+export type EvidenceId = Brand<string, "EvidenceId">;
+export type Sha256Hash = Brand<string, "Sha256Hash">;
+export type S3StorageKey = Brand<string, "S3StorageKey">;
+
+export const CaseIdSchema = z
+  .string()
+  .min(1, "Neplatný alebo prázdny CaseId.")
+  .transform((val): CaseId => val as CaseId);
+
+export const EvidenceIdSchema = z
+  .string()
+  .min(1, "Neplatný formát EvidenceId.")
+  .transform((val): EvidenceId => val as EvidenceId);
+
+export const Sha256HashSchema = z
+  .string()
+  .regex(/^[a-f0-9]{64}$/i, "Neplatný 64-znakový SHA-256 hex reťazec.")
+  .transform((val): Sha256Hash => val.toLowerCase() as Sha256Hash);
+
+export const S3StorageKeySchema = z
+  .string()
+  .min(5, "Neplatný S3 Storage Key.")
+  .transform((val): S3StorageKey => val as S3StorageKey);
+
+// ─── 2. DOMÉNOVÉ SCHÉMY DÔKAZOV ──────────────────────────────────
+export const EvidenceTagSchema = z.enum(["zmluva", "vypis", "screenshot", "komunikacia", "ine"]);
+export type EvidenceTag = z.infer<typeof EvidenceTagSchema>;
+
+export const ForensicEvidenceItemSchema = z.object({
+  id: EvidenceIdSchema,
+  caseId: CaseIdSchema,
+  fileName: z.string().min(1, "Názov súboru nesmie byť prázdny."),
+  fileSizeBytes: z.number().int().nonnegative(),
+  mimeType: z.string().min(1),
+  sha256Hash: Sha256HashSchema,
+  s3StorageKey: S3StorageKeySchema,
+  s3Bucket: z.string().min(1),
+  uploadedAt: z.string().datetime(),
+  uploadedBy: z.string().min(1),
+  integrityStatus: z.enum(["verified", "compromised", "checking"]),
+  aiAnalyzed: z.boolean().default(false),
+  tags: z.array(EvidenceTagSchema).default(["ine"]),
+});
+export type ForensicEvidenceItem = z.infer<typeof ForensicEvidenceItemSchema>;
+
+// ─── 3. STAVOVÝ AUTOMAT PRE INGEST (DISCRIMINATED UNION) ─────────
+export type IngestProgressState =
+  | { readonly status: "idle" }
+  | { readonly status: "hashing"; readonly progressPercent: number }
+  | { readonly status: "uploading"; readonly progressPercent: number; readonly clientHash: Sha256Hash }
+  | { readonly status: "persisting"; readonly clientHash: Sha256Hash }
+  | { readonly status: "ready"; readonly item: ForensicEvidenceItem }
+  | { readonly status: "error"; readonly errorMessage: string; readonly code?: string };
+
+// ─── 4. RESULT PATTERN PRE VAULT OPERÁCIE ─────────────────────────
+export type VaultError =
+  | { readonly kind: "IntegrityMismatch"; readonly clientHash: string; readonly serverHash: string }
+  | { readonly kind: "PayloadTooLarge"; readonly sizeBytes: number; readonly maxBytes: number }
+  | { readonly kind: "ValidationError"; readonly message: string; readonly issues: z.ZodIssue[] }
+  | { readonly kind: "StorageError"; readonly message: string; readonly s3Code?: string }
+  | { readonly kind: "AuthUnauthorized"; readonly message: string };
+
+export type Result<T, E = VaultError> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: E };
+
+export const ok = <T>(value: T): Result<T, never> => ({ ok: true, value });
+export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
