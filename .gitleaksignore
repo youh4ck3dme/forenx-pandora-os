@@ -9,3 +9,5 @@
 # Human-readable test fixtures, not credentials:
 3aaa296be940c63fab126b55ca4a7253a744d416:lib/ai/__tests__/fault-injection.test.ts:generic-api-key:20
 438bb4a85402b86acf16cc64c954398f63853944:lib/ai/__tests__/mistral-client.test.ts:generic-api-key:24
+# Readable Mistral test fixture (same pattern as above), added in P1-04:
+28fd3cccb421715881319aa5d6db04f2fcaad783:lib/ai/__tests__/llm-redaction-gateway.test.ts:generic-api-key:12

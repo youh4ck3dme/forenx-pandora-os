@@ -11,7 +11,8 @@ export const preferredRegion = "fra1";
  * § 119 ods. 2 Trestného poriadku (spracúvanie PÚ v trestnom konaní) a
  * GDPR čl. 6(1)(e) + čl. 9(2)(f) (verejný záujem / právne nároky).
  */
-export const DEFAULT_LEGAL_BASIS =
+// Not exported: Next.js route modules may only export HTTP handlers and route config.
+const DEFAULT_LEGAL_BASIS =
   "§ 119 ods. 2 Trestného poriadku; GDPR čl. 6(1)(e), čl. 9(2)(f)";
 
 const AccessRequestSchema = z.object({
