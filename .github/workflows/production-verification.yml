@@ -61,7 +61,9 @@ jobs:
           cache: npm
       # npm ci fails if package.json and package-lock.json disagree.
       - run: npm ci --ignore-scripts
-      # Critical is a hard gate now; raise to "high" once electron / next-pwa
-      # major upgrades (tracked separately) land.
-      - run: npm audit --omit=dev --audit-level=critical
+      # Full tree, not --omit=dev: this repo lists runtime packages such as
+      # `next` under devDependencies, so a prod-only audit would miss them.
+      # Critical is a hard gate now; raise to "high" once the electron major
+      # upgrade (tracked separately) lands.
+      - run: npm audit --audit-level=critical
       - run: node scripts/release/package.mjs HEAD dist/release
