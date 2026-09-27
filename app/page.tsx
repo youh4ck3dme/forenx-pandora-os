@@ -1,13 +1,12 @@
-"use client"
+import { Suspense } from "react";
+import { BrowserViewWrapper } from "@/components/features/browser/browser-view-wrapper";
 
-import { BrowserClient } from "@/components/features/browser/browser-client"
-import { Leva } from "leva"
+export const dynamic = "force-dynamic";
 
 export default function Home() {
   return (
-    <>
-      <BrowserClient />
-      <Leva hidden />
-    </>
-  )
+    <Suspense fallback={<div className="h-screen w-screen bg-black" />}>
+      <BrowserViewWrapper withLeva />
+    </Suspense>
+  );
 }

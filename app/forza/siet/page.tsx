@@ -23,11 +23,23 @@ import {
 import { cn } from "@/lib/utils";
 import { COUNTRY_LABEL, formatEur } from "@/lib/forza/forensic";
 
-const NetworkGraph = lazy(() =>
-  import("@/components/malte/NetworkGraph").then((m) => ({
-    default: m.NetworkGraph,
-  })),
+import dynamic from "next/dynamic";
+
+const NetworkGraph = dynamic(
+  () =>
+    import("@/components/malte/NetworkGraph").then((m) => ({
+      default: m.NetworkGraph,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full w-full items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    ),
+  }
 );
+
 
 export default function SietPage() {
   return <NetworkScreen />;
