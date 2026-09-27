@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { toast } from "sonner";
 import { exportDossierToPDF } from "@/lib/export-pdf";
+import { buildJudgeClipboardText } from "@/lib/judge-text";
 import { isDemoDossier } from "@/lib/autopilot-meta";
 import type { ForensicDossier } from "@/lib/types";
 import { useWebAuthnSignature } from "./useWebAuthnSignature";
@@ -123,23 +124,15 @@ export function useAssistantExport({
 
   const handleCopyJudgeText = useCallback(() => {
     if (!dossier) return;
-    const fullText = `ROZSUDKOVÝ FORMÁT (§ 168 TP) — ${dossier.caseTitle}
-Spis: ${dossier.caseId}
-
-I. ZISTENÝ SKUTKOVÝ STAV:
-${dossier.judgeReadyText.skutkovyStav}
-
-II. VYPORIADANIE SA S OBHAJOBOU OBVINENÉHO:
-${dossier.judgeReadyText.vyporiadanie}
-
-III. VEDECKÉ ZHODNOTENIE STÔP (LR & METODIKA):
-${dossier.judgeReadyText.vedecke}`;
+    // Issue #13: skutkový stav iba z tvrdení viazaných na hash-overený dôkaz;
+    // naratív modelu ide do schránky len ako označený neoverený návrh.
+    const fullText = buildJudgeClipboardText(dossier, knownEvidence);
 
     void navigator.clipboard.writeText(fullText).then(
       () => {
         setCopiedJudgeText(true);
         toast.success(
-          "Kompletné odôvodnenie (§ 168 TP) skopírované do schránky.",
+          "Odôvodnenie (§ 168 TP) skopírované — skutkový stav iba z overených dôkazov, AI návrh označený ako neoverený.",
         );
         setTimeout(() => setCopiedJudgeText(false), 2000);
       },
@@ -147,7 +140,7 @@ ${dossier.judgeReadyText.vedecke}`;
         toast.error("Kopírovanie do schránky zlyhalo.");
       },
     );
-  }, [dossier]);
+  }, [dossier, knownEvidence]);
 
   return {
     isExportingPdf,

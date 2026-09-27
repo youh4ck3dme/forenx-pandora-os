@@ -5,8 +5,10 @@ import { AI_DISCLAIMER } from "@/config/brand";
 import { sha256Hex } from "./provenance/sha256";
 import { canonicalSha256 } from "./provenance/canonical";
 import { buildReportManifest, type ReportManifest } from "./provenance/report-manifest";
+import { NO_BOUND_FACTS_TEXT, judgeNarrativeParts } from "./judge-text";
 import {
   NO_VERIFIED_EVIDENCE,
+  listBoundFacts,
   partitionAdmissibilityAudit,
   partitionAlternativeHypotheses,
   partitionSuspiciousFlows,
@@ -513,30 +515,21 @@ export function buildReportHTML(
       : "";
 
   // Issue #13: číslované závery (I.–III.) sa skladajú výlučne z tvrdení
-  // viazaných na hash-overený dôkaz. judgeReadyText je voľný text modelu bez
-  // väzby na dôkazy — môže opakovať neoverenú alebo podvrhnutú (prompt
-  // injection) hypotézu, preto sa nikdy nevypisuje ako skutkový záver.
-  const boundFacts = [
-    ...timeline.bound.map((ev) => {
-      const src = formatSourceRef(ev.sourceRef) || ev.source?.trim() || "—";
-      return `<strong>${ev.time}:</strong> ${ev.event} <em>(zdroj: <code>${src}</code>)</em>`;
-    }),
-    ...flows.bound.map(
-      (sf) =>
-        `<strong>${sf.date}:</strong> ${sf.payer} ➔ ${sf.recipient}, ${sf.amount.toLocaleString("sk-SK")} € — ${sf.purpose} <em>(zdroj: <code>${formatSourceRef(sf.sourceRef)}</code>)</em>`,
-    ),
-  ];
+  // viazaných na hash-overený dôkaz; naratív modelu (judgeReadyText) sa nikdy
+  // nevypisuje ako skutkový záver.
+  const boundFacts = listBoundFacts(d, knownEvidence);
   const boundFactsHtml =
     boundFacts.length > 0
       ? `<p class="legal-expl">Skutkový stav tvoria výlučne okolnosti viazané na hash-overený dôkaz z WORM ledgera (evidence_id a strana alebo odsek).</p>
-  <ul>${boundFacts.map((fact) => `<li>${fact}</li>`).join("")}</ul>`
-      : `<p class="legal-expl">Žiadna okolnosť nie je viazaná na hash-overený dôkaz — skutkový stav nemožno z AI analýzy uviesť.</p>`;
+  <ul>${boundFacts
+    .map(
+      (fact) =>
+        `<li><strong>${fact.when}:</strong> ${fact.text} <em>(zdroj: <code>${fact.source}</code>)</em></li>`,
+    )
+    .join("")}</ul>`
+      : `<p class="legal-expl">${NO_BOUND_FACTS_TEXT}</p>`;
 
-  const narrativeParts = [
-    { label: "I. Skutkový stav", text: d.judgeReadyText?.skutkovyStav },
-    { label: "II. Vyporiadanie sa s obhajobou", text: d.judgeReadyText?.vyporiadanie },
-    { label: "III. Vedecké zhodnotenie stôp", text: d.judgeReadyText?.vedecke },
-  ].filter((part) => part.text?.trim());
+  const narrativeParts = judgeNarrativeParts(d);
   const narrativeDraftHtml =
     narrativeParts.length > 0
       ? `

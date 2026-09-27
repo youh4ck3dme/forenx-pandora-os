@@ -8,6 +8,7 @@ import type {
   SuspiciousFlowItem,
   TimelineEvent,
 } from "./types";
+import { formatSourceRef } from "./types";
 
 /**
  * Task 4 / P1-01 — viazanie tvrdení a právnych záverov na nemenné dôkazy.
@@ -163,4 +164,34 @@ export function partitionSuspiciousFlows(
     (isBoundToEvidence(flow.sourceRef, knownEvidence) ? bound : unbound).push(flow);
   }
   return { bound, unbound };
+}
+
+/** Okolnosť viazaná na hash-overený dôkaz — jediný obsah skutkového stavu. */
+export type BoundFact = {
+  when: string;
+  text: string;
+  source: string;
+};
+
+/**
+ * Issue #13: skutkový stav (záver I.) sa skladá výlučne z udalostí chronológie
+ * a finančných tokov viazaných na hash-overený dôkaz — nikdy z voľného textu
+ * modelu (judgeReadyText).
+ */
+export function listBoundFacts(
+  dossier: ForensicDossier,
+  knownEvidence: ReadonlySet<string>,
+): BoundFact[] {
+  return [
+    ...partitionTimeline(dossier, knownEvidence).bound.map((event) => ({
+      when: event.time,
+      text: event.event,
+      source: formatSourceRef(event.sourceRef) || event.source?.trim() || "—",
+    })),
+    ...partitionSuspiciousFlows(dossier, knownEvidence).bound.map((flow) => ({
+      when: flow.date,
+      text: `${flow.payer} ➔ ${flow.recipient}, ${flow.amount.toLocaleString("sk-SK")} € — ${flow.purpose}`,
+      source: formatSourceRef(flow.sourceRef),
+    })),
+  ];
 }
