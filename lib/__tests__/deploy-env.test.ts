@@ -49,6 +49,12 @@ describe("deploy env helper", () => {
     expect(checkEnv(validEnv(), exampleKeys()).filter((p) => p.level === "error")).toEqual([]);
   });
 
+  it("accepts Hetzner's documented object-storage endpoint", () => {
+    const env = validEnv();
+    env.set("S3_ENDPOINT", "https://hel1.your-objectstorage.com");
+    expect(checkEnv(env, exampleKeys()).filter((p) => p.level === "error")).toEqual([]);
+  });
+
   it("requires the shared Mistral key or both dedicated keys", () => {
     const onlyChat = validEnv();
     onlyChat.delete("MISTRAL_API_KEY");
