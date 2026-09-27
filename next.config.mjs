@@ -28,7 +28,7 @@ const nextConfig = {
       exclude: ['error'],
     },
   },
-  webpack: (config, { isServer }) => {
+  webpack: (config, { isServer, webpack }) => {
     config.resolve.alias = {
       ...config.resolve.alias,
       '@tanstack/react-start/server': path.resolve(__dirname, 'lib/tanstack-start-shim.ts'),
@@ -37,14 +37,20 @@ const nextConfig = {
     };
 
     if (!isServer) {
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
+          resource.request = resource.request.replace(/^node:/, '');
+        })
+      );
+
       const emptyShim = path.resolve(__dirname, 'lib/empty-shim.ts');
       config.resolve.alias = {
         ...config.resolve.alias,
-        'node:fs/promises': emptyShim,
-        'node:fs': emptyShim,
-        'node:path': emptyShim,
-        'node:crypto': emptyShim,
-        'node:async_hooks': emptyShim,
+        'fs/promises': emptyShim,
+        fs: emptyShim,
+        path: emptyShim,
+        crypto: emptyShim,
+        async_hooks: emptyShim,
       };
       config.resolve.fallback = {
         ...config.resolve.fallback,

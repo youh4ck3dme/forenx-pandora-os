@@ -42,23 +42,24 @@ export const DEFAULT_HEARTBEAT_TIMEOUT_MS = 30_000;
 
 // ─── KRYPTOGRAFICKÝ PIPELINE ─────────────────────────────────────
 
+function requireWebCrypto(): Crypto {
+  if (typeof globalThis.crypto === "undefined" || !globalThis.crypto.subtle) {
+    throw new Error(
+      "Web Crypto API nie je dostupné; forenzná synchronizácia nemôže bezpečne spracovať dôkazy.",
+    );
+  }
+  return globalThis.crypto;
+}
+
 /**
- * Deterministický výpočet SHA-256 hashu z reťazca (cross-platform WebCrypto / Node)
+ * Deterministický výpočet SHA-256 hashu z reťazca cez Web Crypto API.
  */
 export async function computeSha256(data: string): Promise<Sha256Hash> {
   const encoder = new TextEncoder();
   const buffer = encoder.encode(data);
-
-  if (typeof crypto !== "undefined" && crypto.subtle) {
-    const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-    return makeSha256Hash(hex);
-  }
-
-  // Node.js fallback
-  const nodeCrypto = await import("node:crypto");
-  const hex = nodeCrypto.createHash("sha256").update(buffer).digest("hex");
+  const hashBuffer = await requireWebCrypto().subtle.digest("SHA-256", buffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
   return makeSha256Hash(hex);
 }
 
@@ -74,23 +75,23 @@ export async function computeChainHash(prevHash: Sha256Hash, payload: string): P
  */
 export async function signPayload(payload: string, secretKey: string): Promise<string> {
   const encoder = new TextEncoder();
-  if (typeof crypto !== "undefined" && crypto.subtle) {
-    const keyData = encoder.encode(secretKey);
-    const cryptoKey = await crypto.subtle.importKey(
-      "raw",
-      keyData,
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"]
-    );
-    const signature = await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(payload));
-    return Array.from(new Uint8Array(signature))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-  }
-
-  const nodeCrypto = await import("node:crypto");
-  return nodeCrypto.createHmac("sha256", secretKey).update(payload).digest("hex");
+  const webCrypto = requireWebCrypto();
+  const keyData = encoder.encode(secretKey);
+  const cryptoKey = await webCrypto.subtle.importKey(
+    "raw",
+    keyData,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await webCrypto.subtle.sign(
+    "HMAC",
+    cryptoKey,
+    encoder.encode(payload),
+  );
+  return Array.from(new Uint8Array(signature))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 /**
