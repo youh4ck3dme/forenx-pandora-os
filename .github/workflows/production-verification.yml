@@ -26,3 +26,34 @@ jobs:
 
       - run: npm ci
       - run: npm run verify:production
+
+  secret-scan:
+    name: Secret scan (gitleaks, full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        # Pinned CLI via container: no license/token needed, fails the job on any finding.
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/gitleaks/gitleaks:v8.24.3 \
+            git --redact --verbose --exit-code 1 .
+
+  supply-chain:
+    name: Lockfile, dependency audit, release artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # npm ci fails if package.json and package-lock.json disagree.
+      - run: npm ci --ignore-scripts
+      # Critical is a hard gate now; raise to "high" once electron / next-pwa
+      # major upgrades (tracked separately) land.
+      - run: npm audit --omit=dev --audit-level=critical
+      - run: node scripts/release/package.mjs HEAD dist/release

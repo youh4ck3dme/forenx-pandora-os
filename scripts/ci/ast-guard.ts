@@ -24,7 +24,7 @@ function checkSourceFile(file: string, program: ts.Program, violations: Violatio
   function visit(node: ts.Node): void {
     // 1. Detekcia 'any'
     if (node.kind === ts.SyntaxKind.AnyKeyword) {
-      const { line, character } = sourceFile!.getLineAndCharacterOfPosition(node.getStart());
+      const { line, character } = sourceFile!.getLineAndCharacterOfPosition(node.getStart(sourceFile));
       violations.push({
         file,
         line: line + 1,
@@ -36,7 +36,7 @@ function checkSourceFile(file: string, program: ts.Program, violations: Violatio
 
     // 2. Detekcia non-null assertion (!)
     if (node.kind === ts.SyntaxKind.NonNullExpression) {
-      const { line, character } = sourceFile!.getLineAndCharacterOfPosition(node.getStart());
+      const { line, character } = sourceFile!.getLineAndCharacterOfPosition(node.getStart(sourceFile));
       violations.push({
         file,
         line: line + 1,
@@ -50,7 +50,7 @@ function checkSourceFile(file: string, program: ts.Program, violations: Violatio
     if (ts.isAsExpression(node)) {
       const targetType = node.type.getText(sourceFile);
       if (targetType === "any") {
-        const { line, character } = sourceFile!.getLineAndCharacterOfPosition(node.getStart());
+        const { line, character } = sourceFile!.getLineAndCharacterOfPosition(node.getStart(sourceFile));
         violations.push({
           file,
           line: line + 1,
@@ -63,7 +63,7 @@ function checkSourceFile(file: string, program: ts.Program, violations: Violatio
       if (ts.isAsExpression(node.expression)) {
         const innerType = node.expression.type.getText(sourceFile);
         if (innerType === "unknown" || innerType === "any") {
-          const { line, character } = sourceFile!.getLineAndCharacterOfPosition(node.getStart());
+          const { line, character } = sourceFile!.getLineAndCharacterOfPosition(node.getStart(sourceFile));
           violations.push({
             file,
             line: line + 1,
@@ -83,7 +83,7 @@ function checkSourceFile(file: string, program: ts.Program, violations: Violatio
       !file.includes("ai-service.ts") &&
       !file.includes("forensic-sync.ts")
     ) {
-      const { line, character } = sourceFile!.getLineAndCharacterOfPosition(node.getStart());
+      const { line, character } = sourceFile!.getLineAndCharacterOfPosition(node.getStart(sourceFile));
       violations.push({
         file,
         line: line + 1,

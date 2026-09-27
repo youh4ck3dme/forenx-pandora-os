@@ -144,6 +144,11 @@ export type Database = {
         Row: {
           action: string;
           case_id: string | null;
+          chain_seq: number;
+          correlation_id: string | null;
+          event_hash: string;
+          event_id: string;
+          previous_event_hash: string;
           changes: Json | null;
           created_at: string;
           id: string;
@@ -154,6 +159,8 @@ export type Database = {
         Insert: {
           action: string;
           case_id?: string | null;
+          correlation_id?: string | null;
+          event_id?: string;
           changes?: Json | null;
           created_at?: string;
           id?: string;
@@ -161,16 +168,7 @@ export type Database = {
           table_name: string;
           user_id: string;
         };
-        Update: {
-          action?: string;
-          case_id?: string | null;
-          changes?: Json | null;
-          created_at?: string;
-          id?: string;
-          record_id?: string | null;
-          table_name?: string;
-          user_id?: string;
-        };
+        Update: Record<string, never>;
         Relationships: [];
       };
       case_entities: {
@@ -387,35 +385,47 @@ export type Database = {
         Row: {
           case_id: string;
           created_at: string;
+          evidence_hash: string | null;
           from_id: string | null;
           id: string;
           label: string;
           revision: number;
+          source_snapshot_id: string | null;
           to_id: string | null;
           updated_at: string;
           user_id: string;
+          valid_from: string | null;
+          valid_to: string | null;
         };
         Insert: {
           case_id: string;
           created_at?: string;
+          evidence_hash?: string | null;
           from_id?: string | null;
           id?: string;
           label?: string;
           revision?: number;
+          source_snapshot_id?: string | null;
           to_id?: string | null;
           updated_at?: string;
           user_id?: string;
+          valid_from?: string | null;
+          valid_to?: string | null;
         };
         Update: {
           case_id?: string;
           created_at?: string;
+          evidence_hash?: string | null;
           from_id?: string | null;
           id?: string;
           label?: string;
           revision?: number;
+          source_snapshot_id?: string | null;
           to_id?: string | null;
           updated_at?: string;
           user_id?: string;
+          valid_from?: string | null;
+          valid_to?: string | null;
         };
         Relationships: [
           {
@@ -896,6 +906,44 @@ export type Database = {
         };
         Relationships: [];
       };
+      source_snapshots: {
+        Row: {
+          byte_size: number;
+          case_id: string | null;
+          content_type: string | null;
+          created_at: string;
+          etag: string | null;
+          http_status: number;
+          id: string;
+          last_modified: string | null;
+          parser_version: string;
+          raw_sha256: string;
+          retrieved_at: string;
+          source: string;
+          source_url: string;
+          storage_ref: string | null;
+          user_id: string;
+        };
+        Insert: {
+          byte_size: number;
+          case_id?: string | null;
+          content_type?: string | null;
+          created_at?: string;
+          etag?: string | null;
+          http_status: number;
+          id?: string;
+          last_modified?: string | null;
+          parser_version: string;
+          raw_sha256: string;
+          retrieved_at: string;
+          source: string;
+          source_url: string;
+          storage_ref?: string | null;
+          user_id: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
       subscriptions: {
         Row: {
           cancel_at_period_end: boolean;
@@ -984,8 +1032,26 @@ export type Database = {
           _entities: Json;
           _events: Json;
           _relations: Json;
+          _correlation?: string;
         };
         Returns: Json;
+      };
+      append_audit_event: {
+        Args: {
+          _action: string;
+          _actor: string;
+          _case: string | null;
+          _changes: Json;
+          _correlation: string | null;
+          _record: string | null;
+          _target_table: string;
+        };
+        Returns: string;
+      };
+      erase_user_audit_log: { Args: { _user: string }; Returns: number };
+      verify_audit_chain: {
+        Args: { _user: string };
+        Returns: { chain_seq: number; event_id: string; problem: string }[];
       };
       current_plan: { Args: { _user: string }; Returns: string };
       db_health_stats: { Args: never; Returns: Json };

@@ -462,7 +462,8 @@ async function runAiTaskInner(
       };
     }
 
-    const serialized = JSON.stringify(payload);
+    // "<" escapovaný ako \u003c: obsah nemôže uzavrieť blok <data>.
+    const serialized = JSON.stringify(payload).replace(/</g, "\\u003c");
     if (serialized.length > 60_000) {
       await supabaseAdmin
         .from("ai_usage")
@@ -1403,13 +1404,22 @@ export async function runForensicAutopilotInner(
     ...(data.priorDossier && retrySet ? [data.priorDossier] : []),
     ...partials,
   ] as unknown as ForensicDossier[];
-  const parsed = (
+  const merged = (
     mergeInputs.length === 1
       ? mergeInputs[0]
       : mergeForensicDossiers(
           mergeInputs as unknown as Parameters<typeof mergeForensicDossiers>[0],
         )
   ) as ForensicDossier;
+  // SourceRef musí ukazovať na skutočný dokument analýzy; pri explicitne
+  // známych dokumentoch sa odkazy na neexistujúce dokumenty odstránia.
+  const { enforceSourceRefIntegrity } = await import("./source-ref-integrity");
+  const parsed = data.documentIds?.length
+    ? enforceSourceRefIntegrity(
+        merged,
+        data.documentIds.map((id) => ({ id })),
+      ).value
+    : merged;
 
   parsed.facts.timeline = parsed.facts.timeline ?? [];
   parsed.facts.traces = parsed.facts.traces ?? [];

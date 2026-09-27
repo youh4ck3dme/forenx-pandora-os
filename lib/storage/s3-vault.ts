@@ -92,6 +92,56 @@ function sha256Hex(data: string | Buffer): string {
   return crypto.createHash('sha256').update(data).digest('hex')
 }
 
+// Fallback (bez S3) podpisy: HMAC-SHA256 s tajným kľúčom, nikdy hash bez kľúča.
+// V produkcii je fallback zakázaný úplne — in-memory úložisko nie je trvalé
+// ani zdieľané medzi inštanciami.
+let ephemeralFallbackSecret: Buffer | null = null
+
+function isProduction(): boolean {
+  return process.env.NODE_ENV === 'production'
+}
+
+function fallbackSecret(): Buffer {
+  if (isProduction()) {
+    throw new Error(
+      'S3 úložisko nie je nakonfigurované (S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY). In-memory fallback je v produkcii zakázaný.'
+    )
+  }
+  const configured = process.env.VAULT_FALLBACK_SECRET
+  if (configured) {
+    if (configured.length < 32) {
+      throw new Error('VAULT_FALLBACK_SECRET musí mať aspoň 32 znakov.')
+    }
+    return Buffer.from(configured, 'utf8')
+  }
+  // Vývoj/testy bez nastaveného kľúča: náhodný kľúč platný len pre tento proces.
+  ephemeralFallbackSecret ??= crypto.randomBytes(32)
+  return ephemeralFallbackSecret
+}
+
+function fallbackSignature(purpose: 'get' | 'put', storageKey: string, expiresAt: number): string {
+  return crypto
+    .createHmac('sha256', fallbackSecret())
+    .update(`forenx-vault-fallback-v1\n${purpose}\n${storageKey}\n${expiresAt}`, 'utf8')
+    .digest('hex')
+}
+
+/**
+ * Overí podpis fallback URL (konštantný čas, kontrola expirácie).
+ */
+export function verifyFallbackSignature(
+  purpose: 'get' | 'put',
+  storageKey: string,
+  expiresAt: number,
+  signature: string,
+  now = Date.now()
+): boolean {
+  if (!Number.isSafeInteger(expiresAt) || expiresAt < now) return false
+  if (!/^[0-9a-f]{64}$/.test(signature)) return false
+  const expected = Buffer.from(fallbackSignature(purpose, storageKey, expiresAt), 'hex')
+  return crypto.timingSafeEqual(expected, Buffer.from(signature, 'hex'))
+}
+
 function getSigningKey(secretKey: string, dateStamp: string, region: string, service = 's3'): Buffer {
   const kDate = hmac('AWS4' + secretKey, dateStamp)
   const kRegion = hmac(kDate, region)
@@ -122,7 +172,8 @@ export async function uploadCaseDocument(
   const config = getS3Config()
 
   if (!config) {
-    // In-memory fallback
+    // In-memory fallback (v produkcii fallbackSecret() hodí chybu).
+    fallbackSecret()
     fallbackVaultStore.set(storageKey, {
       caseId,
       fileName: file.name,
@@ -204,10 +255,10 @@ export async function getPresignedDossierUrl(
   const config = getS3Config()
 
   if (!config) {
-    // In-memory / Mock Presigned URL
+    // In-memory fallback (mimo produkcie): HMAC podpis s tajným kľúčom.
     const expiresAt = Date.now() + expiresIn * 1000
-    const mockSig = sha256Hex(`fallback:${storageKey}:${expiresAt}`).substring(0, 32)
-    return `https://hel1.your-objectstorage.com/forenx-vault-sk/${encodeURI(storageKey)}?vault_mode=fallback&expires=${expiresAt}&sig=${mockSig}`
+    const sig = fallbackSignature('get', storageKey, expiresAt)
+    return `https://hel1.your-objectstorage.com/forenx-vault-sk/${encodeURI(storageKey)}?vault_mode=fallback&expires=${expiresAt}&sig=${sig}`
   }
 
   // AWS SigV4 Presigned URL
@@ -387,10 +438,10 @@ export async function getPresignedUploadUrl(
   const config = getS3Config()
 
   if (!config) {
-    // In-memory / Mock Presigned PUT URL pre vývoj a testy
+    // In-memory fallback PUT URL (mimo produkcie): HMAC podpis s tajným kľúčom.
     const expiresAt = Date.now() + expiresIn * 1000
-    const mockSig = sha256Hex(`fallback-put:${storageKey}:${expiresAt}`).substring(0, 32)
-    return `https://hel1.your-objectstorage.com/forenx-vault-sk/${encodeURI(storageKey)}?vault_mode=fallback_put&expires=${expiresAt}&sig=${mockSig}`
+    const sig = fallbackSignature('put', storageKey, expiresAt)
+    return `https://hel1.your-objectstorage.com/forenx-vault-sk/${encodeURI(storageKey)}?vault_mode=fallback_put&expires=${expiresAt}&sig=${sig}`
   }
 
   // AWS SigV4 Presigned PUT URL

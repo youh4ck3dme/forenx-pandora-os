@@ -210,7 +210,11 @@ function PrehladContent() {
             <Metric label="Objem transakcií" value={formatEur(totals.volume)} />
             <Metric
               label="Podiel hotovosti"
-              value={`${Math.round(totals.cashRatio * 100)} %`}
+              value={
+                totals.cashRatio === null
+                  ? "n/a"
+                  : `${Math.round(totals.cashRatio * 100)} %`
+              }
             />
             <Metric
               label="Zhody EUROPOL"

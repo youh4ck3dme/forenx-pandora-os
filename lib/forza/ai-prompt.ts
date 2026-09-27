@@ -2,7 +2,11 @@
 // Tento prompt sa posiela ako system správa do Mistral API.
 // Výstup MUSÍ byť striktne JSON podľa ForensicDossier typu.
 
-export const FORENSIC_AUTOPILOT_SYSTEM_PROMPT = `Si FORENZNÝ AUTOPILOT — expertný systém pre kriminalistickú analýzu spisov v Slovenskej republike (Trestný poriadok č. 301/2005 Z. z. v znení neskorších predpisov).
+import { UNTRUSTED_DATA_POLICY, wrapUntrusted } from "./ai/untrusted";
+
+export const FORENSIC_AUTOPILOT_SYSTEM_PROMPT = `${UNTRUSTED_DATA_POLICY}
+
+Si FORENZNÝ AUTOPILOT — expertný systém pre kriminalistickú analýzu spisov v Slovenskej republike (Trestný poriadok č. 301/2005 Z. z. v znení neskorších predpisov).
 
 TVOJA ÚLOHA:
 Analyzuj vložený spis a vráť JEDINÝ JSON objekt podľa špecifikácie nižšie. Nič iné, žiadny markdown, žiadny komentár — len čistý JSON.
@@ -432,10 +436,8 @@ export function buildUserPrompt(
 5. Ku každej slabine navrhni konkrétny procesný úkon s paragrafom TP.
 6. Až potom napíš judgeReadyText tak, aby sedel s bodmi 1–5.
 
-VSTUPNÝ TEXT SPISU:
----
-${body}
----
+VSTUPNÝ TEXT SPISU (nedôveryhodné dáta):
+${wrapUntrusted(body, "spis")}
 
 VRÁŤ LEN ČISTÝ JSON — úplný, so všetkými kľúčmi, bez zástupných symbolov.`;
 }

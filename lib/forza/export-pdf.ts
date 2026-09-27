@@ -2,114 +2,39 @@ import type { ForensicDossier } from "./types";
 import { formatSourceRef } from "./types";
 import { AI_DISCLAIMER } from "@/config/brand";
 
-// ─── Kryptografický výpočet SHA-256 (NIST FIPS 180-4) ────────────
+import { sha256Hex } from "./provenance/sha256";
+import { canonicalSha256 } from "./provenance/canonical";
+import { buildReportManifest, type ReportManifest } from "./provenance/report-manifest";
+
+export { sha256Hex };
 
 /**
- * Deterministický výpočet SHA-256 podľa štandardu FIPS 180-4.
- * Funguje 100 % synchrónne v Node.js aj v prehliadači bez externých závislostí.
+ * SHA-256 kanonickej serializácie dossieru (kontrola integrity obsahu).
+ * Nie je to elektronický podpis ani pečať.
  */
-export function sha256Hex(str: string): string {
-  function rightRotate(value: number, amount: number) {
-    return (value >>> amount) | (value << (32 - amount));
-  }
-  const mathPow = Math.pow;
-  const maxWord = mathPow(2, 32);
-  const bytes = new TextEncoder().encode(str);
-  const bitLength = bytes.length * 8;
-  const words: number[] = [];
-  for (let i = 0; i < bytes.length; i++) {
-    words[i >> 2] = (words[i >> 2] ?? 0) | (bytes[i]! << ((3 - (i % 4)) * 8));
-  }
-  words[bytes.length >> 2] =
-    (words[bytes.length >> 2] ?? 0) | (0x80 << ((3 - (bytes.length % 4)) * 8));
-  const totalWords = (((bytes.length + 8) >> 6) + 1) * 16;
-  while (words.length < totalWords) words.push(0);
-  words[totalWords - 2] = Math.floor(bitLength / maxWord);
-  words[totalWords - 1] = bitLength >>> 0;
-
-  const k: number[] = [];
-  let hash: number[] = [];
-  let primeCounter = 0;
-  for (let candidate = 2; primeCounter < 64; candidate++) {
-    let isComp = false;
-    for (let i = 2; i * i <= candidate; i++) {
-      if (candidate % i === 0) {
-        isComp = true;
-        break;
-      }
-    }
-    if (!isComp) {
-      hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
-      k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
-    }
-  }
-  hash = hash.slice(0, 8);
-
-  for (let j = 0; j < words.length; j += 16) {
-    const w = words.slice(j, j + 16);
-    const oldHash = [...hash];
-    for (let i = 0; i < 64; i++) {
-      const w15 = w[i - 15]!,
-        w2 = w[i - 2]!;
-      const a = hash[0]!,
-        e = hash[4]!;
-      const temp1 =
-        hash[7]! +
-        (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25)) +
-        ((e & hash[5]!) ^ (~e & hash[6]!)) +
-        k[i]! +
-        (w[i] =
-          i < 16
-            ? w[i]! | 0
-            : (w[i - 16]! +
-                (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3)) +
-                w[i - 7]! +
-                (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))) |
-              0);
-      const temp2 =
-        (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22)) +
-        ((a & hash[1]!) ^ (a & hash[2]!) ^ (hash[1]! & hash[2]!));
-      hash = [
-        (temp1 + temp2) | 0,
-        hash[0]!,
-        hash[1]!,
-        hash[2]!,
-        (hash[3]! + temp1) | 0,
-        hash[4]!,
-        hash[5]!,
-        hash[6]!,
-      ];
-    }
-    for (let i = 0; i < 8; i++) {
-      hash[i] = (hash[i]! + oldHash[i]!) | 0;
-    }
-  }
-
-  let result = "";
-  for (let i = 0; i < 8; i++) {
-    for (let j = 3; j >= 0; j--) {
-      const b = (hash[i]! >>> (j * 8)) & 255;
-      result += (b < 16 ? "0" : "") + b.toString(16);
-    }
-  }
-  return result;
+export function computeDossierSha256(dossier: ForensicDossier): string {
+  return canonicalSha256(dossier);
 }
 
 /**
- * Vypočíta kanonický kryptografický odtlačok (SHA-256) forenzného dossieru.
- * Zabezpečuje dôkaznú nemennosť a overiteľnosť elektronického spisu podľa § 119 TP.
+ * Report + reprodukovateľný manifest. `report_sha256` viaže presný HTML text,
+ * `content_sha256` kanonický obsah dossieru.
  */
-export function computeDossierSha256(dossier: ForensicDossier): string {
-  // Sort every object, retaining nested evidence and metadata; preserve array order.
-  const canonical = JSON.stringify(dossier, (_key, value: unknown) => {
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      return Object.fromEntries(
-        Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
-      );
-    }
-    return value;
+export function buildReportPackage(dossier: ForensicDossier): {
+  html: string;
+  manifest: ReportManifest;
+  manifestSha256: string;
+} {
+  const html = buildReportHTML(dossier);
+  const meta = dossier.analysisMeta;
+  const { manifest, manifestSha256 } = buildReportManifest({
+    subjectId: dossier.caseId,
+    reportText: html,
+    content: dossier,
+    rulesetVersion: meta?.promptVersion ?? "unknown",
+    parserVersions: meta ? [`model:${meta.model}`] : [],
   });
-  return sha256Hex(canonical);
+  return { html, manifest, manifestSha256 };
 }
 
 /**
@@ -121,8 +46,32 @@ export function computeReportSha256(html: string): string {
 
 // ─── Export § 168 TP reportu do tlačiteľnej HTML → PDF ───────────
 
+/** Manifest sa vkladá až za hashovaný text; pri overení sa tento blok odstráni. */
+export const MANIFEST_MARKER = "<!--forenx-manifest-->";
+
+export function withEmbeddedManifest(
+  html: string,
+  manifest: ReportManifest,
+  manifestSha256: string,
+): string {
+  // "<" is escaped so the JSON can never close the <script> element.
+  const json = JSON.stringify({ manifest, manifest_sha256: manifestSha256 })
+    .replace(/</g, "\\u003c");
+  const block = `${MANIFEST_MARKER}<script type="application/json" id="forenx-manifest">${json}</script>\n`;
+  const at = html.lastIndexOf("</body>");
+  return html.slice(0, at) + block + html.slice(at);
+}
+
+export function stripEmbeddedManifest(html: string): string {
+  const start = html.indexOf(MANIFEST_MARKER);
+  if (start < 0) return html;
+  const end = html.indexOf("</script>\n", start) + "</script>\n".length;
+  return html.slice(0, start) + html.slice(end);
+}
+
 export function exportDossierToPDF(dossier: ForensicDossier): void {
-  const html = buildReportHTML(dossier);
+  const pkg = buildReportPackage(dossier);
+  const html = withEmbeddedManifest(pkg.html, pkg.manifest, pkg.manifestSha256);
 
   const win = window.open("", "_blank");
   if (!win) {
@@ -455,14 +404,14 @@ ${financialHtml}
 </table>
 
 <div class="integrity-section">
-  <h2>V. Doložka integrity a nemennosti elektronického spisu (§ 119 ods. 2 TP)</h2>
+  <h2>V. Kontrola integrity obsahu</h2>
   <div class="hash-box">
-    <div style="font-size:9pt;color:#475569;margin-bottom:2px">Kryptografický kontrolný odtlačok spisu (FIPS 180-4 SHA-256):</div>
+    <div style="font-size:9pt;color:#475569;margin-bottom:2px">SHA-256 kanonického obsahu analýzy (kontrola integrity, nie elektronický podpis ani pečať):</div>
     <div class="hash-code">${dossierHash}</div>
   </div>
   <p class="legal-clause">
     <strong>Doložka AI pôvodu:</strong> Tento dokument je AI pracovná analýza spisu ČVS: <strong>${d.caseId}</strong>, nie znalecký posudok ani rozhodnutie súdu.
-    SHA-256 odtlačok viaže aktuálny text reportu; každý dátum, suma, osoba a citácia musia byť overené voči originálu spisu pred použitím v konaní (§ 119 TP).
+    SHA-256 odtlačok viaže obsah analýzy, z ktorého bol report vytvorený; report nie je elektronicky podpísaný ani zapečatený; každý dátum, suma, osoba a citácia musia byť overené voči originálu spisu pred použitím v konaní (§ 119 TP).
     ${d.analysisMeta ? `Prompt ${d.analysisMeta.promptVersion}, model ${d.analysisMeta.model}.` : ""}
   </p>
   <div class="signature-grid">

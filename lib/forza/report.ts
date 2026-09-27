@@ -126,7 +126,7 @@ export function buildReportHtml(
     <div class="kpi"><span>Transakcie</span><strong>${analysis.totals.transactions}</strong></div>
     <div class="kpi"><span>Objem (${escapeHtml(analysis.case.baseCurrency)})</span><strong>${formatEur(analysis.totals.volume)}</strong></div>
     <div class="kpi"><span>Meny</span><strong>${escapeHtml(analysis.totals.currencies.join(", ") || "—")}</strong></div>
-    <div class="kpi"><span>Hotovosť</span><strong>${Math.round(analysis.totals.cashRatio * 100)} %</strong></div>
+    <div class="kpi"><span>Hotovosť</span><strong>${analysis.totals.cashRatio === null ? "n/a" : `${Math.round(analysis.totals.cashRatio * 100)} %`}</strong></div>
     <div class="kpi"><span>Zhody EUROPOL</span><strong>${analysis.totals.europolMatches}/${analysis.totals.weapons}</strong></div>
   </div>
 

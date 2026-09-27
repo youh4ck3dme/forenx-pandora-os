@@ -11,6 +11,8 @@ export type AiGraphInput = {
   companies: string[];
   timeline: {
     date?: string;
+    /** Koniec obdobia platnosti (napr. koniec funkčného obdobia). */
+    endDate?: string;
     event?: string;
     detail?: string;
     actors?: string[];
@@ -27,6 +29,8 @@ type ExistingRelation = {
   from_id: string | null;
   to_id: string | null;
   label: string;
+  valid_from?: string | null;
+  valid_to?: string | null;
 };
 
 export type GraphEntityInsert = {
@@ -58,6 +62,9 @@ export type GraphRelationInsert = {
   from_id: string;
   to_id: string;
   label: string;
+  /** Začiatok obdobia, v ktorom vzťah platil (dátum udalosti). */
+  valid_from: string | null;
+  valid_to: string | null;
 };
 
 const MAX_ENTITIES = 60;
@@ -169,6 +176,9 @@ export function buildAiGraphPlan(
     const title = (item.event ?? item.detail ?? "").trim();
     if (!title) continue;
     const date = normalizeDate(item.date) ?? fallbackDate;
+    const validFrom = normalizeDate(item.date);
+    const endDate = normalizeDate(item.endDate);
+    const validTo = endDate && validFrom && endDate < validFrom ? null : endDate;
     const key = `${date}|${normalizeKey(title)}`;
     if (!eventKeys.has(key) && events.length < MAX_EVENTS) {
       eventKeys.add(key);
@@ -199,18 +209,23 @@ export function buildAiGraphPlan(
           from_id: fromId,
           to_id: toId,
           label: title.slice(0, 80) || "spoločná udalosť",
+          valid_from: validFrom,
+          valid_to: validTo,
         });
       }
     }
   }
 
-  const relationKey = (relation: {
-    from_id: string | null;
-    to_id: string | null;
-    label: string;
-  }) =>
+  // Obdobie platnosti je súčasťou kľúča: rovnaký vzťah v inom období je
+  // samostatný historický záznam, nikdy sa neprepíše.
+  const relationKey = (relation: ExistingRelation) =>
     relation.from_id && relation.to_id
-      ? `${[relation.from_id, relation.to_id].sort().join("|")}|${normalizeKey(relation.label)}`
+      ? [
+          [relation.from_id, relation.to_id].sort().join("|"),
+          normalizeKey(relation.label),
+          relation.valid_from ?? "",
+          relation.valid_to ?? "",
+        ].join("|")
       : null;
   const relationKeys = new Set(
     existingRelations
