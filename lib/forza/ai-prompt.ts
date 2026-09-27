@@ -3,6 +3,7 @@
 // Výstup MUSÍ byť striktne JSON podľa ForensicDossier typu.
 
 import { UNTRUSTED_DATA_POLICY, wrapUntrusted } from "./ai/untrusted";
+import { evidenceRegistryBlock, type RegistryEntry } from "./evidence-registry";
 
 export const FORENSIC_AUTOPILOT_SYSTEM_PROMPT = `${UNTRUSTED_DATA_POLICY}
 
@@ -24,7 +25,7 @@ PRINCÍPY:
 10. Pri každom závere uvádzaj zdroj a confidence (0–100%).
 11. Ak chýba priamy dôkaz, jednoznačne uveď "NEOVERENÉ" alebo "CHÝBAJÚCI DÔKAZ".
 12. Ak si nie si istý poradím udalostí alebo tým, kto je kto, NEHÁDAJ. Namiesto odhadu napíš presne: "NEOVERENÉ — chýba zdroj v spise".
-13. Každá alternatívna hypotéza a každé § 119 posúdenie musí mať sourceReferences/sourceRef s existujúcim evidenceId z custodyLedger.traceId a konkrétnym page alebo paragraph. ID záznamu custodyLedger.id, analysisMeta.documentIds ani voľný text nie sú custody evidence_id. Samotný popis, názov dôkazu ani právny paragraf nie sú locator. Ak väzbu nevieš uviesť, tvrdenie patrí iba do unverified a nesmie byť súčasťou skutkového záveru.
+13. Každá udalosť chronológie (sourceRef), podozrivý tok, alternatívna hypotéza a každé § 119 posúdenie musí mať evidenceId VÝHRADNE z bloku <evidence_registry> (WORM ledger dôkazov, hash overený serverom) a konkrétny page alebo paragraph. custodyLedger (ani traceId, ani id), analysisMeta.documentIds, názov súboru ani voľný text NIE SÚ evidenceId. Samotný popis, názov dôkazu ani právny paragraf nie sú locator. Ak väzbu nevieš uviesť, nechaj evidenceId prázdne — tvrdenie sa zobrazí ako neoverené a nesmie byť súčasťou skutkového záveru. Tvrdenie o nevine alebo zbavení viny bez takejto väzby sa zahodí.
 
 ═══════════════════════════════════════════════════════════════════
 POVINNÁ ÚPLNOSŤ A KONZISTENCIA VÝSTUPU
@@ -192,7 +193,7 @@ ZÁVÄZNÝ ANALYTICKÝ RÁMEC ÚBOK — 3 VYŠETROVACIE OTÁZKY & ROZPORY
         "time": "<YYYY-MM-DD HH:mm>",
         "event": "<popis udalosti>",
         "source": "<zápisnica č. X / strana Y>",
-        "sourceRef": { "documentId": "<ID dokumentu>", "page": 1, "excerpt": "<krátky citát>" },
+        "sourceRef": { "documentId": "<ID dokumentu>", "evidenceId": "<evidenceId z evidence_registry>", "page": 1, "excerpt": "<krátky citát>" },
         "chainBreak": <true|false>,
         "severity": "critical|warning|info",
         "paragraph": "<§ ak je zlom procesný, inak null>"
@@ -207,7 +208,7 @@ ZÁVÄZNÝ ANALYTICKÝ RÁMEC ÚBOK — 3 VYŠETROVACIE OTÁZKY & ROZPORY
         "chainComplete": <true|false>,
         "lr": "<LR alebo '—'>",
         "paragraph": "<§ ak relevantné>",
-        "sourceRef": { "documentId": "<ID dokumentu>", "page": 1, "excerpt": "<krátky citát>" }
+        "sourceRef": { "documentId": "<ID dokumentu>", "evidenceId": "<evidenceId z evidence_registry>", "page": 1, "excerpt": "<krátky citát>" }
       }
     ]
   },
@@ -253,7 +254,7 @@ ZÁVÄZNÝ ANALYTICKÝ RÁMEC ÚBOK — 3 VYŠETROVACIE OTÁZKY & ROZPORY
       "id": "AH-1",
       "title": "<stručný názov alternatívnej verzie>",
       "scenario": "<alternatívny nevinný príbeh, striktne podložený spisom>",
-      "sourceReferences": [{ "evidenceId": "<existujúce custodyLedger.traceId>", "page": 1, "paragraph": "<konkrétny odsek zdroja>" }],
+      "sourceReferences": [{ "evidenceId": "<evidenceId z evidence_registry>", "page": 1, "paragraph": "<konkrétny odsek zdroja>" }],
       "evidence": ["<stopy alebo transakcie, ktoré verzia vysvetľuje>"],
       "requiredTraces": ["<čo musí existovať v spise, ak je verzia pravdivá>"],
       "rebuttal": "<konkrétny procesný úkon na overenie alebo vyvrátenie>",
@@ -270,13 +271,13 @@ ZÁVÄZNÝ ANALYTICKÝ RÁMEC ÚBOK — 3 VYŠETROVACIE OTÁZKY & ROZPORY
         "paragraph": "<§ TP>",
         "description": "<konkrétna procesná vada opretá o spis>",
         "remedyAction": "<konkrétny spôsob nápravy>",
-        "sourceEvidenceId": "<existujúce ID dôkazu>",
+        "sourceEvidenceId": "<evidenceId z evidence_registry>",
         "sourcePage": 1,
         "sourceParagraph": "<konkrétny odsek zdroja>"
       }
     ],
     "courtReadySummary": "<stručné stanovisko o použiteľnosti dôkazov na hlavnom pojednávaní>",
-    "sourceReferences": [{ "evidenceId": "<existujúce ID dôkazu>", "page": 1, "paragraph": "<konkrétny odsek zdroja>" }]
+    "sourceReferences": [{ "evidenceId": "<evidenceId z evidence_registry>", "page": 1, "paragraph": "<konkrétny odsek zdroja>" }]
   },
 
   "custodyLedger": [
@@ -425,6 +426,7 @@ export function compactDocumentText(text: string): string {
 export function buildUserPrompt(
   documentText: string,
   part?: { index: number; total: number },
+  evidenceRegistry: readonly RegistryEntry[] = [],
 ): string {
   const body = compactDocumentText(documentText).slice(
     0,
@@ -441,6 +443,8 @@ export function buildUserPrompt(
 4. Vyhodnoť finančné toky: hotovosť vs. prevody, zaokrúhlené sumy, refundácie.
 5. Ku každej slabine navrhni konkrétny procesný úkon s paragrafom TP.
 6. Až potom napíš judgeReadyText tak, aby sedel s bodmi 1–5.
+
+${evidenceRegistryBlock(evidenceRegistry)}
 
 VSTUPNÝ TEXT SPISU (nedôveryhodné dáta):
 ${wrapUntrusted(body, "spis")}

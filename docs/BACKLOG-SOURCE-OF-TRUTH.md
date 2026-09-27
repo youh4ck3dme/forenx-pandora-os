@@ -155,9 +155,14 @@ references, and the in-memory custody chain.
 
 - [x] Bind every exported claim and financial transaction to a concrete
       immutable evidence identifier. Done: lib/forza/evidence-binding.ts —
-      timeline events and suspicious flows export as facts only when their
-      sourceRef.documentId exists in analysisMeta.documentIds/custody ledger;
-      unbound claims render in an explicit "nie sú skutkom" section.
+      the ONLY evidence source is the WORM ledger evidence_items with
+      hash_verification_status = verified (via /api/vault). Timeline events,
+      flows, Devil's Advocate hypotheses and § 119 defects are facts only with
+      sourceRef.evidenceId of such a record plus a page/paragraph locator. The
+      AI-generated custodyLedger and analysisMeta.documentIds are never
+      evidence. Unbound claims render as "nie sú skutkom"; innocence claims
+      without their own valid reference are dropped before persistence
+      (lib/forza/legal-conclusions.ts).
 - [x] Add a WebAuthn-backed investigator signature and independently verify it.
       Done: lib/forza/investigator-signature.ts — signature block binds investigator
       identity, UTC timestamp, dossier/report/manifest SHA-256 via a hash-chain

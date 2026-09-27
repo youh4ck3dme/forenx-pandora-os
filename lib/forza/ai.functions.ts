@@ -23,7 +23,6 @@ import {
 } from "@/lib/ai/control-readiness";
 import { aiTaskSchemas } from "@/lib/ai/task-schemas";
 import { assertAiConsent } from "@/lib/ai-consent";
-import { resolveEvidenceReference } from "./evidence-binding";
 import type { ExtractedCaseEntity, ParsedCaseDocument } from "./types";
 
 export type { AiControlFinding, AiControlResult, AiControlStatus };
@@ -192,9 +191,9 @@ const instructions: Record<AiTask, string> = {
   normalize_descriptions:
     'Navrhni normalizovaný tvar popisov platieb a možné zhody protistrán na kontrolu používateľom. Nič nespájaj automaticky. Vráť JSON {"suggestions": [{"transaction": string, "normalized": string, "counterparty": string, "confidence": "low"|"medium"|"high"}], "unverified": string[]}.',
   alt_devil:
-    'ROLE: Forenzný oponent ("Devil\'s Advocate"). Rozbi tunelové videnie vyšetrovania. Ak v <data> sú stopy/transakcie/nálezy, vygeneruj minimálne 2 plnohodnotné alternatívne hypotézy s oporou v dátach (nevymýšľaj nové entity ani transakcie). Pri každej hypotéze uveď sourceReferences: aspoň jeden {evidenceId, page alebo paragraph}; evidenceId musí byť presné existujúce ID v <data>, locator musí označovať konkrétnu stranu alebo odsek. Ak taký odkaz nemožno doložiť, hypotézu označ v unverified a nepriraď jej sourceReferences. Pre každú uveď explainedEvidence, requiredTracesIfTrue a rebuttalTest. Vráť JSON: {"hypotheses": [{"id": string, "title": string, "scenario": string, "sourceReferences": [{"evidenceId": string, "page"?: number, "paragraph"?: string}], "explainedEvidence": string[], "requiredTracesIfTrue": string[], "rebuttalTest": string}], "unverified": string[], "cited": string[]}.',
+    'ROLE: Forenzný oponent ("Devil\'s Advocate"). Rozbi tunelové videnie vyšetrovania. Ak v <data> sú stopy/transakcie/nálezy, vygeneruj minimálne 2 plnohodnotné alternatívne hypotézy s oporou v dátach (nevymýšľaj nové entity ani transakcie). Pri každej hypotéze uveď sourceReferences: aspoň jeden {evidenceId, page alebo paragraph}; evidenceId musí byť VÝHRADNE ID dôkazu z <data>.evidence (E1, E2 …) — ID entít (S…) ani transakcií (T…) nie sú dôkazy; locator musí označovať konkrétnu stranu alebo odsek. Ak <data>.evidence chýba alebo je prázdne, sourceReferences nechaj prázdne. Hypotéza bez takejto väzby sa nezobrazí ako nález. Ak taký odkaz nemožno doložiť, hypotézu označ v unverified a nepriraď jej sourceReferences. Pre každú uveď explainedEvidence, requiredTracesIfTrue a rebuttalTest. Vráť JSON: {"hypotheses": [{"id": string, "title": string, "scenario": string, "sourceReferences": [{"evidenceId": string, "page"?: number, "paragraph"?: string}], "explainedEvidence": string[], "requiredTracesIfTrue": string[], "rebuttalTest": string}], "unverified": string[], "cited": string[]}.',
   admiss_audit:
-    'ROLE: Procesný audítor trestného konania (TP SR č. 301/2005 Z. z. § 119 a nasl.). Skontroluj zákonnosť a procesnú prípustnosť podľa dát v <data>. Nevymýšľaj vady bez opory. Ku každej vade uveď sourceEvidenceId a aspoň sourcePage alebo sourceParagraph ako presný locator do konkrétneho zdroja; samotná citácia paragrafu zákona nie je locator. K overallStatus, score a courtReadySummary uveď sourceReferences s presnými evidenceId a locatorom. Používaj len ID existujúce v <data>; ak väzba chýba, uveď záver/vadu v unverified. Ak nie sú podklady, vráť prázdne defects. Vráť JSON: {"overallStatus": "admissible"|"at_risk"|"inadmissible", "score": number, "defects": [{"severity": "critical"|"curable"|"formal", "paragraph": string, "description": string, "remedyAction": string, "sourceEvidenceId": string, "sourcePage"?: number, "sourceParagraph"?: string}], "courtReadySummary": string, "sourceReferences": [{"evidenceId": string, "page"?: number, "paragraph"?: string}], "unverified": string[], "cited": string[]}.',
+    'ROLE: Procesný audítor trestného konania (TP SR č. 301/2005 Z. z. § 119 a nasl.). Skontroluj zákonnosť a procesnú prípustnosť podľa dát v <data>. Nevymýšľaj vady bez opory. Ku každej vade uveď sourceEvidenceId a aspoň sourcePage alebo sourceParagraph ako presný locator do konkrétneho zdroja; samotná citácia paragrafu zákona nie je locator. K overallStatus, score a courtReadySummary uveď sourceReferences s presnými evidenceId a locatorom. sourceEvidenceId a evidenceId musia byť VÝHRADNE ID dôkazu z <data>.evidence (E1, E2 …) — ID entít (S…) ani transakcií (T…) nie sú dôkazy; ak väzba chýba, uveď záver/vadu v unverified. Ak nie sú podklady, vráť prázdne defects. Vráť JSON: {"overallStatus": "admissible"|"at_risk"|"inadmissible", "score": number, "defects": [{"severity": "critical"|"curable"|"formal", "paragraph": string, "description": string, "remedyAction": string, "sourceEvidenceId": string, "sourcePage"?: number, "sourceParagraph"?: string}], "courtReadySummary": string, "sourceReferences": [{"evidenceId": string, "page"?: number, "paragraph"?: string}], "unverified": string[], "cited": string[]}.',
 };
 
 type LoadedCaseContext = {
@@ -239,27 +238,6 @@ async function loadAnalysis(
 }
 
 type SupabaseLike = any;
-
-async function loadEvidenceAliases(
-  supabase: SupabaseLike,
-  caseId: string,
-): Promise<Map<string, string>> {
-  const { data, error } = await supabase
-    .from("evidence_items")
-    .select("id")
-    .like("s3_object_key", `cases/${caseId}/evidence/%`)
-    .order("id", { ascending: true })
-    .limit(500);
-  if (error) {
-    throw new Error(`Nemenný ledger dôkazov sa nepodarilo overiť (${error.code}).`);
-  }
-  return new Map(
-    (data ?? []).map((row: { id: string }, index: number) => [
-      `E${index + 1}`,
-      row.id,
-    ]),
-  );
-}
 
 /** Stav AI: či je nakonfigurovaná a koľko volaní ostáva v dennom limite. */
 export const getAiStatus = createServerFn({ method: "POST" })
@@ -316,15 +294,7 @@ export const previewAiPayload = createServerFn({ method: "POST" })
         ? ({ task: "explain_finding", alertId: data.alertId ?? "" } as const)
         : ({ task: data.task } as const);
     const { payload } = buildAiPayload(analysis, scope);
-    const evidenceAliases =
-      data.task === "alt_devil" || data.task === "admiss_audit"
-        ? [...(await loadEvidenceAliases(context.supabase, data.caseId)).keys()]
-        : [];
-    return {
-      payload,
-      ...(evidenceAliases.length > 0 ? { evidenceAliases } : {}),
-      dataFingerprint: analysis.dataFingerprint,
-    };
+    return { payload, dataFingerprint: analysis.dataFingerprint };
   });
 
 export type AiRunResult = {
@@ -366,31 +336,16 @@ export type AiRunResult = {
       explainedEvidence: string[];
       requiredTracesIfTrue: string[];
       rebuttalTest: string;
-      sourceReferences?: {
-        evidenceId: string;
-        page?: number;
-        paragraph?: string;
-        description?: string;
-      }[];
     }[];
     defects?: {
       severity: "critical" | "curable" | "formal";
       paragraph: string;
       description: string;
       remedyAction: string;
-      sourceEvidenceId?: string;
-      sourcePage?: number;
-      sourceParagraph?: string;
     }[];
     overallStatus?: "admissible" | "at_risk" | "inadmissible";
     score?: number;
     courtReadySummary?: string;
-    sourceReferences?: {
-      evidenceId: string;
-      page?: number;
-      paragraph?: string;
-      description?: string;
-    }[];
     idMap?: {
       entities: Record<string, string>;
       transactions: Record<string, string>;
@@ -564,10 +519,17 @@ async function runAiTaskInner(
       );
     }
 
-    const evidenceAliasToId =
-      data.task === "alt_devil" || data.task === "admiss_audit"
-        ? await loadEvidenceAliases(context.supabase, data.caseId)
-        : new Map<string, string>();
+    // Task 4: právne závery sa smú viazať len na hash-overené dôkazy WORM ledgera.
+    const bindsEvidence = data.task === "alt_devil" || data.task === "admiss_audit";
+    // Case-úlohy analyzujú záznamy prípadu (transakcie, entity), nie obsah dôkazov:
+    // model obsah WORM dôkazov nevidí, takže väzbu nemôže dokázať → prázdny register;
+    // hypotézy a vady sa zobrazia iba ako neoverené (enforceTaskEvidenceBinding).
+    const { pseudonymizeRegistry, remapEvidenceReferences } = await import("./evidence-registry");
+    const registryEntries: import("./evidence-registry").RegistryEntry[] = [];
+    const evidencePseudonyms = pseudonymizeRegistry(registryEntries);
+    if (bindsEvidence && evidencePseudonyms.entries.length > 0) {
+      payload = { ...payload, evidence: evidencePseudonyms.entries };
+    }
 
     const base = {
       task: data.task,
@@ -633,11 +595,7 @@ async function runAiTaskInner(
         { role: "system", content: SYSTEM_PROMPT },
         {
           role: "user",
-          content: `${instructions[data.task]}${
-            evidenceAliasToId.size > 0
-              ? `\n\nPERSISTENTNÝ LEDGER dôkazov (iba tieto aliasy možno citovať): ${JSON.stringify([...evidenceAliasToId.keys()])}. Použi ich len ak sa zdrojový dokument obsahovo viaže na tvrdenie; locator musí byť konkrétna strana alebo odsek. Ak obsah/lokátor nevieš doložiť, vráť tvrdenie iba v unverified.`
-              : ""
-          }\n\n<data>\n${serialized}\n</data>`,
+          content: `${instructions[data.task]}\n\n<data>\n${serialized}\n</data>`,
         },
       ],
       // Interaktívne kontroly a zhrnutia → asistentský kľúč.
@@ -723,129 +681,33 @@ async function runAiTaskInner(
         explainedEvidence?: string[];
         title?: string;
         scenario?: string;
-        sourceReferences?: {
-          evidenceId: string;
-          page?: number;
-          paragraph?: string;
-          description?: string;
-        }[];
       }[];
-      const bound: typeof hyps = [];
-      const unverified: string[] = [];
-      for (const hypothesis of hyps) {
-        const references = hypothesis.sourceReferences;
-        const resolvedReferences = references?.map((ref) =>
-          resolveEvidenceReference(ref, evidenceAliasToId),
-        );
-        const valid = Boolean(
-          resolvedReferences?.length &&
-            resolvedReferences.every((ref) => ref !== null),
-        );
-        if (
-          valid &&
-          Boolean(hypothesis.title?.trim()) &&
-          Boolean(hypothesis.scenario?.trim())
-        ) {
-          bound.push({
-            ...hypothesis,
-            sourceReferences: resolvedReferences!.filter(
-              (ref): ref is NonNullable<typeof ref> => ref !== null,
-            ),
-          });
-        } else {
-          unverified.push(
-            `${hypothesis.title?.trim() || "Alternatívna hypotéza"}: ${
-              hypothesis.scenario?.trim() || "Bez opisu"
-            } (neoverené — chýba platná väzba na evidence_items a konkrétny locator)`,
-          );
-        }
-      }
-      output["hypotheses"] = bound.filter(
+      // Odfiltruj prázdne / vymyslené hypotézy bez názvu a scenára.
+      output["hypotheses"] = hyps.filter(
         (h) =>
-          hasSourceRef ||
-          !isClearanceOrInnocenceClaim(
-            `${h.title ?? ""} ${h.scenario ?? ""}`,
-          ),
+          Boolean(h.title?.trim()) &&
+          Boolean(h.scenario?.trim()) &&
+          (hasSourceRef ||
+            !isClearanceOrInnocenceClaim(
+              `${h.title ?? ""} ${h.scenario ?? ""}`,
+            )),
       );
-      output["unverified"] = [
-        ...((output["unverified"] as string[] | undefined) ?? []),
-        ...unverified,
-      ];
     }
     if (Array.isArray(output["defects"])) {
-      const defects = output["defects"] as {
-        description?: string;
-        paragraph?: string;
-        remedyAction?: string;
-        sourceEvidenceId?: string;
-        sourcePage?: number;
-        sourceParagraph?: string;
-      }[];
-      const bound = [];
-      const unverified: string[] = [];
-      for (const defect of defects) {
-        const evidenceId = defect.sourceEvidenceId?.trim();
-        const ref = evidenceId
-          ? {
-              evidenceId,
-              ...(defect.sourcePage ? { page: defect.sourcePage } : {}),
-              ...(defect.sourceParagraph
-                ? { paragraph: defect.sourceParagraph }
-                : {}),
-            }
-          : undefined;
-        const resolved = resolveEvidenceReference(ref, evidenceAliasToId);
-        if (defect.description?.trim() && resolved) {
-          bound.push({
-            ...defect,
-            sourceEvidenceId: resolved.evidenceId,
-          });
-        } else {
-          unverified.push(
-            `${defect.paragraph || "Procesná vada"}: ${
-              defect.description?.trim() || "Bez opisu"
-            } (neoverené — chýba platná väzba na evidence_items a konkrétny locator)`,
-          );
-        }
-      }
-      output["defects"] = bound;
-      output["unverified"] = [
-        ...((output["unverified"] as string[] | undefined) ?? []),
-        ...unverified,
-      ];
+      const defects = output["defects"] as { description?: string }[];
+      output["defects"] = defects.filter((d) => Boolean(d.description?.trim()));
     }
-    if (data.task === "admiss_audit") {
-      const references = output["sourceReferences"] as
-        | {
-            evidenceId: string;
-            page?: number;
-            paragraph?: string;
-            description?: string;
-          }[]
-        | undefined;
-      const resolvedReferences = references?.map((ref) =>
-        resolveEvidenceReference(ref, evidenceAliasToId),
+    if (bindsEvidence) {
+      // E1… → UUID; každá hypotéza/vada bez vlastnej platnej väzby → unverified.
+      const { enforceTaskEvidenceBinding } = await import("./legal-conclusions");
+      const remapped = remapEvidenceReferences(output, evidencePseudonyms.back);
+      Object.assign(
+        output,
+        enforceTaskEvidenceBinding(
+          remapped as Parameters<typeof enforceTaskEvidenceBinding>[0],
+          new Set(registryEntries.map((entry) => entry.evidenceId)),
+        ),
       );
-      const valid = Boolean(
-        resolvedReferences?.length &&
-          resolvedReferences.every((ref) => ref !== null),
-      );
-      if (valid) {
-        output["sourceReferences"] = resolvedReferences!.filter(
-          (ref): ref is NonNullable<typeof ref> => ref !== null,
-        );
-      } else {
-        const summary = output["courtReadySummary"];
-        if (typeof summary === "string" && summary.trim()) {
-          output["unverified"] = [
-            ...((output["unverified"] as string[] | undefined) ?? []),
-            `§ 119 TP: ${summary} (neoverené — chýba platná väzba na evidence_items a konkrétny locator)`,
-          ];
-        }
-        delete output["overallStatus"];
-        delete output["score"];
-        delete output["courtReadySummary"];
-      }
     }
 
     const typedOutput = output as NonNullable<AiRunResult["output"]>;
@@ -1456,6 +1318,8 @@ export const runForensicAutopilot = createServerFn({ method: "POST" })
       documentText: string;
       fileName?: string;
       documentIds?: string[];
+      /** Task 4: dôkazy z WORM ledgera — server ich stiahne, overí hash a extrahuje text sám. */
+      evidenceIds?: string[];
       consentVersion?: string;
       idempotencyKey?: string;
       /** 1-based indexes of failed chunks to re-run; omit = full analysis. */
@@ -1500,6 +1364,7 @@ export async function runForensicAutopilotInner(
     documentText: string;
     fileName?: string;
     documentIds?: string[];
+    evidenceIds?: string[];
     consentVersion?: string;
     idempotencyKey?: string;
     retryChunkIndexes?: number[];
@@ -1507,13 +1372,48 @@ export async function runForensicAutopilotInner(
   },
   context: { supabase: SupabaseLike; userId: string },
 ) {
-  const { caseId, documentText } = data;
+  const { caseId } = data;
+  await assertCaseOwned(context.supabase, caseId);
+
+  // Task 4: závery sa smú viazať iba na dôkazy, ktorých obsah model skutočne
+  // analyzuje. Text od klienta nemá dokázateľný pôvod → prázdny register
+  // (nič nie je viazané). Pri evidenceIds server stiahne objekty z WORM ledgera,
+  // overí SHA-256 a extrahuje text sám; register = práve tieto dokumenty.
+  let documentText = data.documentText;
+  let evidenceRegistry: import("./evidence-registry").RegistryEntry[] = [];
+  if (data.evidenceIds?.length) {
+    const { loadLedgerDocuments, ledgerDocumentsText } = await import("./evidence-source");
+    const { escapeLike } = await import("@/lib/storage/evidence-ledger");
+    const { downloadCaseDocument } = await import("@/lib/storage/s3-vault");
+    const loaded = await loadLedgerDocuments(caseId, data.evidenceIds, {
+      fetchRows: async (ids) => {
+        const { data: rows, error } = await context.supabase
+          .from("evidence_items")
+          .select("id, file_name, file_size, sha256_hash, s3_object_key, hash_verification_status")
+          .in("id", ids)
+          .like("s3_object_key", `cases/${escapeLike(caseId)}/evidence/%`);
+        if (error) throw new Error("Ledger dôkazov sa nepodarilo načítať.");
+        return rows ?? [];
+      },
+      download: async (storageKey) => (await downloadCaseDocument(storageKey))?.buffer ?? null,
+      extract: async (fileName, buffer) =>
+        (await extractSingleBufferText(fileName, buffer.toString("base64"))).text,
+    });
+    if (loaded.documents.length === 0) {
+      throw new Error(
+        `Žiadny z vybraných dôkazov nie je v ledgeri overený a dostupný (${loaded.rejected
+          .map((r) => r.reason)
+          .join(", ")}).`,
+      );
+    }
+    documentText = ledgerDocumentsText(loaded.documents);
+    evidenceRegistry = loaded.documents.map((d) => ({ evidenceId: d.evidenceId, fileName: d.fileName }));
+  }
   if (!documentText || documentText.trim().length < MIN_EXTRACT_CHARS) {
     throw new Error(
       `Dokument je príliš krátky (minimálne ${MIN_EXTRACT_CHARS} znakov).`,
     );
   }
-  await assertCaseOwned(context.supabase, caseId);
 
   const {
     buildUserPrompt,
@@ -1605,7 +1505,8 @@ export async function runForensicAutopilotInner(
         {
           role: "user",
           content:
-            label + buildUserPrompt(chunk, { index, total: chunks.length }),
+            label +
+            buildUserPrompt(chunk, { index, total: chunks.length }, evidenceRegistry),
         },
       ],
       maxTokens: AUTOPILOT_MAX_TOKENS,
@@ -1692,8 +1593,15 @@ export async function runForensicAutopilotInner(
       ? ("partial" as const)
       : ("complete" as const);
 
-  const withMeta = attachAnalysisMeta(
+  // Task 4: Zod validácia + vynútenie väzby právnych záverov pred uložením.
+  const { sanitizeLegalConclusions } = await import("./legal-conclusions");
+  const bound = sanitizeLegalConclusions(
     parsed,
+    new Set(evidenceRegistry.map((entry) => entry.evidenceId)),
+  ).dossier;
+
+  const withMeta = attachAnalysisMeta(
+    bound,
     buildAnalysisMeta({
       caseId,
       documentIds,
@@ -1705,7 +1613,7 @@ export async function runForensicAutopilotInner(
       ...(lastProvider ? { provider: lastProvider } : {}),
       idempotencyKey,
       analysisStatus,
-      sourceReferences: collectSourceReferences(parsed),
+      sourceReferences: collectSourceReferences(bound),
     }),
   );
 

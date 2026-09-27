@@ -68,6 +68,8 @@ export type AiPayload = {
     revision: string;
   };
   entities: { id: string; kind: string; role: string; country: string }[];
+  /** Task 4: hash-overené dôkazy WORM ledgera pod pseudonymami E1… (len alt_devil / admiss_audit). */
+  evidence?: { id: string; fileName: string }[];
   transactions: {
     id: string;
     date: string;

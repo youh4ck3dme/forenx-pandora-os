@@ -14,21 +14,17 @@ import {
 import { buildLegalContext, severityLabel } from "@/lib/forza/forensic";
 import { BRAND } from "@/config/brand";
 import { AdmissibilityAuditView } from "@/components/features/forensic/AdmissibilityAuditView";
+import { useVerifiedEvidence } from "@/hooks/useVerifiedEvidence";
 
 export default function PravnyKontextPage() {
   return <LegalScreen />;
 }
 
 function LegalScreen() {
-  const {
-    activeCase,
-    analysis,
-    dossier,
-    trustedEvidenceIds,
-    trustedEvidenceError,
-  } = useActiveCase();
+  const { activeCase, analysis, dossier } = useActiveCase();
   const legal = buildLegalContext(analysis);
-  const knownEvidence = new Set(trustedEvidenceIds);
+  // Task 4: väzba výlučne na hash-overené dôkazy z WORM ledgera (nie AI custody ledger).
+  const { knownEvidence } = useVerifiedEvidence(activeCase.id);
 
   return (
     <PhoneFrame>
@@ -126,11 +122,6 @@ function LegalScreen() {
         ))}
 
         <SectionTitle>Procesná prípustnosť (§ 119 a nasl. TP)</SectionTitle>
-        {trustedEvidenceError ? (
-          <Card className="border-amber-500/30 bg-amber-500/5 text-xs text-amber-200">
-            {trustedEvidenceError} Audit zostane neoverený.
-          </Card>
-        ) : null}
         <AdmissibilityAuditView
           audit={dossier?.admissibilityAudit}
           knownEvidence={knownEvidence}

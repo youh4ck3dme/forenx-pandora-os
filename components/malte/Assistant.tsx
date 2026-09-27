@@ -96,6 +96,7 @@ import { upsertTransaction } from "@/lib/case-data";
 import { ARMIVEX_CROSS_CONTRADICTIONS } from "@/lib/cross-contradictions";
 import { ARMIVEX_CASE_DOSSIER } from "@/lib/demo-dossier";
 import { isDemoDossier } from "@/lib/autopilot-meta";
+import { useVerifiedEvidence } from "@/hooks/useVerifiedEvidence";
 import { loadQuarantineDocuments } from "@/lib/quarantine.functions";
 import {
   clearQuarantineStage,
@@ -222,9 +223,9 @@ export function Assistant() {
     hasCase,
     revisions,
     setDossier: setSharedDossier,
-    trustedEvidenceIds,
-    trustedEvidenceError,
   } = useActiveCase();
+  // Task 4: jediný zdroj väzby tvrdení = hash-overené dôkazy z WORM ledgera.
+  const { knownEvidence } = useVerifiedEvidence(hasCase ? activeCase.id : null);
   const isOnline = useOnlineStatus();
   const status = useQuery({
     queryKey: ["ai-status"],
@@ -805,26 +806,16 @@ export function Assistant() {
       exportDossierToPDF(
         dossier,
         investigator
-          ? {
-              ...investigator,
-              webauthn: binding ?? undefined,
-              trustedEvidenceIds: new Set(trustedEvidenceIds),
-            }
-          : { trustedEvidenceIds: new Set(trustedEvidenceIds) },
+          ? { ...investigator, webauthn: binding ?? undefined, knownEvidence }
+          : { knownEvidence },
       );
       toast.success(
-        "AI pracovná analýza (A4) so SHA-256 pečaťou bola pripravená na tlač/stiahnutie.",
+        "AI pracovná analýza (A4) so SHA-256 odtlačkom bola pripravená na tlač/stiahnutie.",
       );
     } finally {
       setIsExportingPdf(false);
     }
-  }, [
-    dossier,
-    isExportingPdf,
-    profile.data?.fullName,
-    profile.data?.email,
-    trustedEvidenceIds,
-  ]);
+  }, [dossier, isExportingPdf, profile.data?.fullName, profile.data?.email, knownEvidence]);
 
   const handleRetryFailedChunks = useCallback(async () => {
     if (!dossier?.analysisMeta || !lastAutopilotDocumentText) {
@@ -1032,11 +1023,7 @@ export function Assistant() {
         ...(requestedTask === "explain_finding" ? { alertId } : {}),
       },
     });
-    return JSON.stringify(
-      { payload: value.payload, evidenceAliases: value.evidenceAliases ?? [] },
-      null,
-      2,
-    ).slice(0, 1500);
+    return JSON.stringify(value.payload, null, 2).slice(0, 1500);
   }
 
   const taskReadiness = assessControlReadiness(task, {
@@ -1871,13 +1858,6 @@ ${dossier.judgeReadyText.vedecke}`;
                   </div>
                 </div>
 
-                {trustedEvidenceError ? (
-                  <Card className="border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-200">
-                    {trustedEvidenceError} Závery s väzbou na dôkaz sa zobrazia
-                    ako neoverené.
-                  </Card>
-                ) : null}
-
                 <Tabs
                   value={autopilotTab}
                   onValueChange={setAutopilotTab}
@@ -1963,7 +1943,7 @@ ${dossier.judgeReadyText.vedecke}`;
                     <Card className="p-3.5">
                       <DevilsAdvocatePanel
                         hypotheses={dossier.alternativeHypotheses ?? []}
-                        knownEvidence={new Set(trustedEvidenceIds)}
+                        knownEvidence={knownEvidence}
                         onSimulate={() => {
                           setTask("alt_devil");
                           setMainMode("quick_tasks");
@@ -1977,7 +1957,7 @@ ${dossier.judgeReadyText.vedecke}`;
                     <Card className="p-3.5">
                       <AdmissibilityAuditView
                         audit={dossier.admissibilityAudit}
-                        knownEvidence={new Set(trustedEvidenceIds)}
+                        knownEvidence={knownEvidence}
                       />
                     </Card>
                   </TabsContent>
