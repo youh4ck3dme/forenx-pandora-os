@@ -281,6 +281,33 @@ Po `nginx -t` over aj starú stránku: `curl -sI https://whoiswho.at | head -1`.
 
 ---
 
+### 4c. Update stagingu (git pull main + PM2)
+
+Migrácie tento postup **nespúšťa** (sekcia 2 je samostatný krok). Na VPS v `/var/www/pandora-browser`:
+
+```bash
+bash scripts/deploy/verify-pm2.sh                 # stav pred update (iba čítanie)
+bash scripts/deploy/staging-update.sh             # DRY RUN: nové commity, nové migrácie, nič nemení
+bash scripts/deploy/staging-update.sh --apply     # vykoná update
+#   pri nových súboroch v supabase/migrations/ sa zastaví; pokračovanie iba vedome:
+#   bash scripts/deploy/staging-update.sh --apply --ack-migrations
+bash scripts/deploy/verify-pm2.sh --public https://pandora.whoiswho.at
+bash scripts/deploy/staging-rollback.sh --yes     # návrat na predchádzajúci commit + build
+```
+
+`staging-update.sh --apply`: čistý strom a fast-forward na `origin/main` → build v oddelenom
+adresári `/var/www/pandora-build` (beziaci server počas buildu nestratí súbory) → smoke test nového
+buildu na `127.0.0.1:3905` → výmena `.next/standalone` (starý ostáva ako `.next/standalone.prev`) →
+`pm2 reload` cez `ecosystem.config.cjs` bez `HOSTNAME` zo shellu → `verify-pm2.sh` → pri zlyhaní
+automatický rollback.
+
+> **Pozor pri ručnom PM2:** `pm2 reload <app> --update-env` prevezme prostredie shellu a `HOSTNAME`
+> je v ňom názov stroja → Next.js potom počúva na IP stroja namiesto `127.0.0.1` (obídenie nginx).
+> Vždy: `env -u HOSTNAME pm2 reload ecosystem.config.cjs --update-env`.
+
+Test celého postupu na skutočnom PM2 (Docker): `docker run --rm -v "$PWD:/repo:ro" node:22-bookworm
+bash /repo/scripts/deploy/tests/staging-e2e.sh`.
+
 ## 5. Overenie po nasadení
 
 ```bash
