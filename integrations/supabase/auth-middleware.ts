@@ -41,6 +41,25 @@ const DEV_CLAIMS = {
   email: "dev@forendo.local",
 } as unknown as import("@supabase/supabase-js").JwtPayload;
 
+let _devSupabaseClient: ReturnType<typeof createClient<Database>> | undefined;
+
+function getDevSupabaseClient(url: string, key: string) {
+  if (!_devSupabaseClient) {
+    _devSupabaseClient = createClient<Database>(url, key, {
+      global: {
+        fetch: createSupabaseFetch(key),
+      },
+      auth: {
+        storage: undefined,
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    });
+  }
+  return _devSupabaseClient;
+}
+
 export const requireSupabaseAuth = createMiddleware({
   type: "function",
 }).server(async ({ next }) => {
@@ -68,7 +87,7 @@ export const requireSupabaseAuth = createMiddleware({
 
   if (!request?.headers) {
     if (isDev) {
-      const supabase = createClient<Database>(
+      const supabase = getDevSupabaseClient(
         SUPABASE_URL!,
         SUPABASE_PUBLISHABLE_KEY!,
       );
@@ -87,7 +106,7 @@ export const requireSupabaseAuth = createMiddleware({
 
   // Lokálny vývojársky bypass — nikdy nie v produkcii a len ak chýba token.
   if (isDev && !authHeader) {
-    const supabase = createClient<Database>(
+    const supabase = getDevSupabaseClient(
       SUPABASE_URL!,
       SUPABASE_PUBLISHABLE_KEY!,
     );
@@ -115,7 +134,7 @@ export const requireSupabaseAuth = createMiddleware({
 
   if (token.split(".").length !== 3) {
     if (isDev) {
-      const supabase = createClient<Database>(
+      const supabase = getDevSupabaseClient(
         SUPABASE_URL!,
         SUPABASE_PUBLISHABLE_KEY!,
       );

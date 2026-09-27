@@ -124,7 +124,7 @@ function StatementAnalysis() {
         },
       });
       toast.success(
-        `Dimitri report bol importovaný (nové transakcie: ${res.newTransactionsCount}, nové subjekty: ${res.newEntitiesCount}).`,
+        `Dimitri report bol importovaný (upozornenia: ${res.alertsCount}, varovania: ${res.warnings.length}).`,
       );
       refresh();
       setDimitriReport(null);

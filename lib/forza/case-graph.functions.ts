@@ -92,7 +92,7 @@ export const applyAiResultsToCase = createServerFn({ method: "POST" })
       ]);
     if (entitiesError || eventsError || relationsError) {
       const error = entitiesError ?? eventsError ?? relationsError;
-      throw new Error(`Dáta prípadu sa nepodarilo načítať. (${error.message})`);
+      throw new Error(`Dáta prípadu sa nepodarilo načítať. (${error?.message ?? "Neznáma chyba"})`);
     }
 
     const fallbackDate = caseRow.reference_date ?? new Date().toISOString().slice(0, 10);

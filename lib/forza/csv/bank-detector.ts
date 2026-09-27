@@ -21,32 +21,28 @@ import {
 } from "./parse";
 import { type ColumnMapping, EMPTY_MAPPING } from "./mapping";
 
-export type BankId = "tatra" | "slsp" | "vub" | "csob" | "fio";
+import {
+  type BankId,
+  type BankSignatureRule,
+  type BankProfile,
+  BANK_PROFILES,
+  getRegisteredBankProfiles,
+  registerBankProfile,
+  unregisterBankProfile,
+  getBankProfile,
+  bankRegistry,
+} from "./banks";
 
-export interface BankSignatureRule {
-  field:
-    | "date"
-    | "amount"
-    | "currency"
-    | "description"
-    | "counterparty"
-    | "counterpartyName";
-  name: string;
-  isCore: boolean;
-  matches: (cleanHeader: string) => boolean;
-}
+export type { BankId, BankSignatureRule, BankProfile };
+export {
+  BANK_PROFILES,
+  getRegisteredBankProfiles,
+  registerBankProfile,
+  unregisterBankProfile,
+  getBankProfile,
+  bankRegistry,
+};
 
-export interface BankProfile {
-  id: BankId;
-  name: string;
-  country: "SK" | "CZ" | "SK/CZ";
-  signatures: BankSignatureRule[];
-  defaultDelimiter: Delimiter;
-  defaultDecimalSeparator: DecimalSeparator;
-  defaultDateFormat: DateFormat;
-  defaultCurrency: string;
-  uniqueDetector?: (cleaned: string[]) => boolean;
-}
 
 export interface BankDetectionResult {
   bankId: BankId;
@@ -298,308 +294,6 @@ export function extractCurrency(raw: string): string | null {
 }
 
 /**
- * Zoznam profilov bánk s ich detekčnými pravidlami.
- */
-export const BANK_PROFILES: BankProfile[] = [
-  {
-    id: "tatra",
-    name: "Tatra banka / Raiffeisen",
-    country: "SK",
-    defaultDelimiter: ";",
-    defaultDecimalSeparator: ",",
-    defaultDateFormat: "DD.MM.YYYY",
-    defaultCurrency: "EUR",
-    signatures: [
-      {
-        field: "date",
-        name: "Dátum zaúčtovania",
-        isCore: true,
-        matches: (h) =>
-          h === "datum zauctovania" ||
-          h === "datum zaustovania" ||
-          h === "datum transakcie" ||
-          h.includes("datum zauct"),
-      },
-      {
-        field: "amount",
-        name: "Suma",
-        isCore: true,
-        matches: (h) => h === "suma" || h === "ciastka",
-      },
-      {
-        field: "currency",
-        name: "Mena",
-        isCore: true,
-        matches: (h) => h === "mena",
-      },
-      {
-        field: "counterparty",
-        name: "Protiúčet/IBAN",
-        isCore: true,
-        matches: (h) =>
-          h === "protiucet/iban" ||
-          h === "protiucet / iban" ||
-          h === "iban protiuctu" ||
-          (h.includes("protiucet") && h.includes("iban")),
-      },
-      {
-        field: "counterpartyName",
-        name: "Názov protiúčtu",
-        isCore: true,
-        matches: (h) =>
-          h === "nazov protiuctu" ||
-          h === "nazov uctu" ||
-          h === "nazov partnera",
-      },
-      {
-        field: "description",
-        name: "Informácia pre príjemcu",
-        isCore: true,
-        matches: (h) =>
-          h === "informacia pre prijemcu" ||
-          h === "informacie pre prijemcu" ||
-          h.includes("informacia pre prijemcu") ||
-          h.includes("informacie pre prijemcu"),
-      },
-    ],
-    uniqueDetector: (cleaned) =>
-      cleaned.some((h) => h.includes("protiucet/iban")) ||
-      cleaned.some((h) => h.includes("informacia pre prijemcu")),
-  },
-  {
-    id: "slsp",
-    name: "Slovenská sporiteľňa (SLSP / George)",
-    country: "SK",
-    defaultDelimiter: ";",
-    defaultDecimalSeparator: ",",
-    defaultDateFormat: "DD.MM.YYYY",
-    defaultCurrency: "EUR",
-    signatures: [
-      {
-        field: "date",
-        name: "Dátum",
-        isCore: true,
-        matches: (h) => h === "datum" || h === "datum zauctovania",
-      },
-      {
-        field: "amount",
-        name: "Zaúčtovaná suma",
-        isCore: true,
-        matches: (h) =>
-          h === "zauctovana suma" ||
-          (h.includes("zauctovan") && h.includes("suma")),
-      },
-      {
-        field: "counterparty",
-        name: "Číslo protiúčtu",
-        isCore: true,
-        matches: (h) =>
-          h === "cislo protiuctu" ||
-          h === "iban protiuctu" ||
-          h.includes("cislo protiuct"),
-      },
-      {
-        field: "description",
-        name: "Správa pre príjemcu",
-        isCore: true,
-        matches: (h) =>
-          h === "sprava pre prijemcu" || h.includes("sprava pre prijemcu"),
-      },
-      {
-        field: "counterpartyName",
-        name: "Názov protiúčtu",
-        isCore: false,
-        matches: (h) => h === "nazov protiuctu" || h === "meno partnera",
-      },
-      {
-        field: "currency",
-        name: "Mena",
-        isCore: false,
-        matches: (h) => h === "mena",
-      },
-    ],
-    uniqueDetector: (cleaned) =>
-      cleaned.some(
-        (h) =>
-          h === "zauctovana suma" ||
-          h.includes("zauctovan") ||
-          h === "cislo protiuctu",
-      ),
-  },
-  {
-    id: "vub",
-    name: "VÚB banka",
-    country: "SK",
-    defaultDelimiter: ";",
-    defaultDecimalSeparator: ",",
-    defaultDateFormat: "DD.MM.YYYY",
-    defaultCurrency: "EUR",
-    signatures: [
-      {
-        field: "date",
-        name: "Dátum valúty",
-        isCore: true,
-        matches: (h) =>
-          h === "datum valuty" || h === "valuta" || h.includes("valut"),
-      },
-      {
-        field: "amount",
-        name: "Čiastka",
-        isCore: true,
-        matches: (h) => h === "ciastka" || h === "suma",
-      },
-      {
-        field: "counterparty",
-        name: "IBAN partnera",
-        isCore: true,
-        matches: (h) =>
-          h === "iban partnera" ||
-          h === "cislo uctu partnera" ||
-          h.includes("iban partner"),
-      },
-      {
-        field: "description",
-        name: "Popis transakcie",
-        isCore: true,
-        matches: (h) =>
-          h === "popis transakcie" ||
-          h === "popis" ||
-          h.includes("popis transakcie"),
-      },
-      {
-        field: "counterpartyName",
-        name: "Názov partnera",
-        isCore: false,
-        matches: (h) => h === "nazov partnera" || h === "meno partnera",
-      },
-      {
-        field: "currency",
-        name: "Mena",
-        isCore: false,
-        matches: (h) => h === "mena",
-      },
-    ],
-    uniqueDetector: (cleaned) =>
-      cleaned.some((h) => h.includes("valut")) ||
-      cleaned.some((h) => h.includes("iban partner")),
-  },
-  {
-    id: "csob",
-    name: "ČSOB (SK & CZ)",
-    country: "SK/CZ",
-    defaultDelimiter: ";",
-    defaultDecimalSeparator: ",",
-    defaultDateFormat: "DD.MM.YYYY",
-    defaultCurrency: "EUR",
-    signatures: [
-      {
-        field: "date",
-        name: "Dátum zaúčtovania",
-        isCore: true,
-        matches: (h) =>
-          h === "datum zauctovania" ||
-          h === "datum zauctovani" ||
-          h.includes("datum zauct"),
-      },
-      {
-        field: "amount",
-        name: "Objem",
-        isCore: true,
-        matches: (h) => h === "objem" || h === "castka",
-      },
-      {
-        field: "counterparty",
-        name: "Protiúčet",
-        isCore: true,
-        matches: (h) =>
-          h === "protiucet" ||
-          h === "protiucet / kod banky" ||
-          h === "cislo protiuctu",
-      },
-      {
-        field: "description",
-        name: "Poznámka",
-        isCore: true,
-        matches: (h) =>
-          h === "poznamka" ||
-          h === "zprava pro prijemce" ||
-          h === "sprava pre prijemcu",
-      },
-      {
-        field: "counterpartyName",
-        name: "Názov protiúčtu",
-        isCore: false,
-        matches: (h) => h === "nazov protiuctu" || h === "nazev protiuctu",
-      },
-      {
-        field: "currency",
-        name: "Mena",
-        isCore: false,
-        matches: (h) => h === "mena",
-      },
-    ],
-    uniqueDetector: (cleaned) =>
-      cleaned.some((h) => h === "objem") &&
-      cleaned.some((h) => h === "poznamka"),
-  },
-  {
-    id: "fio",
-    name: "Fio banka",
-    country: "SK/CZ",
-    defaultDelimiter: ";",
-    defaultDecimalSeparator: ",",
-    defaultDateFormat: "DD.MM.YYYY",
-    defaultCurrency: "EUR",
-    signatures: [
-      {
-        field: "date",
-        name: "Dátum",
-        isCore: true,
-        matches: (h) => h === "datum" || h === "datum zauctovania",
-      },
-      {
-        field: "amount",
-        name: "Objem",
-        isCore: true,
-        matches: (h) => h === "objem" || h === "castka",
-      },
-      {
-        field: "currency",
-        name: "Mena",
-        isCore: true,
-        matches: (h) => h === "mena",
-      },
-      {
-        field: "counterparty",
-        name: "Protiúčet",
-        isCore: true,
-        matches: (h) =>
-          h === "protiucet" || h === "cislo protiuctu" || h === "iban",
-      },
-      {
-        field: "description",
-        name: "Správa",
-        isCore: true,
-        matches: (h) =>
-          h === "sprava" ||
-          h === "zprava pro prijemce" ||
-          h === "komentar" ||
-          h === "popis",
-      },
-      {
-        field: "counterpartyName",
-        name: "Názov protiúčtu",
-        isCore: false,
-        matches: (h) => h === "nazov protiuctu" || h === "nazev protiuctu",
-      },
-    ],
-    uniqueDetector: (cleaned) =>
-      cleaned.some((h) => h === "objem") &&
-      cleaned.some((h) => h === "sprava" || h === "komentar"),
-  },
-];
-
-/**
  * Deteguje formát bankového výpisu na základe hlavičiek CSV súboru.
  * Vracia výsledok detekcie, percentuálnu zhodu (confidence) a predvyplnené mapovanie.
  */
@@ -625,7 +319,8 @@ export function detectBankFormat(
     isUnique: boolean;
   };
 
-  const scores: ScoredBank[] = BANK_PROFILES.map((profile) => {
+  const profiles = getRegisteredBankProfiles();
+  const scores: ScoredBank[] = profiles.map((profile) => {
     const matchedIndices: Partial<
       Record<keyof ColumnMapping | "counterpartyName" | "counterparty", number>
     > = {};

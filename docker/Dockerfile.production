@@ -1,0 +1,60 @@
+# -----------------------------------------------------------------------------
+# PΛND0RΛ Forensic OS — Production Multi-Stage Dockerfile
+# Target: High-security forensic web application & API runtime
+# -----------------------------------------------------------------------------
+
+# Stage 1: Base with security tools & C compatibility
+FROM node:20-alpine AS base
+RUN apk add --no-cache libc6-compat dumb-init curl
+WORKDIR /app
+
+# Stage 2: Dependencies caching
+FROM base AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Stage 3: Builder with strict typechecking and standalone bundle
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+ENV NODE_ENV=production
+ENV STANDALONE=true
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Strict pre-build typecheck
+RUN npx tsc --noEmit
+
+# VPS standalone production build
+RUN npm run build:vps
+
+# Stage 4: Minimal, unprivileged runner
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+RUN apk add --no-cache dumb-init curl
+ENV NODE_ENV=production
+ENV PORT=3005
+ENV HOSTNAME="0.0.0.0"
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Non-privileged user
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Public static assets
+COPY --from=builder /app/public ./public
+
+# Copy standalone runtime and static Next.js assets
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE 3005
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:3005/api/health/observe || exit 1
+
+ENTRYPOINT ["dumb-init", "node", "server.js"]

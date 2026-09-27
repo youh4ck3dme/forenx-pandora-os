@@ -59,8 +59,8 @@ export function BookmarksPanel() {
     const fullUrl = url.startsWith("http")
       ? url
       : typeof window !== "undefined"
-      ? `${window.location.origin}${url}`
-      : url;
+        ? `${window.location.origin}${url}`
+        : url;
 
     if (activeTabId) {
       updateTab(activeTabId, {
@@ -162,7 +162,9 @@ export function BookmarksPanel() {
   };
 
   const criticalCount = analysis?.alerts
-    ? analysis.alerts.filter((a: { severity: string }) => a.severity === "critical").length
+    ? analysis.alerts.filter(
+        (a: { severity: string }) => a.severity === "critical",
+      ).length
     : 0;
 
   return (
@@ -197,7 +199,9 @@ export function BookmarksPanel() {
         title="Kliknutím otvoriť spis"
       >
         <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-amber-400/90">
-          <span className="group-hover:text-amber-300 transition-colors">Prebiehajúci prípad</span>
+          <span className="group-hover:text-amber-300 transition-colors">
+            Prebiehajúci prípad
+          </span>
           <span className="text-white/40 font-mono text-[9px]">
             {activeCase?.id ? activeCase.id.slice(0, 8) : "ŽIADNY"}
           </span>
@@ -207,7 +211,9 @@ export function BookmarksPanel() {
         </p>
         <div className="mt-2.5 flex items-end justify-between">
           <span className="text-[11px] font-semibold text-gray-400">
-            {(severityLabel[analysis?.caseLevel || "low"] || "NÍZKE").toUpperCase()}
+            {(
+              severityLabel[analysis?.caseLevel || "low"] || "NÍZKE"
+            ).toUpperCase()}
           </span>
           <span className="text-xs font-bold font-mono text-white">
             {analysis?.caseScore ?? 0}
@@ -221,8 +227,8 @@ export function BookmarksPanel() {
               (analysis?.caseScore ?? 0) > 70
                 ? "bg-red-500"
                 : (analysis?.caseScore ?? 0) > 30
-                ? "bg-amber-500"
-                : "bg-emerald-500"
+                  ? "bg-amber-500"
+                  : "bg-emerald-500",
             )}
             style={{ width: `${Math.max(4, analysis?.caseScore ?? 0)}%` }}
           />
@@ -237,11 +243,11 @@ export function BookmarksPanel() {
             toggleCommandPalette(true);
             openCommandPalette();
           }}
-          className="flex w-full items-center gap-2 rounded-xl border border-white/10 bg-white/3 px-3 py-2 text-xs text-gray-400 transition-all hover:bg-white/8 hover:text-white hover:border-white/20"
+          className="flex w-full items-center gap-2 rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-xs text-zinc-200 transition-all hover:bg-white/10 hover:text-white hover:border-white/30"
         >
-          <Search className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-          <span className="truncate">Hľadať v prípade…</span>
-          <kbd className="ml-auto rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-gray-400 font-mono">
+          <Search className="h-3.5 w-3.5 text-zinc-300 shrink-0" />
+          <span className="truncate text-zinc-200">Hľadať v prípade…</span>
+          <kbd className="ml-auto rounded border border-white/20 bg-white/10 px-1.5 py-0.5 text-[10px] text-zinc-300 font-mono">
             ⌘K
           </kbd>
         </button>
@@ -251,7 +257,7 @@ export function BookmarksPanel() {
       <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-3 no-scrollbar mt-1">
         {navGroups.map((group) => (
           <div key={group.title} className="space-y-1">
-            <p className="px-2 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+            <p className="px-2 pt-2 pb-1 text-[11px] font-extrabold uppercase tracking-wider text-zinc-300">
               {group.title}
             </p>
             {group.items.map(({ to, label, icon: Icon }) => {
@@ -261,10 +267,10 @@ export function BookmarksPanel() {
                   key={to}
                   onClick={() => handleNavigate(to, label)}
                   className={cn(
-                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all group text-left",
+                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all group text-left",
                     isActive
-                      ? "bg-amber-500/15 text-amber-300 font-semibold border border-amber-500/25 shadow-xs"
-                      : "text-gray-400 hover:text-white hover:bg-white/5"
+                      ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40 shadow-xs"
+                      : "text-zinc-200 hover:text-white hover:bg-white/10",
                   )}
                 >
                   <Icon
@@ -272,12 +278,12 @@ export function BookmarksPanel() {
                       "h-3.5 w-3.5 shrink-0 transition-transform group-hover:scale-110",
                       isActive
                         ? "text-amber-400"
-                        : "text-gray-500 group-hover:text-gray-300"
+                        : "text-zinc-300 group-hover:text-white",
                     )}
                   />
                   <span className="truncate">{label}</span>
                   {to === "/forza/prehlad" && criticalCount > 0 && (
-                    <span className="ml-auto rounded-full bg-red-500/20 border border-red-500/40 px-1.5 py-0.2 text-[9px] font-bold text-red-300 font-mono">
+                    <span className="ml-auto rounded-full bg-red-500/25 border border-red-500/50 px-1.5 py-0.2 text-[9px] font-black text-red-200 font-mono">
                       {criticalCount}
                     </span>
                   )}
@@ -288,19 +294,28 @@ export function BookmarksPanel() {
         ))}
 
         {/* 5. Sekundárne zbaliteľné Záložky prehliadača */}
-        <div className="pt-2 border-t border-white/5">
+        <div className="pt-2 border-t border-white/10">
           <button
             onClick={() => setShowBookmarksList(!showBookmarksList)}
-            className="flex items-center justify-between w-full px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 hover:text-gray-300 transition-colors"
+            className="flex items-center justify-between w-full px-2 py-1 text-[11px] font-extrabold uppercase tracking-wider text-zinc-300 hover:text-white transition-colors group"
           >
             <span className="flex items-center gap-1.5">
-              <BookmarkIcon size={11} className="text-gray-500" />
+              <BookmarkIcon
+                size={12}
+                className="text-zinc-300 group-hover:text-white"
+              />
               <span>Záložky prehliadača ({bookmarks.length})</span>
             </span>
             {showBookmarksList ? (
-              <ChevronDown size={12} />
+              <ChevronDown
+                size={12}
+                className="text-zinc-300 group-hover:text-white"
+              />
             ) : (
-              <ChevronRight size={12} />
+              <ChevronRight
+                size={12}
+                className="text-zinc-300 group-hover:text-white"
+              />
             )}
           </button>
 
@@ -382,7 +397,9 @@ export function BookmarksPanel() {
             N
           </div>
           <p className="text-[10px] text-gray-500 truncate">
-            <span className="font-semibold text-gray-400">{BRAND.name} v1.0</span>{" "}
+            <span className="font-semibold text-gray-400">
+              {BRAND.name} v1.0
+            </span>{" "}
             • vaše prípady sú súkromné
           </p>
         </div>

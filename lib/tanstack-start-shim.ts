@@ -4,119 +4,214 @@
  * inside Next.js without pulling in TanStack Start's SSR Vite runtime / node:async_hooks.
  */
 import { newTraceId } from "./forza/trace";
+import type { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 
+export type AppSupabaseClient = Omit<ReturnType<typeof createClient<Database>>, "rpc"> & {
+  rpc: (
+    fn: string,
+    args?: Record<string, unknown>,
+    options?: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: { message: string; code?: string } | null }>;
+};
 
-export type MiddlewareServerFn<TContext = any> = (args: {
-  next: (result?: { context?: any; headers?: HeadersInit }) => Promise<any>;
-  context?: TContext;
-}) => Promise<any>;
-
-export type MiddlewareClientFn = (args: {
-  next: (result?: { headers?: HeadersInit }) => Promise<any>;
-}) => Promise<any>;
-
-export interface Middleware {
-  _isMiddleware: true;
-  server: (fn: MiddlewareServerFn) => Middleware;
-  client: (fn: MiddlewareClientFn) => Middleware;
-  execute: (ctx: any, next: (newCtx: any) => Promise<any>) => Promise<any>;
+export interface ServerFnContext {
+  traceId: string;
+  supabase: AppSupabaseClient;
+  userId: string;
+  claims: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
-export function createMiddleware(options?: { type?: string }): Middleware {
+export type MiddlewareNextResult<TContext = unknown> = {
+  context?: TContext;
+  headers?: HeadersInit;
+};
+
+export type MiddlewareServerFn<TContext = unknown> = (args: {
+  next: (result?: MiddlewareNextResult<Record<string, unknown>>) => Promise<unknown>;
+  context?: TContext;
+}) => Promise<unknown>;
+
+export type MiddlewareClientFn = (args: {
+  next: (result?: { headers?: HeadersInit }) => Promise<unknown>;
+}) => Promise<unknown>;
+
+export interface Middleware {
+  readonly _isMiddleware: true;
+  server: (fn: MiddlewareServerFn<Record<string, unknown>>) => Middleware;
+  client: (fn: MiddlewareClientFn) => Middleware;
+  execute: (
+    ctx: Record<string, unknown>,
+    next: (newCtx: Record<string, unknown>) => Promise<unknown>,
+  ) => Promise<unknown>;
+}
+
+export function createMiddleware(_options?: { type?: string }): Middleware {
+  let executeFn: (
+    ctx: Record<string, unknown>,
+    next: (newCtx: Record<string, unknown>) => Promise<unknown>,
+  ) => Promise<unknown> = async (ctx, next) => next(ctx);
+
   const mw: Middleware = {
     _isMiddleware: true,
     server(fn) {
-      this.execute = async (ctx, next) => {
-        return await fn({
+      executeFn = async (ctx, next) => {
+        return fn({
           context: ctx,
           next: async (res) => {
-            const mergedContext = { ...ctx, ...(res?.context || {}) };
-            return await next(mergedContext);
+            const mergedContext: Record<string, unknown> = {
+              ...ctx,
+              ...(res?.context ?? {}),
+            };
+            return next(mergedContext);
           },
         });
       };
-      return this;
+      return mw;
     },
-    client(fn) {
-      return this;
+    client(_fn) {
+      return mw;
     },
-    execute: async (ctx, next) => next(ctx),
+    execute: (ctx, next) => executeFn(ctx, next),
   };
   return mw;
 }
 
-export function getRequest() {
+export function getRequest(): { headers: Headers } | undefined {
   if (typeof window !== "undefined") return undefined;
-  return {
-    headers: typeof Headers !== "undefined" ? new Headers() : ({} as any),
-  };
+  if (typeof Headers !== "undefined") {
+    return { headers: new Headers() };
+  }
+  return undefined;
 }
 
-export function createServerFn(options?: { method?: "GET" | "POST" }) {
-  let middlewares: any[] = [];
-  let validator: any = null;
+export type ValidatorFn<TInput, TOutput> =
+  | ((input: TInput) => TOutput)
+  | { parse: (input: TInput) => TOutput; _input?: TInput; _output?: TOutput };
 
-  const builder = {
-    middleware(mws: any[]) {
-      middlewares = mws || [];
-      return builder;
+export interface ServerFnCallable<TInput, TOutput> {
+  (args?: { data?: TInput } | TInput | void): Promise<TOutput>;
+  readonly _isServerFn: true;
+  readonly handler: (args: { data: unknown; context: ServerFnContext }) => Promise<TOutput> | TOutput;
+}
+
+export interface ServerFnBuilder<TInput = unknown, TData = TInput> {
+  middleware(
+    mws: Array<Middleware | unknown>,
+  ): ServerFnBuilder<TInput, TData>;
+
+  validator<TValInput, TValOutput = TValInput>(
+    val: ValidatorFn<TValInput, TValOutput>,
+  ): ServerFnBuilder<TValInput, TValOutput>;
+
+  inputValidator<TValInput, TValOutput = TValInput>(
+    val: ValidatorFn<TValInput, TValOutput>,
+  ): ServerFnBuilder<TValInput, TValOutput>;
+
+  outputValidator<TOut>(_val: unknown): ServerFnBuilder<TInput, TData>;
+
+  handler<TOutput>(
+    handlerFn: (args: { data: TData; context: ServerFnContext }) => Promise<TOutput> | TOutput,
+  ): ServerFnCallable<TInput, TOutput>;
+}
+
+function createBuilder<TInput = unknown, TData = TInput>(
+  middlewares: Array<Middleware | unknown> = [],
+  validator: unknown = null,
+): ServerFnBuilder<TInput, TData> {
+  return {
+    middleware(mws) {
+      return createBuilder<TInput, TData>(mws || [], validator);
     },
-    validator(val: any) {
-      validator = val;
-      return builder;
+    validator<TValInput, TValOutput = TValInput>(val: ValidatorFn<TValInput, TValOutput>) {
+      return createBuilder<TValInput, TValOutput>(middlewares, val);
     },
-    inputValidator(val: any) {
-      validator = val;
-      return builder;
+    inputValidator<TValInput, TValOutput = TValInput>(val: ValidatorFn<TValInput, TValOutput>) {
+      return createBuilder<TValInput, TValOutput>(middlewares, val);
     },
-    outputValidator(_val: any) {
-      return builder;
+    outputValidator<TOut>(_val: unknown) {
+      return createBuilder<TInput, TData>(middlewares, validator);
     },
-    handler(handlerFn: (args: { data: any; context: any }) => Promise<any>) {
-      const callable: any = async (inputArgs?: any) => {
+    handler<TOutput>(
+      handlerFn: (args: { data: TData; context: ServerFnContext }) => Promise<TOutput> | TOutput,
+    ): ServerFnCallable<TInput, TOutput> {
+      const callable = async (inputArgs?: { data?: TInput } | TInput | void): Promise<TOutput> => {
         const rawData =
-          inputArgs && typeof inputArgs === "object" && "data" in inputArgs
-            ? inputArgs.data
+          inputArgs !== null &&
+          typeof inputArgs === "object" &&
+          "data" in inputArgs
+            ? (inputArgs as { data: unknown }).data
             : inputArgs;
 
-        let validData = rawData;
-        if (validator) {
+        let validData: unknown = rawData;
+        if (validator !== null) {
           if (typeof validator === "function") {
-            validData = validator(rawData);
-          } else if (validator && typeof validator.parse === "function") {
-            validData = validator.parse(rawData);
+            validData = (validator as (val: unknown) => unknown)(rawData);
+          } else if (
+            typeof validator === "object" &&
+            validator !== null &&
+            "parse" in validator &&
+            typeof (validator as { parse: unknown }).parse === "function"
+          ) {
+            validData = (validator as { parse: (val: unknown) => unknown }).parse(rawData);
           }
         }
 
         // Execute middleware chain
         // P0-04: každé volanie serverovej funkcie dostane trace id (UUIDv4).
-        let context: any = { traceId: newTraceId() };
-        const runMws = async (idx: number, currentCtx: any): Promise<any> => {
+        const contextRecord: Record<string, unknown> = { traceId: newTraceId() };
+        const runMws = async (
+          idx: number,
+          currentCtx: Record<string, unknown>,
+        ): Promise<unknown> => {
           if (idx >= middlewares.length) {
-            return await handlerFn({ data: validData, context: currentCtx });
+            return handlerFn({
+              data: validData as TData,
+              context: currentCtx as ServerFnContext,
+            });
           }
           const mw = middlewares[idx];
-          if (mw && typeof mw.execute === "function") {
-            return await mw.execute(currentCtx, (nextCtx: any) =>
+          if (
+            typeof mw === "object" &&
+            mw !== null &&
+            "execute" in mw &&
+            typeof (mw as { execute: unknown }).execute === "function"
+          ) {
+            const executeMw = (
+              mw as {
+                execute: (
+                  ctx: Record<string, unknown>,
+                  next: (nextCtx: Record<string, unknown>) => Promise<unknown>,
+                ) => Promise<unknown>;
+              }
+            ).execute;
+            return executeMw(currentCtx, (nextCtx: Record<string, unknown>) =>
               runMws(idx + 1, nextCtx),
             );
           }
-          return await runMws(idx + 1, currentCtx);
+          return runMws(idx + 1, currentCtx);
         };
 
-        return await runMws(0, context);
+        const res = await runMws(0, contextRecord);
+        return res as TOutput;
       };
 
-      callable._isServerFn = true;
-      callable.handler = handlerFn;
-      return callable;
+      const result: ServerFnCallable<TInput, TOutput> = Object.assign(callable, {
+        _isServerFn: true as const,
+        handler: handlerFn as (args: { data: unknown; context: ServerFnContext }) => Promise<TOutput> | TOutput,
+      });
+
+      return result;
     },
   };
-
-  return builder;
 }
 
-export function useServerFn<T extends (...args: any[]) => any>(fn: T): T {
+export function createServerFn(_options?: { method?: "GET" | "POST" }): ServerFnBuilder<unknown, unknown> {
+  return createBuilder<unknown, unknown>();
+}
+
+export function useServerFn<T>(fn: T): T {
   return fn;
 }
 

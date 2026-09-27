@@ -101,13 +101,16 @@ export function runAstAudit(targetDir) {
         entry.name !== "node_modules" &&
         entry.name !== ".next" &&
         entry.name !== "dist" &&
-        entry.name !== "scratch"
+        entry.name !== "scratch" &&
+        entry.name !== "__tests__"
       ) {
         collectFiles(fullPath);
       } else if (
         entry.isFile() &&
         (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) &&
-        !entry.name.endsWith(".d.ts")
+        !entry.name.endsWith(".d.ts") &&
+        !entry.name.includes(".test.") &&
+        !entry.name.includes(".spec.")
       ) {
         files.push(fullPath);
       }

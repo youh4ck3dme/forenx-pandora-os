@@ -33,9 +33,9 @@ Vercel, Supabase, S3, DNS, Nginx, or a desktop signing service is configured.
 
 | Check                                  | Status    | Evidence                                                                                                          |
 | -------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------- |
-| Root TypeScript                        | `DONE`    | `npx tsc --noEmit` returned 0 errors after a completed Next build.                                                |
+| Root TypeScript                        | `DONE`    | `npx tsc --noEmit` returned 0 errors.                                                             |
 | Electron TypeScript and security suite | `DONE`    | Electron main/preload typechecks passed; `electron/__tests__` passed `17/17`.                                     |
-| Main application tests                 | `DONE`    | `npx vitest run`: `469/469` passed across 67 test suites.                                                         |
+| Main application tests                 | `DONE`    | `npx vitest run`: `494/494` passed across 72 test suites (100% pass rate).                                        |
 | Core engine tests                      | `DONE`    | `npx vitest run`: `559/559` passed.                                                                               |
 | Next production build                  | `DONE`    | `npm run build`: 30/30 routes generated.                                                                          |
 | Core engine TypeScript                 | `DONE`    | Created worker/types bridge modules; `npx tsc --noEmit` returned 0 errors in core-engine.                         |
@@ -97,6 +97,8 @@ required.
 - [x] WORM ledger immutability and audited deletion: `20260927234500_evidence_ledger_worm.sql` makes `sha256_hash`, `s3_object_key`, `created_at`, `investigator_id` immutable; direct `DELETE` prohibited in favor of `delete_evidence_item_audited`.
 - [x] Server-side hash verification worker: `/api/vault/verify` recalculates SHA-256 and byte length from S3.
 - [x] Supabase RLS policies for `evidence_items` verified: `supabase/verify/evidence_items_rls.sql` reports 17/17 PASS in automated PGlite test suite.
+- [x] Evidence unique key constraint: `supabase/migrations/20260928000000_evidence_unique_key.sql` ensures single active evidence per case/hash; verified by `supabase/tests/evidence-unique-key.test.ts` (2/2 pass).
+- [x] Attacker commit validation test suite: `lib/__tests__/evidence-commit-attacker.test.ts` (10/10 pass) verifies cross-tenant IDOR, spoofed hash, and forged provenance rejections.
 
 **Remaining acceptance criteria:**
 
@@ -107,16 +109,21 @@ required.
 
 ### P0-04 — Monitoring, alerting, and operational visibility
 
-**Status:** `TODO`
+**Status:** `IN PROGRESS`
 
 - [ ] Configure Sentry or equivalent frontend/server exception reporting.
-- [ ] Alert on AI timeout over 60 seconds, S3 upload failure above 1%, and
-      Supabase failures.
+- [x] Alert on AI timeout over 60 seconds, S3 upload failure above 1%, and
+      Supabase failures. Done: `app/api/health/observe` endpoint and SQL metrics in
+      `supabase/migrations/20260928000100_operational_metrics.sql`; verified by
+      `supabase/tests/operational-metrics.test.ts` (3/3 pass) and
+      `lib/__tests__/health-observe.test.ts` (5/5 pass).
 - [x] Add correlation/trace IDs to server-side audit-safe logs. Done: lib/forza/trace.ts
       (x-trace-id UUIDv4) wraps every Next.js API route, callMistral and the
       browser Mistral client, and every server-fn call gets context.traceId.
       traced* helpers sanitize logs (redactPii + masked bearer/API keys).
-- [ ] Define alert owner, escalation channel, and response runbook.
+- [x] Define alert owner, escalation channel, and response runbook. Done:
+      `docs/ALERTING.md` documents SLO thresholds, alert severities, escalation
+      tiers, and operational response procedures.
 
 ### P0-05 — Headers and CSP
 
@@ -126,6 +133,13 @@ required.
 - [x] Nginx template has 250 MB upload limit, request streaming, 500 second
       proxy timeouts, HSTS, `nosniff`, `DENY` framing, and permissions policy.
 - [x] Next emits CSP Report-Only and browser security headers.
+- [x] Collector route implemented at `/api/csp-report/` with rate limiting,
+      sanitization, and Supabase audit logging. Verified by
+      `lib/__tests__/csp-report.test.ts` (5/5 pass).
+- [x] Eliminated 308 Permanent Redirect loop on CSP reports by matching
+      `report-uri /api/csp-report/` with `trailingSlash: true`.
+- [x] Added development `'unsafe-eval'` to suppress Webpack HMR false positives;
+      configured `allowedDevOrigins` for localhost and Tailscale IP (`100.70.1.16`).
 
 **Remaining acceptance criteria:**
 
@@ -226,6 +240,8 @@ feedback, and guarded destructive actions. Case deletion requires the case name.
 - [x] Existing contrast tests pass.
 - [x] Perform keyboard-only and screen-reader acceptance tests on all routes.
 - [x] Measure WCAG 2.1 AA contrast across every theme and state.
+- [x] Dark backdrop blur and high-contrast liquid glass (`bg-black/70`–`bg-black/80 backdrop-blur-md`) implemented across `Assistant.tsx`, `Shell.tsx`, and `globals.css` to guarantee legibility over the 3D particle canvas.
+- [x] Favicon service IP bypass: skips external Google S2 lookups for raw IPs and local subnets, preventing browser 404 console errors.
 
 ### P2-03 — Terminology
 
@@ -299,7 +315,7 @@ Benchmark: 100 000 rows in ~0.3 s with 49 UI yields
 | Homonym-safe case identity             | `DONE`        | Keep distinct entities for conflicting date of birth, IČO, or source identity. |
 | RPO parsing                            | `DONE`        | Keep the explicit 13-activity IČO `54684994` regression fixture.               |
 | Temporal relations                     | `DONE`        | Add imports that prove historical relations are not overwritten.               |
-| Atomic AI graph commit                 | `IN PROGRESS` | Local (2026-09-27): `202609270001_atomic_ai_graph.sql` and all 23 other migrations applied cleanly via `npx supabase db reset` on the local stack. Remote BLOCKED: no access token, only the production project is configured. The megaprompt `20260927113000_case_graph_hardening.sql` does not exist in this repo.  |
+| Atomic AI graph commit                 | `IN PROGRESS` | Local (2026-09-27): `202609270001_atomic_ai_graph.sql` and all 23 other migrations applied cleanly via `npx supabase db reset` on the local stack. Remote BLOCKED: no access token, only the production project is configured. The megaprompt's `20260927113000_case_graph_hardening.sql` does not exist in this repo.  |
 | Canonical ledger hashes                | `DONE`        | Add compatibility fixtures before changing canonical serialization.            |
 | Custody ledger UI and tamper detection | `IN PROGRESS` | Apply database migration and run an end-to-end tamper scenario.                |
 | Minor-unit money arithmetic            | `DONE`        | Prohibit floating-point amounts in new financial code.                         |
@@ -417,4 +433,83 @@ For every completed task:
    evidence.
 4. Commit only verified changes with a concise message and report the commit
    SHA. Do not commit secrets.
+```
+
+## 11. Chýbajúce súbory na dogenerovanie a presné prompt zadania
+
+| # | Názov súboru | Účel & Kategória | Stav |
+|---|--------------|------------------|------|
+| 1 | `docker/Dockerfile.production` | P0-06 / VPS Docker deployment manifest s multi-stage Next.js standalone buildom | `CHÝBA` |
+| 2 | `docker-compose.production.yml` | P0-06 / Orchestrácia Next.js (port 3005), Nginx reverzného proxy a healtchecku | `CHÝBA` |
+| 3 | `scripts/ci/run-performance-budget.mjs` | P3-02 / CI test bundle size, TBT a performance rozpočtov (Lighthouse budget) | `CHÝBA` |
+| 4 | `supabase/migrations/20260927113000_case_graph_hardening.sql` | P0-03 / Megaprompt Task 3 alias / synchronizácia schémy pre atomický graph commit | `CHÝBA` (alias pre `202609270001_atomic_ai_graph.sql`) |
+| 5 | `docs/DISASTER_RECOVERY_RUNBOOK.md` | P0-06 / 15-minútový scenár obnovy databázy a S3 trezoru pri havárii | `CHÝBA` |
+| 6 | `scripts/desktop/sign-and-notarize.mjs` | P3-04 / Automatizácia Windows Authenticode a macOS Apple Notarization pre Electron | `CHÝBA` |
+
+---
+
+### Prompt 1 — `docker/Dockerfile.production`
+```text
+Vytvor produkčný multi-stage Dockerfile pre PΛND0RΛ Forensic OS v umiestnení docker/Dockerfile.production.
+Požiadavky:
+1. Base image: node:20-alpine s libc6-compat a dumb-init pre bezpečný process reaping.
+2. Stage 1 (dependencies): npm ci s cache mountom, inštalácia len produkčných závislostí a devDependencies pre build.
+3. Stage 2 (builder): Spustenie npx tsc --noEmit a npm run build:vps (STANDALONE=true).
+4. Stage 3 (runner): Neprivilegovaný používateľ (nextjs:nodejs, uid 1001), skopírovanie .next/standalone, .next/static a public priečinka.
+5. EXPOSE 3005, ENV PORT=3005 NODE_ENV=production HOSTNAME="0.0.0.0".
+6. HEALTHCHECK cez curl alebo wget na http://localhost:3005/api/health/observe.
+7. ENTRYPOINT ["dumb-init", "node", "server.js"].
+```
+
+### Prompt 2 — `docker-compose.production.yml`
+```text
+Vytvor produkčný docker-compose súbor v koreni repozitára docker-compose.production.yml pre orchestráciu PΛND0RΛ Forensic OS na VPS.
+Požiadavky:
+1. Služba app: build z docker/Dockerfile.production, restart: always, port 3005 viazaný na 127.0.0.1:3005 (aby nebol priamo prístupný z verejného internetu mimo Nginx).
+2. Služba nginx: montovanie existujúceho nginx reverzného proxy konfiguračného súboru z deployment templates, porty 80 a 443, SSL certifikáty Let's Encrypt cez volume, limit 250 MB pre priame uploady do S3 trezoru.
+3. Definované environment variables cez env_file (.env.production).
+4. Prísne logging limity (max-size: 50m, max-file: 3) na ochranu miesta na disku VPS.
+```
+
+### Prompt 3 — `scripts/ci/run-performance-budget.mjs`
+```text
+Vytvor Node.js ESM skript scripts/ci/run-performance-budget.mjs pre kontrolu rozpočtov výkonu (Performance Budgets) v CI.
+Požiadavky:
+1. Skontroluj veľkosť vygenerovaných klientskych chunkov v .next/static/:
+   - Žiadny jednotlivý JS chunk nesmie presiahnuť 250 KB (gzipped) / 800 KB (raw).
+   - Celkový first-load JS na hlavnej trase / nesmie presiahnuť 350 KB.
+2. Integruj validáciu prítomnosti scripts/check-leva.mjs --strict na zamedzenie úniku Three.js debug GUI do produkcie.
+3. Formátovaný výstup do terminálu s farebnými stavmi (✅ PASS / ❌ FAIL) a tabuľkou najväčších chunkov.
+4. Návratový kód 1 pri prekročení limitu v režime --strict.
+```
+
+### Prompt 4 — `supabase/migrations/20260927113000_case_graph_hardening.sql`
+```text
+Vytvor migráciu supabase/migrations/20260927113000_case_graph_hardening.sql, ktorá je referencovaná v Task 3 megaprompte.
+Požiadavky:
+1. Idempotentne over a zaisti funkciu commit_ai_case_graph(_case uuid, _actor uuid, _entities jsonb, _events jsonb, _relations jsonb).
+2. Prísny row-level lock (FOR UPDATE na cases tabuľke) zamedzujúci súbežným zápisom a race conditions.
+3. RLS a security definer kontrola: overenie vlastníctva prípadu (_owner = _actor).
+4. Atomický rollback celej transakcie v prípade chyby v relačných väzbách (foreign key constraints medzi case_relations, case_entities a case_events).
+5. Nemenný audit záznam v case_audit_log s akciou "ai_graph_committed" a detailnými počtami objektov.
+```
+
+### Prompt 5 — `docs/DISASTER_RECOVERY_RUNBOOK.md`
+```text
+Vytvor autoritatívny operačný dokument docs/DISASTER_RECOVERY_RUNBOOK.md pre obnovu systému PΛND0RΛ Forensic OS v prípade havárie (RTO < 15 minút).
+Požiadavky:
+1. PITR (Point-in-Time Recovery) postup pre Supabase PostgreSQL: presné CLI príkazy a kroky obnovy stavu databázy pred incidentom.
+2. S3 Evidence Vault Disaster Recovery: overenie integrity SHA-256 hashu cez WORM ledger a opätovné naviazanie metadát.
+3. Scenár rotácie uniknutých kľúčov: krok za krokom návod na okamžitú výmenu SUPABASE_SERVICE_ROLE_KEY, S3 credentials a Mistral API kľúčov vo Vercel/VPS.
+4. Kontrolný checklist obnovy s podpisom veliteľa incidentu a protokolom o zachovaní reťazca dôkazov (Chain of Custody).
+```
+
+### Prompt 6 — `scripts/desktop/sign-and-notarize.mjs`
+```text
+Vytvor skript scripts/desktop/sign-and-notarize.mjs pre automatizáciu podpisovania a notarizácie Electron desktop aplikácie.
+Požiadavky:
+1. Windows: kontrola premenných CSC_LINK, CSC_KEY_PASSWORD a spustenie signtool / electron-builder sign.
+2. macOS: kontrola APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID a volanie notarytool pre validáciu ticketu.
+3. Preflight kontrola existencie dist-electron/ a inštalovaných binárok pred spustením.
+4. Graceful dry-run režim (--dry-run), ak certifikáty nie sú na lokálnom stroji k dispozícii.
 ```

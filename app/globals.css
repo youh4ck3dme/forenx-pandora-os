@@ -291,6 +291,18 @@ body {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  .liquid-glass-card {
+    background-color: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  .liquid-glass-header {
+    background-color: rgba(0, 0, 0, 0.88);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
 }
 
 /* Global Selection Color */

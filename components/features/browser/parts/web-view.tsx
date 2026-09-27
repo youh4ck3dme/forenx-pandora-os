@@ -1,13 +1,13 @@
 import { useBrowserStore } from "@/lib/store";
 // import { GL } from '@/components/gl' // Removed static import
 import dynamic from "next/dynamic";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { isElectron } from "@/lib/api";
 
 import React, { memo } from "react";
 
-const Globe = dynamic(() => import("@/components/ui/Globe").then((mod) => mod.Globe), {
+const GL = dynamic(() => import("@/components/gl").then((mod) => mod.GL), {
   ssr: false,
   loading: () => <div className="absolute inset-0 bg-black" />,
 });
@@ -27,9 +27,32 @@ const TabContent = memo(
     updateTab: (id: string, data: any) => void;
   }) {
     const [hovering, setHovering] = useState(false);
+    const [loadTimedOut, setLoadTimedOut] = useState(false);
+    const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const clearLoadTimeout = () => {
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current);
+        loadTimeoutRef.current = null;
+      }
+    };
+
+    // A site that has not fired onLoad within the timeout is treated as failed to embed
+    useEffect(() => {
+      setLoadTimedOut(false);
+      loadTimeoutRef.current = setTimeout(() => {
+        setLoadTimedOut(true);
+      }, 8000);
+      return clearLoadTimeout;
+    }, [tab.url]);
 
     const isNewTab = tab.url === "pandora://newtab" || tab.url.startsWith("pandora://");
-    const isInternalApp = tab.url.includes("/forza/");
+    const isInternalApp =
+      tab.url.includes("/forza/") ||
+      tab.url.startsWith("/") ||
+      tab.url.includes("localhost:3000") ||
+      tab.url.includes("127.0.0.1:3000") ||
+      tab.url.includes("100.70.1.16:3000");
     const shouldRenderIframe = isInternalApp || (!isElectronEnv && !isNewTab);
 
     return (
@@ -46,7 +69,7 @@ const TabContent = memo(
             onMouseEnter={() => setHovering(true)}
             onMouseLeave={() => setHovering(false)}
           >
-            {isActive && <Globe hovering={hovering} />}
+            {isActive && <GL hovering={hovering} />}
           </div>
         )}
 
@@ -61,22 +84,33 @@ const TabContent = memo(
             <iframe
               src={tab.url}
               className="w-full h-full border-none"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
+              sandbox={
+                isInternalApp
+                  ? undefined
+                  : "allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+              }
               onLoad={() => {
+                clearLoadTimeout();
+                setLoadTimedOut(false);
                 updateTab(tab.id, { isLoading: false });
               }}
               onError={(e) => {
                 console.error("Iframe load error", e);
+                clearLoadTimeout();
+                setLoadTimedOut(true);
                 updateTab(tab.id, { isLoading: false });
               }}
             />
-            {!tab.url.includes("localhost") &&
+            {loadTimedOut &&
+              !tab.url.includes("localhost") &&
               !tab.url.includes("127.0.0.1") &&
               !isInternalApp &&
               !tab.url.startsWith("/") &&
               !tab.url.startsWith("pandora://") && (
-                <div className="absolute bottom-4 right-4 bg-black/80 text-white p-2 rounded-lg text-xs pointer-events-none opacity-50 hover:opacity-100 transition-opacity z-20">
-                  If site fails to load, it might be blocked by security policy.
+                <div className="absolute bottom-4 right-4 bg-black/80 text-white p-2 rounded-lg text-xs pointer-events-none z-20 max-w-xs">
+                  This site may refuse to load inside an embedded frame
+                  (X-Frame-Options / CSP frame-ancestors). Open it in the
+                  desktop app or a new tab instead.
                 </div>
               )}
           </>
