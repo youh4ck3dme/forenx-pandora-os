@@ -26,7 +26,7 @@ export async function resolveIdentity(): Promise<Identity> {
   if (typeof window === "undefined") return NO_IDENTITY;
   try {
     const { data } = await supabase.auth.getSession();
-    if (data.session?.user) {
+    if (data.session?.user && isSessionLive(data.session)) {
       const { data: verified } = await supabase.auth.getUser();
       const user = verified?.user;
       if (user) {
@@ -56,7 +56,7 @@ export async function isLocalOnlyMode(): Promise<boolean> {
   if (!isLocalDevEnvironment()) return false;
   try {
     const { data } = await supabase.auth.getSession();
-    if (data.session?.user) return false;
+    if (data.session?.user && isSessionLive(data.session)) return false;
   } catch {
     /* bez relácie môže na localhoste pokračovať dev vstup */
   }

@@ -403,9 +403,9 @@ export function Omnibox() {
           </div>
           <div className="py-1 space-y-0.5">
             {[
-              { label: "Zistenia a hypotézy", emoji: "📊", url: "/forza/zistenia" },
+              { label: "Zistenia a hypotézy", emoji: "📊", url: "/forza/prehlad" },
               { label: "Subjekty a prepojenia", emoji: "👥", url: "/forza/vztahy" },
-              { label: "Forenzné nastavenia", emoji: "⚙️", url: "/forza/nastavenia" },
+              { label: "Forenzné nastavenia", emoji: "⚙️", url: "/forza/viac" },
               { label: "Profil vyšetrovateľa", emoji: "👤", url: "/forza/profil" },
             ].map((subItem) => (
               <button
