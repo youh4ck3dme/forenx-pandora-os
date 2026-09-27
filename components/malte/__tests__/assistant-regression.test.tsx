@@ -48,6 +48,9 @@ vi.mock("@/hooks/useOnlineStatus", () => ({
 vi.mock("@/hooks/useAiConsent", () => ({
   useAiConsent: () => ({ ensureConsent: mocks.consent, consentDialog: null }),
 }));
+vi.mock("@/components/ui/Globe", () => ({
+  Globe: () => null,
+}));
 vi.mock("@/lib/ai.functions", () => ({
   getForensicDossier: mocks.load,
   saveCaseDossier: mocks.save,

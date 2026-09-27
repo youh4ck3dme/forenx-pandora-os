@@ -58,6 +58,7 @@ import { EmptyState } from "./EmptyState";
 import { Button } from "@/components/ui/button";
 import { UploadFileList } from "@/components/malte/UploadFileList";
 import { Badge } from "@/components/ui/badge";
+import { Globe } from "@/components/ui/Globe";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -1191,6 +1192,7 @@ ${dossier.judgeReadyText.vedecke}`;
         </p>
       </AppHeader>
       <Screen>
+        <Globe />
         {/* Trvalé právne upozornenie ku každému AI výstupu. */}
         <div
           role="note"
@@ -1337,7 +1339,7 @@ ${dossier.judgeReadyText.vedecke}`;
                   ref={fileInputRef}
                   type="file"
                   multiple
-                  accept=".txt,.pdf,.docx,.xlsx,.xls,.csv,.json,.png,.jpg,.jpeg,.webp,.tiff,.html,.htm,.rtf"
+                  accept=".txt,.pdf,.docx,.xlsx,.csv,.json,.png,.jpg,.jpeg,.webp,.tiff,.html,.htm,.rtf"
                   className="hidden"
                   onChange={(e) => {
                     if (e.target.files && e.target.files.length > 0) {
