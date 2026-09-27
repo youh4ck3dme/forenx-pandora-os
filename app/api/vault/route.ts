@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash, randomUUID } from "node:crypto";
 import { withTraceRoute } from "@/lib/forza/trace";
+import {
+  ledgerConfigured,
+  ledgerRowToItem,
+  listLedgerEvidence,
+} from "@/lib/storage/evidence-ledger";
 import { z } from "zod";
 import {
   uploadCaseDocument,
@@ -187,7 +192,29 @@ async function handleGet(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  const items = inMemoryEvidenceStore.get(caseId) || [];
+  // Perzistentný ledger (evidence_items, RLS) má prednosť pred pamäťou procesu;
+  // bez neho by dôkaz po obnovení stránky alebo reštarte servera zmizol.
+  let ledgerItems: ForensicEvidenceItem[] = [];
+  if (auth.token && ledgerConfigured()) {
+    try {
+      const bucket = process.env.S3_BUCKET || "forenx-vault-sk";
+      ledgerItems = (await listLedgerEvidence(auth.token, caseId)).map((row) =>
+        ledgerRowToItem(row, caseId, bucket, auth.userId),
+      );
+    } catch {
+      if (!isDev) {
+        return NextResponse.json(
+          { error: "Ledger dôkazov sa nepodarilo načítať." },
+          { status: 503 },
+        );
+      }
+    }
+  }
+  const ledgerKeys = new Set(ledgerItems.map((item) => item.s3StorageKey));
+  const memoryItems = (inMemoryEvidenceStore.get(caseId) || []).filter(
+    (item) => !ledgerKeys.has(item.s3StorageKey),
+  );
+  const items = [...ledgerItems, ...memoryItems];
 
   return NextResponse.json({
     caseId,

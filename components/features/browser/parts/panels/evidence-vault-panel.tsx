@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { getSupabaseSessionToken } from "@/lib/forza/access-audit";
+import { uploadEvidenceDirect, type PresignData } from "@/lib/storage/vault-upload-client";
 import { EmptyState } from "@/components/malte/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -161,46 +162,51 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
           });
 
           if (presignRes.ok) {
-            const presignData = (await presignRes.json()) as {
-              success: boolean;
-              uploadUrl: string;
-              storageKey: string;
-              bucket: string;
-            };
+            const presignData = (await presignRes.json()) as PresignData & { success: boolean };
 
             if (presignData.uploadUrl) {
               setIngestState({ status: "uploading", progressPercent: 70, clientHash });
 
-              // Priamy HTTP PUT do Hetzner/AWS S3
-              const s3PutRes = await fetch(presignData.uploadUrl, {
-                method: "PUT",
-                headers: {
-                  "Content-Type": file.type || "application/octet-stream",
-                },
-                body: file,
+              // Priamy PUT do S3 so všetkými podpísanými hlavičkami + zápis do ledgeru.
+              const direct = await uploadEvidenceDirect({
+                file,
+                fileName: file.name,
+                caseId: effectiveCaseId,
+                sha256Hash: clientHash,
+                presign: presignData,
+                token: presignToken,
                 signal: controller.signal,
               });
 
-              if (s3PutRes.ok || presignData.uploadUrl.includes("vault_mode=fallback")) {
-                const verifiedItem: ForensicEvidenceItem = {
-                  id: (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `ev-${Date.now()}`) as any,
-                  caseId: effectiveCaseId as any,
+              if (direct.ok) {
+                const item: ForensicEvidenceItem = {
+                  id: (direct.evidenceId ??
+                    (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `ev-${Date.now()}`)) as ForensicEvidenceItem["id"],
+                  caseId: effectiveCaseId as ForensicEvidenceItem["caseId"],
                   fileName: file.name,
                   fileSizeBytes: file.size,
                   mimeType: file.type || "application/octet-stream",
                   sha256Hash: clientHash,
-                  s3StorageKey: presignData.storageKey as any,
+                  s3StorageKey: presignData.storageKey as ForensicEvidenceItem["s3StorageKey"],
                   s3Bucket: presignData.bucket || "forenx-vault-sk",
                   uploadedAt: new Date().toISOString(),
                   uploadedBy: "investigator-session-user",
-                  integrityStatus: "verified",
+                  // Stav zo servera: "checking", kým worker neoverí hash v S3.
+                  integrityStatus: direct.integrityStatus,
                   aiAnalyzed: false,
                   tags: [file.name.endsWith(".csv") ? "vypis" : file.name.endsWith(".pdf") ? "zmluva" : "ine"],
                 };
 
-                setIngestState({ status: "ready", item: verifiedItem });
-                setItems((prev) => [verifiedItem, ...prev]);
+                setIngestState({ status: "ready", item });
+                setItems((prev) => [item, ...prev.filter((p) => p.s3StorageKey !== item.s3StorageKey)]);
                 directS3Success = true;
+              } else if (direct.stage === "ledger_commit") {
+                // Súbor je v S3, ale nie je evidovaný — nehlásiť úspech ani nenahrávať znova.
+                setIngestState({
+                  status: "error",
+                  errorMessage: `Súbor bol nahratý, no zápis do ledgeru dôkazov zlyhal: ${direct.error} Skúste to znova.`,
+                });
+                return;
               }
             }
           }
