@@ -202,9 +202,9 @@ export function partitionEvidenceTraces(
  * preto sa pri zobrazení používa výhradne toto znenie a poradie.
  */
 export const INVESTIGATIVE_QUESTIONS = [
-  { key: "q1_buyer_seller", number: 1, question: "Kto zbrane nakupoval a následne predával alebo odovzdával?" },
-  { key: "q2_planner_coordinator", number: 2, question: "Kto celý plán vymyslel, riadil alebo koordinoval?" },
-  { key: "q3_financier", number: 3, question: "Kto celý plán financoval?" },
+  { field: "q1_buyer_seller", number: 1, question: "Kto zbrane nakupoval a následne predával alebo odovzdával?" },
+  { field: "q2_planner_coordinator", number: 2, question: "Kto celý plán vymyslel, riadil alebo koordinoval?" },
+  { field: "q3_financier", number: 3, question: "Kto celý plán financoval?" },
 ] as const;
 
 export type GatedInvestigativeAnswer = {
@@ -225,8 +225,8 @@ export function gatedInvestigativeAnswers(
 ): GatedInvestigativeAnswer[] {
   const answers = dossier.investigativeAnswers;
   if (!answers) return [];
-  return INVESTIGATIVE_QUESTIONS.flatMap(({ key, number, question }) => {
-    const answer = answers[key];
+  return INVESTIGATIVE_QUESTIONS.flatMap(({ field, number, question }) => {
+    const answer = answers[field];
     if (!answer) return [];
     return [{ number, question, answer, bound: isBoundToEvidence(answer.sourceRef, knownEvidence) }];
   });
