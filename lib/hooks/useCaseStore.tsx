@@ -135,10 +135,38 @@ export function CaseStoreProvider({ children }: { children: ReactNode }) {
 
   useLayoutEffect(() => {
     applyDocumentTheme(state.theme);
+
+    // Live system preference listener (OS day/night transitions)
     const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const onChange = () => applyDocumentTheme(state.theme);
-    media.addEventListener("change", onChange);
-    return () => media.removeEventListener("change", onChange);
+    const onMediaChange = () => applyDocumentTheme(state.theme);
+    media.addEventListener("change", onMediaChange);
+
+    // Multi-tab sync via localStorage 'storage' event
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== THEME_STORAGE_KEY || !e.newValue) return;
+      const newTheme = e.newValue as ThemeMode;
+      if (newTheme === "light" || newTheme === "dark" || newTheme === "system") {
+        setState((prev) => ({ ...prev, theme: newTheme }));
+        applyDocumentTheme(newTheme);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+
+    // Notify Electron main process for native chrome sync
+    try {
+      if (typeof window !== "undefined" && (window as any).electronAPI?.setTheme) {
+        const systemDark = media.matches;
+        const isDark = state.theme === "dark" || (state.theme === "system" && systemDark);
+        (window as any).electronAPI.setTheme(isDark ? "dark" : "light");
+      }
+    } catch {
+      // ignore — not running in Electron
+    }
+
+    return () => {
+      media.removeEventListener("change", onMediaChange);
+      window.removeEventListener("storage", onStorage);
+    };
   }, [state.theme]);
 
   const value = useMemo<Ctx>(
