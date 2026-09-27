@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getPresignedUploadUrl } from "@/lib/storage/s3-vault";
+import { evidenceStorageKey } from "@/lib/storage/evidence-ledger";
 import { tracedError, withTraceRoute } from "@/lib/forza/trace";
 import {
   accessContext,
@@ -144,9 +145,9 @@ async function handlePost(request: NextRequest, traceId: string): Promise<NextRe
     }
 
     // 4. Vygenerovanie deterministického S3 kľúča
-    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    // Rovnaký výpočet overuje /api/vault/commit pred zápisom do ledgeru.
     const cleanHash = sha256Hash.toLowerCase();
-    const storageKey = `cases/${caseId}/evidence/${cleanHash}-${sanitizedFileName}`;
+    const storageKey = evidenceStorageKey(caseId, cleanHash, fileName);
     const bucket = process.env.S3_BUCKET || "forenx-vault-sk";
 
     // 5. Vygenerovanie AWS SigV4 Presigned PUT URL (300 s platnosť)

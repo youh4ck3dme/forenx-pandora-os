@@ -325,19 +325,18 @@ updater/release workflow.
 
 ## 8. Známe obmedzenia pred „court-ready“ vaultom
 
-> **Release blocker — vault nevystavovať ako produkčný forenzný trezor, kým nie je vyriešené:**
+> **Vault upload (stav po `/api/vault/commit`):**
 >
-> - **Priamy upload do S3 je neplatný.** `getPresignedUploadUrl` podpisuje `x-amz-content-sha256` a
->   `x-amz-meta-*` hlavičky (presign ich vracia ako `requiredHeaders`), no upload v
->   `evidence-vault-panel.tsx` posiela iba `Content-Type` → S3 podpis odmietne a UI prejde na
->   multipart `/api/vault`, kde väčšie súbory narazia na limit tela požiadavky na Verceli.
-> - **Ledger sa nezapisuje.** Úspešný upload aktualizuje iba stav v UI; multipart route ukladá do
->   pamäte procesu. Jediný zápis do `evidence_items` je v nepoužitom hooku `useSecureVaultUpload`.
->   Po obnovení stránky záznam zmizne a v S3 ostane nezaindexovaný objekt.
-> - UI označí nahratý súbor ako `integrityStatus: "verified"` bez serverového overenia.
+> - Priamy PUT do S3 posiela všetky podpísané hlavičky z `requiredHeaders`
+>   (`lib/storage/vault-upload-client.ts`).
+> - Po úspešnom PUT sa dôkaz zapíše do `evidence_items` cez `POST /api/vault/commit` s právami
+>   používateľa (RLS + WORM/insert triggery, stav `pending`, auditná udalosť). S3 kľúč musí presne
+>   zodpovedať prípadu, hashu a súboru; opakovaný commit je idempotentný.
+> - `GET /api/vault` číta zoznam z ledgeru — záznam po obnovení stránky nezmizne.
+> - UI zobrazuje stav zo servera (`checking` → `verified` až po workeri), nie natvrdo `verified`.
 >
-> Oprava: PUT s `requiredHeaders` z presign odpovede, zápis do `evidence_items` po úspešnom PUT
-> (stav `pending`) a zobrazovanie stavu overenia zo servera.
+> **Zostáva:** ak priamy PUT zlyhá, UI prejde na multipart `/api/vault`, ktorý ukladá iba do pamäte
+> procesu a na Verceli je limitovaný veľkosťou tela. V produkcii treba priamy upload (S3 + CORS).
 
 - **Vyriešené migráciou `20260927234500_evidence_ledger_worm`:** identifikačné stĺpce sú WORM,
   mazanie iba cez auditovanú RPC, registrácia/zmazanie/overenie sú v auditnom hash-chaine a hash
