@@ -40,7 +40,7 @@ Vercel, Supabase, S3, DNS, Nginx, or a desktop signing service is configured.
 | Next production build                  | `DONE`    | `npm run build`: 30/30 routes generated.                                                                          |
 | Core engine TypeScript                 | `DONE`    | Created worker/types bridge modules; `npx tsc --noEmit` returned 0 errors in core-engine.                         |
 | Production dependency audit            | `DONE`    | `xlsx` removed completely; replaced by `read-excel-file/node` with multi-sheet support and 0 security advisories. |
-| Supabase migration application         | `BLOCKED` | Supabase CLI/database access was unavailable; migrations have not been applied.                                   |
+| Supabase migration application         | `BLOCKED` | Local verification complete (2026-09-27): `npx supabase db reset` applied all 24 migrations cleanly on the local Docker stack. Remote application remains BLOCKED: no Supabase access token/login, and the only configured project is the production project.                                   |
 | VPS/Docker runtime verification        | `BLOCKED` | No production Docker manifest or VPS access is available in this workspace.                                       |
 
 ## 3. Release-critical P0 — security, deployment, and evidence integrity
@@ -299,7 +299,7 @@ Benchmark: 100 000 rows in ~0.3 s with 49 UI yields
 | Homonym-safe case identity             | `DONE`        | Keep distinct entities for conflicting date of birth, IČO, or source identity. |
 | RPO parsing                            | `DONE`        | Keep the explicit 13-activity IČO `54684994` regression fixture.               |
 | Temporal relations                     | `DONE`        | Add imports that prove historical relations are not overwritten.               |
-| Atomic AI graph commit                 | `IN PROGRESS` | Apply and integration-test `commit_ai_case_graph` migration against Supabase.  |
+| Atomic AI graph commit                 | `IN PROGRESS` | Local (2026-09-27): `202609270001_atomic_ai_graph.sql` and all 23 other migrations applied cleanly via `npx supabase db reset` on the local stack. Remote BLOCKED: no access token, only the production project is configured. The megaprompt `20260927113000_case_graph_hardening.sql` does not exist in this repo.  |
 | Canonical ledger hashes                | `DONE`        | Add compatibility fixtures before changing canonical serialization.            |
 | Custody ledger UI and tamper detection | `IN PROGRESS` | Apply database migration and run an end-to-end tamper scenario.                |
 | Minor-unit money arithmetic            | `DONE`        | Prohibit floating-point amounts in new financial code.                         |
