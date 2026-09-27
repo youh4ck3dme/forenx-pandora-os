@@ -70,32 +70,37 @@ neho), takže voľba RP_ID zatiaľ neprináša bezpečnosť ani skutočné zdie�
 
 ## 2. Supabase migrácie
 
-### 2.0 Je databáza zdieľaná s inou aplikáciou (napr. whoiswho.at)?
+### 2.0 Preflight (povinný pred každým `db push`)
 
-Zisti to **pred** `db push` (SQL Editor, iba čítanie):
+Preflight zistí na **cieľovej** DB stav a vráti verdikt **GO / GO S VAROVANÍM / NO-GO**. Je read-only
+(vytvára iba dočasné tabuľky vlastnej session).
 
-```sql
--- tabuľky, ktoré nepatria Pandore (Pandora: cases, case_*, profiles, user_roles, ai_*, subscriptions,
--- billing_events, company_registry_profiles, cross_border_analyses, error_logs, deletion_requests,
--- evidence_items, source_snapshots)
-select table_name from information_schema.tables where table_schema = 'public' order by 1;
-
--- existujúci trigger na auth.users a jeho funkcia (Pandora ju prepisuje cez CREATE OR REPLACE)
-select tgname, tgfoid::regproc from pg_trigger where tgrelid = 'auth.users'::regclass and not tgisinternal;
-select pg_get_functiondef('public.handle_new_user'::regproc);
+```bash
+node scripts/deploy/db-preflight.mjs > preflight.sql
+# Supabase Dashboard → SQL Editor → vložiť preflight.sql → Run
+# alebo: psql "$DATABASE_URL" -f preflight.sql
 ```
 
-Ak DB **je zdieľaná**, migrácie Pandory **nie sú izolované** a treba ich pred pushom posúdiť:
-
-| Migrácia | Dopad na inú aplikáciu v tej istej DB |
+| Kontrola | Čo znamená |
 |---|---|
-| `20260925143000_admin_email_bizagent` | `CREATE OR REPLACE public.handle_new_user()` — ak ho používa aj iná appka, **prepíše jej logiku registrácie**; každá registrácia (aj z inej appky) vytvorí záznam v `profiles` a `user_roles` |
-| `20260927130000_forensic_integrity` | mení existujúce tabuľky `case_audit_log` (append-only: UPDATE/DELETE zlyhajú), `case_transactions` (sumy max. 2 des. miesta pre nové zápisy, nový stĺpec → prepis tabuľky so zámkom), `case_relations`, funkcie `commit_import` a `commit_ai_case_graph` |
-| `20260927120000_court_ready_evidence_ledger` | `CREATE TABLE` (bez `IF NOT EXISTS`) — zlyhá, ak tabuľka `evidence_items` už existuje |
-| `20260927140000_case_lifecycle_legal_hold` | mení existujúce `cases` (nové stĺpce, triggery) a pridáva triggery na `case_entities`, `case_transactions`, `case_relations`, `case_weapons`, `case_events`, `case_imports` |
-| `20260927234500_evidence_ledger_worm` | mení iba `evidence_items` a pridáva funkcie s prefixom `evidence_`; zapisuje do `case_audit_log` (Pandora) |
+| História migrácií / čakajúce migrácie | čo presne `db push` aplikuje |
+| Kolízia tabuľky … (**FAIL**) | čakajúca migrácia robí `CREATE TABLE` bez `IF NOT EXISTS` na existujúcu tabuľku → push zlyhá |
+| Existujúce funkcie, ktoré push prepíše (WARN) | `CREATE OR REPLACE` na funkciu, ktorá už existuje — over, že je Pandorina |
+| `public.handle_new_user()` / triggery na `auth.users` | či patria Pandore alebo inej appke |
+| Zdieľaná databáza (WARN) | cudzie tabuľky v `public` |
+| auth.users bez Pandora profilu | registrácie z inej appky alebo spred hooku |
 
-Bezpečné riešenie pre zdieľané prostredie je **samostatný Supabase projekt pre Pandoru**.
+**NO-GO = nepushovať.** Pri GO S VAROVANÍM posúď každé WARN.
+
+**Zdieľaná DB a registrácie:** od migrácie `20260928230000_pandora_signup_hook_isolation` používa
+Pandora výhradne vlastnú funkciu `pandora_handle_new_user()` a trigger `pandora_on_auth_user_created`.
+Pôvodný trigger `on_auth_user_created` odstráni **len ak preukázateľne patrí Pandore**; cudzí trigger a
+cudziu `handle_new_user()` nikdy neprepíše ani nezmaže (`20260925143000` má na to poistku). Ak
+preflight hlási cudzí `handle_new_user()` a zároveň ide o už nasadenú staršiu Pandorinu verziu,
+over u druhej appky, či jej registrácia funguje — staršie migrácie ju mohli prepísať ešte pred touto
+opravou.
+
+Bezpečné riešenie pre zdieľané prostredie je stále **samostatný Supabase projekt pre Pandoru**.
 
 ### 2.1 Záloha a push
 
