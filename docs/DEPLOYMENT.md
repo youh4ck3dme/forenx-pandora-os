@@ -92,7 +92,8 @@ Ak DB **je zdieľaná**, migrácie Pandory **nie sú izolované** a treba ich pr
 | `20260925143000_admin_email_bizagent` | `CREATE OR REPLACE public.handle_new_user()` — ak ho používa aj iná appka, **prepíše jej logiku registrácie**; každá registrácia (aj z inej appky) vytvorí záznam v `profiles` a `user_roles` |
 | `20260927130000_forensic_integrity` | mení existujúce tabuľky `case_audit_log` (append-only: UPDATE/DELETE zlyhajú), `case_transactions` (sumy max. 2 des. miesta pre nové zápisy, nový stĺpec → prepis tabuľky so zámkom), `case_relations`, funkcie `commit_import` a `commit_ai_case_graph` |
 | `20260927120000_court_ready_evidence_ledger` | `CREATE TABLE` (bez `IF NOT EXISTS`) — zlyhá, ak tabuľka `evidence_items` už existuje |
-| `20260927140000_evidence_ledger_worm` | mení iba `evidence_items` a pridáva funkcie s prefixom `evidence_`; zapisuje do `case_audit_log` (Pandora) |
+| `20260927140000_case_lifecycle_legal_hold` | mení existujúce `cases` (nové stĺpce, triggery) a pridáva triggery na `case_entities`, `case_transactions`, `case_relations`, `case_weapons`, `case_events`, `case_imports` |
+| `20260927234500_evidence_ledger_worm` | mení iba `evidence_items` a pridáva funkcie s prefixom `evidence_`; zapisuje do `case_audit_log` (Pandora) |
 
 Bezpečné riešenie pre zdieľané prostredie je **samostatný Supabase projekt pre Pandoru**.
 
@@ -117,7 +118,9 @@ Očakávané v `--dry-run` (podľa stavu remote DB):
 | `202609270001_atomic_ai_graph` | ak ešte nie je na remote |
 | `20260927120000_court_ready_evidence_ledger` | tabuľka `evidence_items` + RLS + legal hold |
 | `20260927130000_forensic_integrity` | oprava zápisu AI grafu, audit hash-chain, `source_snapshots`, časové vzťahy, peniaze v minor units |
-| `20260927140000_evidence_ledger_worm` | iba `evidence_items`: WORM identifikačných stĺpcov, mazanie len cez auditovanú RPC, stav serverového overenia hashu |
+| `20260927140000_case_lifecycle_legal_hold` | životný cyklus prípadu, legal hold, kontrolované zničenie (`set_case_status`, `destroy_case`) |
+| `20260927140000_case_lifecycle_legal_hold` | P1-03: životný cyklus prípadu, legal hold, kontrolované zničenie (`set_case_status`, `destroy_case`) |
+| `20260927234500_evidence_ledger_worm` | iba `evidence_items`: WORM identifikačných stĺpcov, mazanie len cez auditovanú RPC, stav serverového overenia hashu |
 
 `20260921040519` sa **nesmie** znova aplikovať (remote ju už má; úprava s podmieneným stubom
 `rls_auto_enable()` slúži len pre čistý Postgres). Ak ju `--dry-run` uvádza, zastav sa.
@@ -160,7 +163,7 @@ a **všetky testovacie dáta vráti späť**. Výsledok je tabuľka `check | sta
 | nemennosť `sha256_hash` / `s3_object_key` | PASS (WORM trigger) |
 | zmazanie dôkazu bez legal hold priamym `DELETE` | PASS (iba cez `delete_evidence_item_audited`) |
 
-Skript očakáva nasadenú migráciu `20260927140000_evidence_ledger_worm`; bez nej sú posledné kontroly `FAIL`.
+Skript očakáva nasadenú migráciu `20260927234500_evidence_ledger_worm`; bez nej sú posledné kontroly `FAIL`.
 
 **Akýkoľvek `FAIL` = nenasadzovať.** Skript je overený aj v CI: `supabase/tests/evidence-items-rls.test.ts`
 ho spúšťa na čerstvo zmigrovanej DB vrátane negatívnej kontroly (deravá politika musí dať `FAIL`).
@@ -322,7 +325,7 @@ updater/release workflow.
 
 ## 8. Známe obmedzenia pred „court-ready“ vaultom
 
-- **Vyriešené migráciou `20260927140000_evidence_ledger_worm`:** identifikačné stĺpce sú WORM,
+- **Vyriešené migráciou `20260927234500_evidence_ledger_worm`:** identifikačné stĺpce sú WORM,
   mazanie iba cez auditovanú RPC, registrácia/zmazanie/overenie sú v auditnom hash-chaine a hash
   sa overuje na serveri voči objektu v S3.
 - **Hash počíta klient pri uploade;** kým worker dôkaz neoverí, má stav `pending` — dôkaz bez stavu

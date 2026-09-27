@@ -8,7 +8,7 @@
 -- v subtransakcii, ktorá sa na konci VŽDY vráti späť. V databáze nič neostane.
 -- Výsledkom je tabuľka: check | status (PASS / FAIL / FINDING) | detail.
 --   FAIL    = politika nechráni to, čo má
---   (od migrácie 20260927140000_evidence_ledger_worm sú hash, S3 kľúč a mazanie chránené → PASS)
+--   (od migrácie 20260927234500_evidence_ledger_worm sú hash, S3 kľúč a mazanie chránené → PASS)
 -- =============================================================================
 
 create temp table if not exists _rls_check (
