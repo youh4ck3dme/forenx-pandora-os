@@ -23,6 +23,7 @@ import { AdmissibilityAuditView } from "@/components/features/forensic/Admissibi
 import { CustodyLedgerViewer } from "@/components/features/forensic/CustodyLedgerViewer";
 import { EmptyState, ForzaModuleSkeleton } from "@/components/malte/EmptyState";
 import { Button } from "@/components/ui/button";
+import { collectCustodyEvidenceIds } from "@/lib/forza/evidence-binding";
 
 export default function ZbranePage() {
   return <Weapons />;
@@ -33,6 +34,9 @@ function Weapons() {
   const names = new Map(activeCase.entities.map((e) => [e.id, e.name]));
   const batches = detectSerialBatches(activeCase.weapons);
   const matches = analysis.weapons.filter((w) => w.europolMatch).length;
+  const knownEvidence = dossier
+    ? collectCustodyEvidenceIds(dossier)
+    : new Set<string>();
 
   if (loading) {
     return (
@@ -158,8 +162,14 @@ function Weapons() {
 
         <SectionTitle>Forenzné superzbrane</SectionTitle>
         <Card className="space-y-5">
-          <DevilsAdvocatePanel hypotheses={dossier?.alternativeHypotheses ?? []} />
-          <AdmissibilityAuditView audit={dossier?.admissibilityAudit} />
+          <DevilsAdvocatePanel
+            hypotheses={dossier?.alternativeHypotheses ?? []}
+            knownEvidence={knownEvidence}
+          />
+          <AdmissibilityAuditView
+            audit={dossier?.admissibilityAudit}
+            knownEvidence={knownEvidence}
+          />
           <CustodyLedgerViewer entries={dossier?.custodyLedger ?? []} />
         </Card>
       </Screen>

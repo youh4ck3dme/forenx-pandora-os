@@ -38,6 +38,17 @@ export const aiTaskSchemas = {
           id: z.string().max(50).default(""),
           title: z.string().max(300).default(""),
           scenario: z.string().max(8000).default(""),
+          sourceReferences: z
+            .array(
+              z.object({
+                evidenceId: z.string().max(100),
+                page: z.number().int().positive().optional(),
+                paragraph: z.string().max(200).optional(),
+                description: z.string().max(500).optional(),
+              }),
+            )
+            .max(20)
+            .optional(),
           explainedEvidence: z.array(z.string().max(500)).max(50).default([]),
           requiredTracesIfTrue: z
             .array(z.string().max(500))
@@ -63,10 +74,24 @@ export const aiTaskSchemas = {
           paragraph: z.string().max(200).default(""),
           description: z.string().max(4000).default(""),
           remedyAction: z.string().max(4000).default(""),
+          sourceEvidenceId: z.string().max(100).optional(),
+          sourcePage: z.number().int().positive().optional(),
+          sourceParagraph: z.string().max(200).optional(),
         }),
       )
       .default([]),
     courtReadySummary: z.string().max(8000).default(""),
+    sourceReferences: z
+      .array(
+        z.object({
+          evidenceId: z.string().max(100),
+          page: z.number().int().positive().optional(),
+          paragraph: z.string().max(200).optional(),
+          description: z.string().max(500).optional(),
+        }),
+      )
+      .max(20)
+      .optional(),
     unverified: z.array(z.string().max(1000)).max(20).default([]),
     cited: z.array(z.string().max(100)).max(120).default([]),
   }),

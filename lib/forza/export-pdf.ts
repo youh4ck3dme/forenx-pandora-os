@@ -6,6 +6,9 @@ import { sha256Hex } from "./provenance/sha256";
 import { canonicalSha256 } from "./provenance/canonical";
 import { buildReportManifest, type ReportManifest } from "./provenance/report-manifest";
 import {
+  partitionAdmissibilityAudit,
+  partitionAlternativeHypotheses,
+  collectCustodyEvidenceIds,
   partitionSuspiciousFlows,
   partitionTimeline,
 } from "./evidence-binding";
@@ -384,6 +387,94 @@ export function buildReportHTML(d: ForensicDossier): string {
   </div>`
     : "";
 
+  const knownEvidence = collectCustodyEvidenceIds(d);
+  const hypotheses = partitionAlternativeHypotheses(
+    d.alternativeHypotheses,
+    knownEvidence,
+  );
+  const admissibility = partitionAdmissibilityAudit(
+    d.admissibilityAudit,
+    knownEvidence,
+  );
+  const sourceLabel = (ref: {
+    evidenceId: string;
+    page?: number;
+    paragraph?: string;
+  }) =>
+    `${ref.evidenceId}${ref.page ? ` · s.${ref.page}` : ""}${ref.paragraph ? ` · ${ref.paragraph}` : ""}`;
+  const hypothesesHtml =
+    hypotheses.bound.length > 0
+      ? `
+  <h2>Alternatívne hypotézy viazané na dôkazy</h2>
+  ${hypotheses.bound
+    .map(
+      (hypothesis) => `
+    <div class="section">
+      <h3>${hypothesis.title}</h3>
+      <p>${hypothesis.scenario}</p>
+      <p><strong>Zdroj:</strong> ${hypothesis.sourceReferences!
+        .map((ref) => sourceLabel(ref))
+        .join("; ")}</p>
+    </div>`,
+    )
+    .join("")}`
+      : "";
+  const admissibilityHtml =
+    admissibility.summaryBound || admissibility.boundDefects.length > 0
+      ? `
+  <h2>Audit procesnej prípustnosti (§ 119 TP) — zdrojované posúdenie</h2>
+  ${
+    admissibility.summaryBound && d.admissibilityAudit
+      ? `<p><strong>Stav:</strong> ${d.admissibilityAudit.status} · <strong>Skóre:</strong> ${d.admissibilityAudit.score}%</p>
+  <p>${d.admissibilityAudit.courtReadySummary}</p>
+  <p><strong>Zdroje:</strong> ${d.admissibilityAudit.sourceReferences!
+    .map((ref) => sourceLabel(ref))
+    .join("; ")}</p>`
+      : ""
+  }
+  ${admissibility.boundDefects
+    .map(
+      (defect) => `
+    <div class="section">
+      <h3>${defect.paragraph} — ${defect.severity}</h3>
+      <p>${defect.description}</p>
+      <p><strong>Náprava:</strong> ${defect.remedyAction}</p>
+      <p><strong>Zdroj:</strong> ${sourceLabel(
+        defect.sourceRef ?? {
+          evidenceId: defect.sourceEvidenceId!,
+          ...(defect.sourcePage ? { page: defect.sourcePage } : {}),
+          ...(defect.sourceParagraph
+            ? { paragraph: defect.sourceParagraph }
+            : {}),
+        },
+      )}</p>
+    </div>`,
+    )
+    .join("")}`
+      : "";
+  const unverifiedClaims = [
+    ...hypotheses.unbound.map(
+      (hypothesis) =>
+        `<strong>${hypothesis.title}:</strong> ${hypothesis.scenario} <em>(chýba platná väzba na existujúci dôkaz a stranu alebo odsek)</em>`,
+    ),
+    ...(!admissibility.summaryBound && d.admissibilityAudit
+      ? [
+          `<strong>§ 119 TP — celkový audit (${d.admissibilityAudit.status}, ${d.admissibilityAudit.score}%):</strong> ${d.admissibilityAudit.courtReadySummary} <em>(bez platnej väzby na dôkaz)</em>`,
+        ]
+      : []),
+    ...admissibility.unboundDefects.map(
+      (defect) =>
+        `<strong>${defect.paragraph}:</strong> ${defect.description} <em>(vadu sa nepodarilo viazať na existujúci dôkaz a stranu alebo odsek)</em>`,
+    ),
+  ];
+  const unverifiedClaimsHtml =
+    unverifiedClaims.length > 0
+      ? `
+  <h2>Neoverené tvrdenia (nie sú skutkom)</h2>
+  <p class="legal-expl">Nasledujúce hypotézy a posúdenia nemajú platný odkaz na existujúce evidence_id a konkrétnu stranu alebo odsek; nesmú sa považovať za skutkové zistenia.</p>
+  <ul>${unverifiedClaims.map((claim) => `<li>${claim}</li>`).join("")}</ul>`
+      : "";
+
   return `<!DOCTYPE html>
 <html lang="sk">
 <head>
@@ -491,6 +582,12 @@ ${unboundTimelineHtml}
 ${contradictionsHtml}
 
 ${financialHtml}
+
+${hypothesesHtml}
+
+${admissibilityHtml}
+
+${unverifiedClaimsHtml}
 
 <h2>I. Zistený skutkový stav (§ 119 ods. 1 Trestného poriadku)</h2>
 <div class="section">

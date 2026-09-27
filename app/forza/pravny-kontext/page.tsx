@@ -14,6 +14,7 @@ import {
 import { buildLegalContext, severityLabel } from "@/lib/forza/forensic";
 import { BRAND } from "@/config/brand";
 import { AdmissibilityAuditView } from "@/components/features/forensic/AdmissibilityAuditView";
+import { collectCustodyEvidenceIds } from "@/lib/forza/evidence-binding";
 
 export default function PravnyKontextPage() {
   return <LegalScreen />;
@@ -22,6 +23,9 @@ export default function PravnyKontextPage() {
 function LegalScreen() {
   const { activeCase, analysis, dossier } = useActiveCase();
   const legal = buildLegalContext(analysis);
+  const knownEvidence = dossier
+    ? collectCustodyEvidenceIds(dossier)
+    : new Set<string>();
 
   return (
     <PhoneFrame>
@@ -119,7 +123,10 @@ function LegalScreen() {
         ))}
 
         <SectionTitle>Procesná prípustnosť (§ 119 a nasl. TP)</SectionTitle>
-        <AdmissibilityAuditView audit={dossier?.admissibilityAudit} />
+        <AdmissibilityAuditView
+          audit={dossier?.admissibilityAudit}
+          knownEvidence={knownEvidence}
+        />
 
         <SectionTitle>Procesné postavenie osôb</SectionTitle>
         <Card className="divide-y divide-border p-0">

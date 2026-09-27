@@ -4,9 +4,11 @@ import { BrainCircuit, CircleAlert, Crosshair, ShieldCheck } from "lucide-react"
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import type { AlternativeHypothesis } from "@/lib/forza/types";
+import { partitionAlternativeHypotheses } from "@/lib/forza/evidence-binding";
 
 type DevilsAdvocatePanelProps = {
   hypotheses: AlternativeHypothesis[];
+  knownEvidence?: ReadonlySet<string>;
   onSimulate?: () => void;
   isSimulating?: boolean;
 };
@@ -19,9 +21,11 @@ export function probabilityTone(score: number) {
 
 export function DevilsAdvocatePanel({
   hypotheses,
+  knownEvidence = new Set<string>(),
   onSimulate,
   isSimulating = false,
 }: DevilsAdvocatePanelProps) {
+  const partition = partitionAlternativeHypotheses(hypotheses, knownEvidence);
   return (
     <section className="space-y-3" aria-label="Devil's Advocate">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -46,13 +50,13 @@ export function DevilsAdvocatePanel({
         ) : null}
       </div>
 
-      {hypotheses.length === 0 ? (
+      {partition.bound.length === 0 && partition.unbound.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-muted/20 p-4 text-xs text-muted-foreground">
           Alternatívne hypotézy zatiaľ neboli vygenerované. Simulácia pracuje
           iba s dôkazmi aktuálneho spisu.
         </div>
       ) : (
-        hypotheses.map((hypothesis) => (
+        partition.bound.map((hypothesis) => (
           <article
             key={hypothesis.id}
             className="space-y-3 rounded-xl border border-rose-500/20 bg-card p-4 shadow-xs"
@@ -95,6 +99,24 @@ export function DevilsAdvocatePanel({
           </article>
         ))
       )}
+      {partition.unbound.length > 0 ? (
+        <aside className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+          <p className="text-xs font-bold uppercase tracking-wider text-amber-300">
+            Neoverené tvrdenia (nie sú skutkom)
+          </p>
+          <ul className="mt-2 space-y-2 text-xs">
+            {partition.unbound.map((hypothesis) => (
+              <li key={hypothesis.id}>
+                <strong>{hypothesis.title}</strong>
+                <p className="text-muted-foreground">{hypothesis.scenario}</p>
+                <span className="text-[10px] text-muted-foreground">
+                  Chýba platný odkaz na existujúci dôkaz a stranu alebo odsek.
+                </span>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      ) : null}
     </section>
   );
 }

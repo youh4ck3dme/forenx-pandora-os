@@ -96,6 +96,7 @@ import { upsertTransaction } from "@/lib/case-data";
 import { ARMIVEX_CROSS_CONTRADICTIONS } from "@/lib/cross-contradictions";
 import { ARMIVEX_CASE_DOSSIER } from "@/lib/demo-dossier";
 import { isDemoDossier } from "@/lib/autopilot-meta";
+import { collectCustodyEvidenceIds } from "@/lib/forza/evidence-binding";
 import { loadQuarantineDocuments } from "@/lib/quarantine.functions";
 import {
   clearQuarantineStage,
@@ -1940,6 +1941,7 @@ ${dossier.judgeReadyText.vedecke}`;
                     <Card className="p-3.5">
                       <DevilsAdvocatePanel
                         hypotheses={dossier.alternativeHypotheses ?? []}
+                        knownEvidence={collectCustodyEvidenceIds(dossier)}
                         onSimulate={() => {
                           setTask("alt_devil");
                           setMainMode("quick_tasks");
@@ -1951,7 +1953,10 @@ ${dossier.judgeReadyText.vedecke}`;
 
                   <TabsContent value="admissibility" className="space-y-3 m-0">
                     <Card className="p-3.5">
-                      <AdmissibilityAuditView audit={dossier.admissibilityAudit} />
+                      <AdmissibilityAuditView
+                        audit={dossier.admissibilityAudit}
+                        knownEvidence={collectCustodyEvidenceIds(dossier)}
+                      />
                     </Card>
                   </TabsContent>
 
