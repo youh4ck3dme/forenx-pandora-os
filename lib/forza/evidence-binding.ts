@@ -3,6 +3,8 @@ import type {
   AdmissibilityAuditDefect,
   AdmissibilityAuditResult,
   AlternativeHypothesis,
+  DefenseAttack,
+  EvidenceRow,
   HypothesisSourceRef,
   SourceRef,
   SuspiciousFlowItem,
@@ -162,6 +164,32 @@ export function partitionSuspiciousFlows(
   const unbound: SuspiciousFlowItem[] = [];
   for (const flow of dossier.financialAnalysis?.suspiciousFlows ?? []) {
     (isBoundToEvidence(flow.sourceRef, knownEvidence) ? bound : unbound).push(flow);
+  }
+  return { bound, unbound };
+}
+
+/** Rozdelí body útoku obhajoby na viazané (súčasť záveru II.) a neviazané. */
+export function partitionDefenseAttacks(
+  dossier: ForensicDossier,
+  knownEvidence: ReadonlySet<string>,
+): BoundPartition<DefenseAttack> {
+  const bound: DefenseAttack[] = [];
+  const unbound: DefenseAttack[] = [];
+  for (const attack of dossier.defenseAttack?.attacks ?? []) {
+    (isBoundToEvidence(attack.sourceRef, knownEvidence) ? bound : unbound).push(attack);
+  }
+  return { bound, unbound };
+}
+
+/** Rozdelí stopy dôkazovej matice na viazané (súčasť záveru III.) a neviazané. */
+export function partitionEvidenceTraces(
+  dossier: ForensicDossier,
+  knownEvidence: ReadonlySet<string>,
+): BoundPartition<EvidenceRow> {
+  const bound: EvidenceRow[] = [];
+  const unbound: EvidenceRow[] = [];
+  for (const trace of dossier.evidenceStrength?.traces ?? []) {
+    (isBoundToEvidence(trace.sourceRef, knownEvidence) ? bound : unbound).push(trace);
   }
   return { bound, unbound };
 }

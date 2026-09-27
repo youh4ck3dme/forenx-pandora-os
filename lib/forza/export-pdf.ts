@@ -11,6 +11,8 @@ import {
   listBoundFacts,
   partitionAdmissibilityAudit,
   partitionAlternativeHypotheses,
+  partitionDefenseAttacks,
+  partitionEvidenceTraces,
   partitionSuspiciousFlows,
   partitionTimeline,
 } from "./evidence-binding";
@@ -277,7 +279,12 @@ export function buildReportHTML(
   </table>`
       : "";
 
-  const tracesRows = d.evidenceStrength.traces
+  // Issue #13: do záverov II. a III. idú iba body obhajoby a stopy viazané na
+  // hash-overený dôkaz; neviazané sa vypíšu len medzi neoverenými tvrdeniami.
+  const traces = partitionEvidenceTraces(d, knownEvidence);
+  const attacks = partitionDefenseAttacks(d, knownEvidence);
+
+  const tracesRows = traces.bound
     .map((t) => {
       const src = formatSourceRef(t.sourceRef) || "—";
       return `
@@ -293,7 +300,7 @@ export function buildReportHTML(
     })
     .join("");
 
-  const attacksHtml = d.defenseAttack.attacks
+  const attacksHtml = attacks.bound
     .map((a) => {
       const src = formatSourceRef(a.sourceRef);
       return `
@@ -505,12 +512,20 @@ export function buildReportHTML(
       (defect) =>
         `<strong>${defect.paragraph}:</strong> ${defect.description} <em>(vadu sa nepodarilo viazať na existujúci dôkaz a stranu alebo odsek)</em>`,
     ),
+    ...attacks.unbound.map(
+      (a) =>
+        `<strong>Bod obhajoby (${a.risk}):</strong> ${a.defenseClaim} — navrhovaný protiúder: ${a.counterStrike} <em>(bez platnej väzby na dôkaz)</em>`,
+    ),
+    ...traces.unbound.map(
+      (t) =>
+        `<strong>Stopa ${t.id} — ${t.name}:</strong> LR ${t.lr}, ${t.strength} <em>(hodnotenie stopy bez platnej väzby na dôkaz)</em>`,
+    ),
   ];
   const unverifiedClaimsHtml =
     unverifiedClaims.length > 0
       ? `
   <h2>Neoverené tvrdenia (nie sú skutkom)</h2>
-  <p class="legal-expl">Nasledujúce hypotézy a posúdenia nemajú platný odkaz na existujúce evidence_id a konkrétnu stranu alebo odsek; nesmú sa považovať za skutkové zistenia.</p>
+  <p class="legal-expl">Nasledujúce hypotézy, posúdenia, body obhajoby a hodnotenia stôp nemajú platný odkaz na existujúce evidence_id a konkrétnu stranu alebo odsek; nesmú sa považovať za skutkové zistenia.</p>
   <ul>${unverifiedClaims.map((claim) => `<li>${claim}</li>`).join("")}</ul>`
       : "";
 
@@ -670,7 +685,7 @@ ${narrativeDraftHtml}
 <h2>II. Vyporiadanie sa s obhajobou obvineného (§ 168 TP)</h2>
 <div class="section">
   <h3>Identifikované body útoku obhajoby a dôkazné protiúdery:</h3>
-  ${attacksHtml}
+  ${attacksHtml || `<p class="legal-expl">Žiadny bod obhajoby nie je viazaný na hash-overený dôkaz — neoverené body sú uvedené medzi neoverenými tvrdeniami.</p>`}
 </div>
 
 <h2>III. Vedecké zhodnotenie stôp</h2>
@@ -688,7 +703,7 @@ ${narrativeDraftHtml}
         <th style="width:22%">Zdroj</th>
       </tr>
     </thead>
-    <tbody>${tracesRows}</tbody>
+    <tbody>${tracesRows || `<tr><td colspan="7"><em>Žiadna stopa nie je viazaná na hash-overený dôkaz — neoverené hodnotenia stôp sú uvedené medzi neoverenými tvrdeniami.</em></td></tr>`}</tbody>
   </table>
 </div>
 

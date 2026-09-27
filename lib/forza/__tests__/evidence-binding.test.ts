@@ -283,6 +283,40 @@ describe("numbered conclusions are built only from bound claims (issue #13)", ()
     expect(sectionI).not.toContain(INJECTED);
   });
 
+  it("sections II and III hold only bound defense attacks and traces; unbound ones are unverified claims", () => {
+    const g = dossierWith([boundEvent]);
+    const boundRef = { documentId: "zapisnica.pdf", evidenceId: VERIFIED, page: 4 };
+    g.defenseAttack.attacks = [
+      { id: "DA-1", defenseClaim: "OBHAJOBA_VIAZANA", risk: "VYSOKÉ", counterStrike: "Protiúder", evidenceGap: "—", sourceRef: boundRef },
+      { id: "DA-2", defenseClaim: "OBHAJOBA_NEVIAZANA", risk: "KRITICKÉ", counterStrike: "PROTIUDER_BEZ_OPORY", evidenceGap: "—" },
+    ];
+    g.evidenceStrength.traces = [
+      { id: "T-1", name: "STOPA_VIAZANA", lr: "10^6", strength: "Silná", light: "green", paragraph: "§ 119", sourceRef: boundRef },
+      { id: "T-2", name: "STOPA_NEVIAZANA", lr: "10^9", strength: "Nepriestrelné", light: "green", paragraph: "§ 119" },
+    ];
+    const html = buildReportHTML(g, known);
+    const sectionII = html.slice(html.indexOf("<h2>II."), html.indexOf("<h2>III."));
+    const sectionIII = html.slice(html.indexOf("<h2>III."), html.indexOf("<h2>IV."));
+    expect(sectionII).toContain("OBHAJOBA_VIAZANA");
+    expect(sectionII).not.toContain("OBHAJOBA_NEVIAZANA");
+    expect(sectionIII).toContain("STOPA_VIAZANA");
+    expect(sectionIII).not.toContain("STOPA_NEVIAZANA");
+
+    const unverifiedStart = html.indexOf("<h2>Neoverené tvrdenia (nie sú skutkom)</h2>");
+    const unverified = html.slice(unverifiedStart, html.indexOf("<h2>I. Zistený skutkový stav"));
+    expect(unverified).toContain("OBHAJOBA_NEVIAZANA");
+    expect(unverified).toContain("PROTIUDER_BEZ_OPORY");
+    expect(unverified).toContain("STOPA_NEVIAZANA");
+  });
+
+  it("without a verified ledger sections II and III state that nothing is bound", () => {
+    const html = buildReportHTML(d);
+    const sectionII = html.slice(html.indexOf("<h2>II."), html.indexOf("<h2>III."));
+    const sectionIII = html.slice(html.indexOf("<h2>III."), html.indexOf("<h2>IV."));
+    expect(sectionII).toContain("Žiadny bod obhajoby nie je viazaný na hash-overený dôkaz");
+    expect(sectionIII).toContain("Žiadna stopa nie je viazaná na hash-overený dôkaz");
+  });
+
   it("omits the draft section when the model produced no narrative", () => {
     const empty = dossierWith([boundEvent]);
     empty.judgeReadyText = { skutkovyStav: "", vyporiadanie: " ", vedecke: "" };
