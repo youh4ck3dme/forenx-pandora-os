@@ -14,9 +14,10 @@
 # - Build beží v ODDELENOM adresári (git worktree $BUILD_DIR), nie v živom — beziaci
 #   server počas buildu nestratí súbory. Nový build sa pred výmenou spustí na
 #   dočasnom porte a musí odpovedať.
-# - Výmena: .next/standalone → .next/standalone.prev, nový build na miesto,
-#   `pm2 reload` (cluster, postupne), overenie verify-pm2.sh. Pri zlyhaní
-#   automatický rollback na predchádzajúci commit aj build.
+# - Výmena: nový release v .deploy/releases/<id>, atomické prepnutie symlinku
+#   .next/standalone, `pm2 reload` (cluster, postupne), overenie verify-pm2.sh.
+#   Akákoľvek chyba po výmene (aj pm2 reload) → automatický rollback; zlyhanie
+#   rollbacku sa hlási (exit 3), nikdy sa nemaskuje.
 #
 # Premenné: APP_DIR (/var/www/pandora-browser), BUILD_DIR (/var/www/pandora-build),
 #           PM2_APP (pandora-browser), PORT (3005), SMOKE_PORT (3905), REF (origin/main),
@@ -166,12 +167,43 @@ case "$SMOKE_CODE" in
 esac
 
 # ------------------------------------------------------------------- swap
-say "Výmena buildu a PM2 reload"
+# Release adresáre + atomický symlink: .next/standalone -> .deploy/releases/<id>.
+# Node pri štarte rozlíši skutočnú cestu server.js, takže staré workery čítajú svoj
+# release až do reloadu a nové workery nový — žiadne chýbajúce súbory počas výmeny.
+say "Výmena buildu (atomický symlink) a PM2 reload"
+RELEASES="$APP_DIR/.deploy/releases"
+mkdir -p "$RELEASES" "$APP_DIR/.next"
+NEW_RELEASE="$RELEASES/$(git rev-parse --short=12 "$TARGET")-$(date +%Y%m%d%H%M%S)"
+cp -a "$BUILD_DIR/.next/standalone" "$NEW_RELEASE"     # živý staging zatiaľ netknutý
+
+LIVE="$APP_DIR/.next/standalone"
+if [ -d "$LIVE" ] && [ ! -L "$LIVE" ]; then
+  # Jednorazová konverzia pôvodného layoutu (adresár) na release.
+  mv "$LIVE" "$RELEASES/legacy-$(git rev-parse --short=12 "$CURRENT")"
+  ln -sfn "$RELEASES/legacy-$(git rev-parse --short=12 "$CURRENT")" "$LIVE"
+fi
+PREV_RELEASE=""
+[ -L "$LIVE" ] && PREV_RELEASE="$(readlink -f "$LIVE")"
+
 printf '%s\n' "$CURRENT" >"$APP_DIR/.deploy/previous-commit"
-rm -rf "$APP_DIR/.next/standalone.prev"
-if [ -d "$APP_DIR/.next/standalone" ]; then mv "$APP_DIR/.next/standalone" "$APP_DIR/.next/standalone.prev"; fi
-mkdir -p "$APP_DIR/.next"
-cp -a "$BUILD_DIR/.next/standalone" "$APP_DIR/.next/standalone"
+printf '%s\n' "$PREV_RELEASE" >"$APP_DIR/.deploy/previous-release"
+printf '%s\n' "$PM2_EXISTS" >"$APP_DIR/.deploy/pm2-existed"
+
+# Od tejto chvíle: akákoľvek chyba (aj samotné pm2 reload/start/save) → rollback.
+rollback_now() {
+  trap - ERR
+  say "Update zlyhal po výmene — automatický rollback na $(git log -1 --format='%h' "$CURRENT")"
+  if APP_DIR="$APP_DIR" PM2_APP="$PM2_APP" PORT="$PORT" bash "$SCRIPT_DIR/staging-rollback.sh" --yes; then
+    die "update bol vrátený; pozri pm2 logs $PM2_APP a $APP_DIR/.deploy/smoke.log"
+  fi
+  printf '\n!!! ROLLBACK ZLYHAL — staging vyžaduje ručný zásah !!!\n' >&2
+  printf '    pm2 status; pm2 logs %s; cat %s/.deploy/previous-*\n' "$PM2_APP" "$APP_DIR" >&2
+  exit 3
+}
+trap rollback_now ERR
+
+ln -sfn "$NEW_RELEASE" "$LIVE.tmp"
+mv -Tf "$LIVE.tmp" "$LIVE"                              # atomické prepnutie
 
 if git symbolic-ref -q HEAD >/dev/null; then git merge --ff-only --quiet "$TARGET"
 else git checkout --quiet --detach "$TARGET"; fi
@@ -190,11 +222,16 @@ sleep "${SETTLE_SECONDS:-5}"
 
 say "Overenie"
 if APP_DIR="$APP_DIR" PM2_APP="$PM2_APP" PORT="$PORT" bash "$SCRIPT_DIR/verify-pm2.sh"; then
+  trap - ERR
+  # Ponechaj aktuálny, predchádzajúci a 3 staršie release; ostatné zmaž.
+  KEEP="$(readlink -f "$LIVE")"
+  find "$RELEASES" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -rn | awk 'NR>5 {print $2}' |
+    while read -r old; do
+      [ "$old" = "$KEEP" ] || [ "$old" = "$PREV_RELEASE" ] || rm -rf "$old"
+    done
   say "Hotovo: staging beží na $(git log -1 --format='%h %s')"
+  info "release: $KEEP"
   info "rollback: scripts/deploy/staging-rollback.sh"
   exit 0
 fi
-
-say "Overenie zlyhalo — automatický rollback na $(git log -1 --format='%h' "$CURRENT")"
-APP_DIR="$APP_DIR" PM2_APP="$PM2_APP" PORT="$PORT" bash "$SCRIPT_DIR/staging-rollback.sh" --yes || true
-die "update bol vrátený; pozri pm2 logs $PM2_APP a $APP_DIR/.deploy/smoke.log"
+rollback_now

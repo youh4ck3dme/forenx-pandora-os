@@ -11,3 +11,5 @@
 438bb4a85402b86acf16cc64c954398f63853944:lib/ai/__tests__/mistral-client.test.ts:generic-api-key:24
 # Readable Mistral test fixture (same pattern as above), added in P1-04:
 28fd3cccb421715881319aa5d6db04f2fcaad783:lib/ai/__tests__/llm-redaction-gateway.test.ts:generic-api-key:12
+# Readable test fixture ("test-…-key-1234567890"), added with trace IDs:
+0341e2f085691e882b8128a8ae9066859d7c54d0:lib/__tests__/trace.test.ts:generic-api-key:144

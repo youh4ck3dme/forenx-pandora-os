@@ -61,6 +61,8 @@ JS
 release() { # version [extra-file]
   printf '%s\n' "$1" > VERSION
   if [ -n "${2:-}" ]; then mkdir -p "$(dirname "$2")"; echo "-- $1" > "$2"; fi
+  if [ "$1" = "broken-pm2-config" ]; then echo "module.exports = {{ broken" > ecosystem.config.cjs; fi
+  if [ "$1" = "fixed-pm2-config" ]; then cp "$REPO/ecosystem.config.cjs" ecosystem.config.cjs; fi
   git add -A && git commit -qm "release $1" && git push -q origin HEAD:main
 }
 git remote add origin /srv/origin.git
@@ -90,8 +92,9 @@ V1_SHA=$(git rev-parse HEAD)
 bash scripts/deploy/staging-update.sh --apply >/tmp/apply.txt || { tail -n 40 /tmp/apply.txt; fail "apply v2"; }
 wait_served v2 || fail "v2 not served after apply"
 [ "$(cat .deploy/previous-commit)" = "$V1_SHA" ] || fail "previous-commit not recorded"
-[ -d .next/standalone.prev ] || fail "previous build not kept"
-ok "apply: v2 served, previous commit and build kept for rollback"
+[ -L .next/standalone ] || fail ".next/standalone is not a release symlink"
+[ -f "$(cat .deploy/previous-release)/server.js" ] || fail "previous release not kept"
+ok "apply: v2 served via atomic release symlink, previous commit and release kept"
 
 echo "== new migrations need an explicit ack"
 cd "$SEED" && release v3 supabase/migrations/20990101000000_example.sql && cd "$APP_DIR"
@@ -126,6 +129,15 @@ wait_served v3 || fail "rollback did not restore v3"
 bash scripts/deploy/verify-pm2.sh >/tmp/verify2.txt || { cat /tmp/verify2.txt; fail "verify after rollback"; }
 ok "PM2 verification failed (public bind) → rolled back to v3, verify PASS"
 
+echo "== a failing pm2 reload itself triggers the rollback (not only verification)"
+cd "$SEED" && release broken-pm2-config && cd "$APP_DIR"
+if bash scripts/deploy/staging-update.sh --apply >/tmp/pm2fail.txt 2>&1; then fail "broken PM2 config reported success"; fi
+grep -q "automatický rollback" /tmp/pm2fail.txt || { tail -n 30 /tmp/pm2fail.txt; fail "no rollback after pm2 reload failure"; }
+wait_served v3 || fail "pm2 reload failure did not restore v3"
+[ "$(git log -1 --format=%s)" = "release v3" ] || fail "pm2 reload failure did not restore the v3 commit"
+ok "pm2 reload failure after the swap → automatic rollback to v3"
+cd "$SEED" && release fixed-pm2-config && cd "$APP_DIR"
+
 echo "== a dirty working tree blocks the update"
 echo "local edit" >> ecosystem.config.cjs
 if bash scripts/deploy/staging-update.sh >/tmp/dirty.txt 2>&1; then fail "dirty tree was not refused"; fi
@@ -155,6 +167,21 @@ if HEALTH_TIMEOUT=4 bash scripts/deploy/verify-pm2.sh >/tmp/stopped.txt; then fa
 grep -q "FAIL" /tmp/stopped.txt || fail "no FAIL rows for a stopped app"
 pm2 start "$PM2_APP" >/dev/null
 ok "verify-pm2.sh FAIL when the app is stopped"
+
+echo "== first deployment: a failed rollback is reported, never masked"
+pm2 delete "$PM2_APP" >/dev/null
+rm -rf .deploy .next
+git reset -q --hard HEAD~1
+cd "$SEED" && release public-bind-under-pm2 && cd "$APP_DIR"
+set +e
+bash scripts/deploy/staging-update.sh --apply --ack-migrations >/tmp/first.txt 2>&1
+CODE=$?
+set -e
+[ "$CODE" -eq 3 ] || { tail -n 30 /tmp/first.txt; fail "first-deploy failure exit code $CODE (expected 3)"; }
+grep -q "ROLLBACK ZLYHAL" /tmp/first.txt || fail "failed rollback not reported"
+if pm2 describe "$PM2_APP" >/dev/null 2>&1; then fail "faulty first deployment left the PM2 process running"; fi
+[ "$(git log -1 --format=%s)" != "release public-bind-under-pm2" ] || fail "Git not restored after first-deploy rollback"
+ok "first deploy: faulty process removed, Git restored, failure reported (exit 3)"
 
 echo
 echo "ALL $PASSED STAGING E2E CHECKS PASSED"

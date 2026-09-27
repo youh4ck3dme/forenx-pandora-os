@@ -299,9 +299,9 @@ bash scripts/deploy/staging-rollback.sh --yes     # návrat na predchádzajúci 
 
 `staging-update.sh --apply`: čistý strom a fast-forward na `origin/main` → build v oddelenom
 adresári `/var/www/pandora-build` (beziaci server počas buildu nestratí súbory) → smoke test nového
-buildu na `127.0.0.1:3905` → výmena `.next/standalone` (starý ostáva ako `.next/standalone.prev`) →
+buildu na `127.0.0.1:3905` → nový release v `.deploy/releases/<id>` a **atomické** prepnutie symlinku `.next/standalone` (staré workery dobehnú na svojom release) →
 `pm2 reload` cez `ecosystem.config.cjs` bez `HOSTNAME` zo shellu → `verify-pm2.sh` → pri zlyhaní
-automatický rollback.
+automatický rollback (aj keď zlyhá samotné `pm2 reload`). Zlyhanie rollbacku skript hlási (exit 3), nikdy ho nemaskuje.
 
 > **Pozor pri ručnom PM2:** `pm2 reload <app> --update-env` prevezme prostredie shellu a `HOSTNAME`
 > je v ňom názov stroja → Next.js potom počúva na IP stroja namiesto `127.0.0.1` (obídenie nginx).
