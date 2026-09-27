@@ -127,6 +127,10 @@ export function checkEnv(env, keys) {
   if (pub && srv && pub !== srv) {
     problems.push({ level: "error", key: "SUPABASE_URL", issue: "nezhoduje sa s NEXT_PUBLIC_SUPABASE_URL" });
   }
+  const cron = env.get("CRON_SECRET");
+  if (cron && cron.length < 32) {
+    problems.push({ level: "error", key: "CRON_SECRET", issue: "musí mať aspoň 32 znakov (kratší endpoint odmietne)" });
+  }
   const base = env.get("NEXT_PUBLIC_BASE_URL");
   if (base && !base.startsWith("https://")) {
     problems.push({ level: "error", key: "NEXT_PUBLIC_BASE_URL", issue: "musí začínať https://" });

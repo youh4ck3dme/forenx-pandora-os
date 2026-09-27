@@ -230,3 +230,86 @@ describe("evidence ledger: server-side hash verification", () => {
     expect(await auditActions(good)).toEqual(["evidence_registered", "evidence_hash_verified"]);
   });
 });
+
+describe("evidence ledger: review hardening", () => {
+  it("a client cannot register evidence already under legal hold", async () => {
+    const user = await createUser(db, "hold-insert@test.local");
+    const id = await insertEvidence(user, { legal_hold: true });
+    expect((await evidence(id))?.legal_hold).toBe(false);
+  });
+
+  it("rejects a malformed hash on insert", async () => {
+    const user = await createUser(db, "bad-hash@test.local");
+    await expect(insertEvidence(user, { sha256_hash: "not-a-hash" })).rejects.toThrow(/64 hex/);
+  });
+
+  it("service_role cannot delete directly, even after setting the bypass GUC", async () => {
+    const user = await createUser(db, "guc-service@test.local");
+    const id = await insertEvidence(user);
+    await expect(
+      db.transaction(async (tx) => {
+        await tx.exec("set local role service_role");
+        await tx.query("select set_config('forenx.evidence_delete', 'on', true)");
+        await tx.query("delete from public.evidence_items where id = $1", [id]);
+      }),
+    ).rejects.toThrow(/permission denied/);
+    expect(await evidence(id)).toBeDefined();
+  });
+
+  it("the GUC is not a bypass for a non-owner role even with a DELETE grant", async () => {
+    const user = await createUser(db, "guc-grant@test.local");
+    const id = await insertEvidence(user);
+    await db.exec("grant delete on public.evidence_items to authenticated");
+    try {
+      await expect(
+        asUser(user, async (tx) => {
+          await tx.query("select set_config('forenx.evidence_delete', 'on', true)");
+          await tx.query("delete from public.evidence_items where id = $1", [id]);
+        }),
+      ).rejects.toThrow(/delete_evidence_item_audited/);
+    } finally {
+      await db.exec("revoke delete on public.evidence_items from authenticated");
+    }
+    expect(await evidence(id)).toBeDefined();
+  });
+
+  it("service_role cannot erase audit entries by setting forenx.audit_erasure", async () => {
+    const user = await createUser(db, "guc-audit@test.local");
+    await insertEvidence(user);
+    await expect(
+      db.transaction(async (tx) => {
+        await tx.exec("set local role service_role");
+        await tx.query("select set_config('forenx.audit_erasure', 'on', true)");
+        await tx.query("delete from public.case_audit_log where user_id = $1", [user]);
+      }),
+    ).rejects.toThrow(/permission denied/);
+    const left = await db.query<{ n: number }>(
+      "select count(*)::int as n from public.case_audit_log where user_id = $1",
+      [user],
+    );
+    expect(left.rows[0]?.n).toBe(1);
+  });
+
+  it("a legacy row with a non-canonical hash can still receive a verification result", async () => {
+    const user = await createUser(db, "legacy@test.local");
+    await db.exec("alter table public.evidence_items disable trigger evidence_items_insert_guard");
+    let id: string | undefined;
+    try {
+      const res = await db.query<{ id: string }>(
+        `insert into public.evidence_items
+           (investigator_id, case_name, file_name, file_size, mime_type, s3_object_key, sha256_hash)
+         values ($1, 'LEGACY', 'old.pdf', 10, 'application/pdf', 'cases/c1/old.pdf', 'LEGACY-NOT-HEX')
+         returning id`,
+        [user],
+      );
+      id = res.rows[0]?.id;
+    } finally {
+      await db.exec("alter table public.evidence_items enable trigger evidence_items_insert_guard");
+    }
+    await db.transaction(async (tx) => {
+      await tx.exec("set local role service_role");
+      await tx.query("select public.record_evidence_verification($1, 'mismatch', $2, 10)", [id, HASH_B]);
+    });
+    expect((await evidence(String(id)))?.hash_verification_status).toBe("mismatch");
+  });
+});

@@ -2,7 +2,9 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  ERROR_RETRY_AFTER_MS,
   isAuthorizedCronRequest,
+  pendingVerificationFilter,
   sha256OfStream,
   verifyEvidenceItem,
   type ObjectSource,
@@ -81,6 +83,19 @@ describe("verifyEvidenceItem", () => {
     });
     expect(result).toMatchObject({ status: "error", error: "TypeError" });
     expect(JSON.stringify(recorded)).not.toContain("Signature");
+  });
+});
+
+describe("pendingVerificationFilter", () => {
+  it("selects pending items and retries transient errors after the back-off", () => {
+    const now = new Date("2026-09-27T12:00:00.000Z");
+    const cutoff = new Date(now.getTime() - ERROR_RETRY_AFTER_MS).toISOString();
+    expect(pendingVerificationFilter(now)).toBe(
+      `hash_verification_status.eq.pending,and(hash_verification_status.eq.error,hash_verified_at.lt.${cutoff})`,
+    );
+    // mismatch / object_missing / verified are terminal and never re-selected
+    expect(pendingVerificationFilter(now)).not.toMatch(/\.eq\.(mismatch|object_missing|verified)(,|\)|$)/);
+    expect(pendingVerificationFilter(now)).toMatch(/\.eq\.pending/);
   });
 });
 

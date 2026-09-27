@@ -100,6 +100,15 @@ export function isAuthorizedCronRequest(
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
+/** Po tomto čase sa položka so stavom `error` (dočasná chyba S3/siete) overí znova. */
+export const ERROR_RETRY_AFTER_MS = 60 * 60 * 1000;
+
+/** Filter pre čakajúce položky: `pending` + `error` staršie ako back-off. */
+export function pendingVerificationFilter(now: Date = new Date()): string {
+  const retryBefore = new Date(now.getTime() - ERROR_RETRY_AFTER_MS).toISOString();
+  return `hash_verification_status.eq.pending,and(hash_verification_status.eq.error,hash_verified_at.lt.${retryBefore})`;
+}
+
 /** Produkčné závislosti: presigned GET na S3 + RPC cez service role. */
 export async function runPendingEvidenceVerification(limit = 10): Promise<VerificationResult[]> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -108,7 +117,7 @@ export async function runPendingEvidenceVerification(limit = 10): Promise<Verifi
   const { data, error } = await supabaseAdmin
     .from("evidence_items")
     .select("id, s3_object_key, sha256_hash, file_size")
-    .eq("hash_verification_status", "pending")
+    .or(pendingVerificationFilter())
     .order("created_at", { ascending: true })
     .limit(limit);
   if (error) throw new Error(`Načítanie čakajúcich dôkazov zlyhalo (${error.code})`);
