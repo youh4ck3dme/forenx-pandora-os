@@ -1,0 +1,48 @@
+name: Mobile DevOps CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'capacitor.config.json'
+      - 'scripts/mobile/**'
+      - 'android/**'
+      - 'ios/**'
+  pull_request:
+    paths:
+      - 'capacitor.config.json'
+      - 'scripts/mobile/**'
+      - 'android/**'
+      - 'ios/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mobile-verify:
+    name: Verify Mobile Profiles and Capacitor Sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test Mobile Profiles (local, staging, production)
+        run: |
+          node scripts/mobile/set-profile.mjs local
+          node scripts/mobile/set-profile.mjs staging
+          node scripts/mobile/set-profile.mjs production
+
+      - name: Build Web Bundle for Capacitor
+        run: npm run build
+
+      - name: Validate Capacitor Sync
+        run: npx cap sync --inline

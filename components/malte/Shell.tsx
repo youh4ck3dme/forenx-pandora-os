@@ -300,6 +300,7 @@ export function Card({
   className,
   onClick,
   id,
+  ...rest
 }: {
   children?: ReactNode;
   className?: string;
@@ -311,6 +312,7 @@ export function Card({
   return (
     <section
       id={id}
+      {...rest}
       className={cn(
         "rounded-lg border border-border/80 liquid-glass-card p-4 shadow-card transition-all duration-200",
         onClick &&

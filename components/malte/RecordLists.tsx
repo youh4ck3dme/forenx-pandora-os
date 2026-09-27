@@ -3,6 +3,7 @@ import { Pencil } from "lucide-react";
 import { Card, SectionTitle } from "@/components/malte/Shell";
 import { DeleteRecordButton } from "@/components/malte/DeleteRecordButton";
 import { EntityForm, TransactionForm } from "@/components/malte/CaseForms";
+import { VirtualTransactionList } from "@/components/malte/VirtualTransactionList";
 import { formatDate } from "@/forensic";
 import { formatMoney } from "@/forensic/core/money";
 import type { Entity, Transaction } from "@/forensic";
@@ -13,6 +14,9 @@ type ListProps = {
   revisions: Record<string, number>;
   onChanged: () => void;
 };
+
+/** Nad touto hranicou sa zoznam virtualizuje (P3-02: 10 000+ položiek, 60 FPS). */
+export const VIRTUAL_TRANSACTION_THRESHOLD = 200;
 
 export function TransactionList({
   caseId,
@@ -27,59 +31,111 @@ export function TransactionList({
 
   if (transactions.length === 0) return null;
 
+  if (transactions.length > VIRTUAL_TRANSACTION_THRESHOLD) {
+    return (
+      <VirtualTransactionList
+        caseId={caseId}
+        entities={entities}
+        transactions={transactions}
+        baseCurrency={baseCurrency}
+        revisions={revisions}
+        onChanged={onChanged}
+      />
+    );
+  }
+
   return (
     <>
       <SectionTitle>Zadané transakcie</SectionTitle>
       <div className="space-y-2">
-        {transactions.map((transaction) =>
-          editing === transaction.id ? (
-            <TransactionForm
-              key={transaction.id}
-              caseId={caseId}
-              entities={entities}
-              baseCurrency={baseCurrency}
-              initial={transaction}
-              revision={revisions[transaction.id]}
-              onCancel={() => setEditing(null)}
-              onSaved={() => {
-                setEditing(null);
-                onChanged();
-              }}
-            />
-          ) : (
-            <Card key={transaction.id} className="flex items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold tnum">
-                  {formatMoney(transaction.amount, transaction.currency)}
-                </p>
-                <p className="text-caption truncate">
-                  {formatDate(transaction.date)} •{" "}
-                  {names.get(transaction.fromId) ?? "?"} →{" "}
-                  {names.get(transaction.toId) ?? "?"}
-                  {transaction.description
-                    ? ` • ${transaction.description}`
-                    : ""}
-                </p>
-              </div>
-              <button
-                type="button"
-                aria-label={`Upraviť transakciu z ${transaction.date}`}
-                onClick={() => setEditing(transaction.id)}
-                className="text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <Pencil className="h-4 w-4" aria-hidden />
-              </button>
-              <DeleteRecordButton
-                type="transaction"
-                id={transaction.id}
-                label="transakciu"
-                onDeleted={onChanged}
-              />
-            </Card>
-          ),
-        )}
+        {transactions.map((transaction) => (
+          <TransactionRow
+            key={transaction.id}
+            transaction={transaction}
+            caseId={caseId}
+            entities={entities}
+            baseCurrency={baseCurrency}
+            names={names}
+            revision={revisions[transaction.id]}
+            editing={editing === transaction.id}
+            onEdit={setEditing}
+            onChanged={onChanged}
+          />
+        ))}
       </div>
     </>
+  );
+}
+
+/** Jeden riadok transakcie; používa ho obyčajný aj virtualizovaný zoznam. */
+export function TransactionRow({
+  transaction,
+  caseId,
+  entities,
+  baseCurrency,
+  names,
+  revision,
+  editing,
+  onEdit,
+  onChanged,
+}: {
+  transaction: Transaction;
+  caseId: string;
+  entities: Entity[];
+  baseCurrency: string;
+  names: Map<string, string>;
+  revision?: number;
+  editing: boolean;
+  onEdit: (id: string | null) => void;
+  onChanged: () => void;
+}) {
+  if (editing) {
+    return (
+      <TransactionForm
+        caseId={caseId}
+        entities={entities}
+        baseCurrency={baseCurrency}
+        initial={transaction}
+        revision={revision}
+        onCancel={() => onEdit(null)}
+        onSaved={() => {
+          onEdit(null);
+          onChanged();
+        }}
+      />
+    );
+  }
+  return (
+    <Card
+      data-transaction-id={transaction.id}
+      className="flex items-center gap-3"
+    >
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold tnum">
+          {formatMoney(transaction.amount, transaction.currency)}
+        </p>
+        <p className="text-caption truncate">
+          {formatDate(transaction.date)} •{" "}
+          {names.get(transaction.fromId) ?? "?"} →{" "}
+          {names.get(transaction.toId) ?? "?"}
+          {transaction.description ? ` • ${transaction.description}` : ""}
+        </p>
+      </div>
+      <button
+        type="button"
+        aria-label={`Upraviť transakciu z ${transaction.date}`}
+        onClick={() => onEdit(transaction.id)}
+        className="text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <Pencil className="h-4 w-4" aria-hidden />
+      </button>
+      <DeleteRecordButton
+        type="transaction"
+        id={transaction.id}
+        label="transakciu"
+        onDeleted={onChanged}
+      />
+    </Card>
   );
 }
 

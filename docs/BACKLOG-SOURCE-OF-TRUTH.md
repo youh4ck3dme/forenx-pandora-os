@@ -35,7 +35,7 @@ Vercel, Supabase, S3, DNS, Nginx, or a desktop signing service is configured.
 | -------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------- |
 | Root TypeScript                        | `DONE`    | `npx tsc --noEmit` returned 0 errors after a completed Next build.                                                |
 | Electron TypeScript and security suite | `DONE`    | Electron main/preload typechecks passed; `electron/__tests__` passed `17/17`.                                     |
-| Main application tests                 | `DONE`    | `npx vitest run`: `458/458` passed across 65 test suites.                                                         |
+| Main application tests                 | `DONE`    | `npx vitest run`: `469/469` passed across 67 test suites.                                                         |
 | Core engine tests                      | `DONE`    | `npx vitest run`: `559/559` passed.                                                                               |
 | Next production build                  | `DONE`    | `npm run build`: 30/30 routes generated.                                                                          |
 | Core engine TypeScript                 | `DONE`    | Created worker/types bridge modules; `npx tsc --noEmit` returned 0 errors in core-engine.                         |
@@ -49,6 +49,11 @@ Vercel, Supabase, S3, DNS, Nginx, or a desktop signing service is configured.
 
 **Status:** `BLOCKED`  
 **What works:** Production templates use `NEXT_PUBLIC_RP_ID="whoiswho.at"`.
+The app-side wiring is complete (P0-01/P1-01):
+lib/forza/webauthn-signature.ts calls navigator.credentials.create
+(platform passkey, ES256/RS256) for the export signature with a fallback to a
+local non-exportable ECDSA software key (IndexedDB); the Assistant export
+signs every dossier export with it.
 
 **Remaining acceptance criteria:**
 
@@ -255,7 +260,10 @@ Benchmark: 100 000 rows in ~0.3 s with 49 UI yields
 
 - [ ] Benchmark 5,000 graph nodes/edges at a defined target device and 60 FPS.
 - [x] Process 100,000-row CSV imports in chunks or a worker without blocking UI.
-- [ ] Virtualize transaction lists over 10,000 rows.
+- [x] Virtualize transaction lists over 10,000 rows. Done:
+      components/malte/virtual-window.ts (pure windowing core) +
+      VirtualTransactionList — TransactionList switches to the virtualized
+      window above 200 rows; DOM stays bounded (~25 nodes) at 12 000+ items.
 - [ ] Add performance budgets and repeatable benchmark fixtures to CI.
 
 ### P3-03 — Zod contracts and strict typing

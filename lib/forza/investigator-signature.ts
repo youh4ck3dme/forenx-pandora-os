@@ -23,6 +23,8 @@ export type WebauthnBinding = {
   credentialId: string;
   /** SHA-256 clientDataJSON assertionu (viaže výzvu na podpis). */
   clientDataHash: string;
+  /** P0-01: hardvérový passkey alebo lokálny softvérový podpis. */
+  method?: "webauthn" | "software";
 };
 
 export type InvestigatorSignature = {

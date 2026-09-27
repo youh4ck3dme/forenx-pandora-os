@@ -85,7 +85,11 @@ import {
 } from "@/lib/ai.functions";
 import type { ForensicDossier, BulkFileItem } from "@/lib/types";
 import { formatSourceRef } from "@/lib/types";
-import { exportDossierToPDF } from "@/lib/export-pdf";
+import {
+  computeDossierSha256,
+  exportDossierToPDF,
+} from "@/lib/export-pdf";
+import { createSignatureBinding } from "@/lib/forza/webauthn-signature";
 import { logCaseAccess } from "@/lib/forza/access-audit";
 import { useAccountProfile } from "@/lib/hooks/useAccountProfile";
 import { upsertTransaction } from "@/lib/case-data";
@@ -770,25 +774,45 @@ export function Assistant() {
 
   const profile = useAccountProfile();
 
-  const handleExportPDF = useCallback(() => {
-    if (!dossier) return;
-    // P1-04: export citlivého spisu sa nezmeniteľne zaznamená do auditného ledgeri.
-    void logCaseAccess(dossier.caseId, "export");
-    // P1-01: export podpíše vyšetrovateľ (identita z profilu), ak je profil vyplnený.
-    exportDossierToPDF(
-      dossier,
-      profile.data?.fullName
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  const handleExportPDF = useCallback(async () => {
+    if (!dossier || isExportingPdf) return;
+    setIsExportingPdf(true);
+    try {
+      // P1-04: export citlivého spisu sa nezmeniteľne zaznamená do auditného ledgeri.
+      void logCaseAccess(dossier.caseId, "export");
+      // P1-01: export podpíše vyšetrovateľ (identita z profilu), ak je profil vyplnený.
+      const investigator = profile.data?.fullName
         ? {
             investigator: {
               id: profile.data?.email || profile.data.fullName,
               name: profile.data.fullName,
             },
           }
-        : undefined,
-    );    toast.success(
-      "AI pracovná analýza (A4) so SHA-256 pečaťou bola pripravená na tlač/stiahnutie.",
-    );
-  }, [dossier, profile.data?.fullName, profile.data?.email]);
+        : undefined;
+      // P0-01: podpis viažeme na passkey (navigator.credentials.create);
+      // fallback = lokálny ned exportovateľný softvérový kľúč.
+      const binding = investigator
+        ? await createSignatureBinding({
+            challenge: computeDossierSha256(dossier),
+            userId: investigator.investigator.id,
+            userName: investigator.investigator.name,
+          })
+        : undefined;
+      exportDossierToPDF(
+        dossier,
+        investigator
+          ? { ...investigator, webauthn: binding ?? undefined }
+          : undefined,
+      );
+      toast.success(
+        "AI pracovná analýza (A4) so SHA-256 pečaťou bola pripravená na tlač/stiahnutie.",
+      );
+    } finally {
+      setIsExportingPdf(false);
+    }
+  }, [dossier, isExportingPdf, profile.data?.fullName, profile.data?.email]);
 
   const handleRetryFailedChunks = useCallback(async () => {
     if (!dossier?.analysisMeta || !lastAutopilotDocumentText) {
@@ -968,7 +992,7 @@ export function Assistant() {
           break;
         case 6:
           if (dossier) {
-            handleExportPDF();
+            void handleExportPDF();
           } else {
             setDemoMode(true);
             const demo = loadDemoDossier();
@@ -1625,7 +1649,8 @@ ${dossier.judgeReadyText.vedecke}`;
                     </Button>
                     <Button
                       size="sm"
-                      onClick={handleExportPDF}
+                      onClick={() => void handleExportPDF()}
+                      disabled={isExportingPdf}
                       className="h-8 text-xs gap-1.5 cursor-pointer font-medium"
                       title="Stiahnuť / vytlačiť AI pracovnú analýzu (PDF)"
                     >
@@ -2707,7 +2732,8 @@ ${dossier.judgeReadyText.vedecke}`;
                       </Button>
                       <Button
                         size="sm"
-                        onClick={handleExportPDF}
+                        onClick={() => void handleExportPDF()}
+                        disabled={isExportingPdf}
                         className="gap-1.5 h-8 cursor-pointer font-semibold shadow-xs"
                         title="Vygenerovať A4 PDF (AI pracovná analýza) so SHA-256 pečaťou"
                       >
