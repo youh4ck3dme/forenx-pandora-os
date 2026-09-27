@@ -815,7 +815,7 @@ export function Assistant() {
     } finally {
       setIsExportingPdf(false);
     }
-  }, [dossier, isExportingPdf, profile.data?.fullName, profile.data?.email]);
+  }, [dossier, isExportingPdf, profile.data?.fullName, profile.data?.email, knownEvidence]);
 
   const handleRetryFailedChunks = useCallback(async () => {
     if (!dossier?.analysisMeta || !lastAutopilotDocumentText) {

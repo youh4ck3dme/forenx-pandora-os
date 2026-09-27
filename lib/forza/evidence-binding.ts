@@ -60,14 +60,15 @@ function hasLocator(ref: { page?: number | undefined; paragraph?: string | undef
 
 /**
  * Skutkové tvrdenie (chronológia, tok): väzba cez `sourceRef.evidenceId` na
- * overený dôkaz. Legacy `documentId` (názov súboru) sa za dôkaz nepovažuje.
+ * overený dôkaz + konkrétna strana alebo odsek (rovnako ako pri právnych
+ * záveroch). Legacy `documentId` (názov súboru) sa za dôkaz nepovažuje.
  */
 export function isBoundToEvidence(
   sourceRef: SourceRef | undefined | null,
   knownEvidence: ReadonlySet<string>,
 ): boolean {
   const evidenceId = sourceRef?.evidenceId?.trim();
-  return Boolean(evidenceId && knownEvidence.has(evidenceId));
+  return Boolean(evidenceId && knownEvidence.has(evidenceId) && hasLocator(sourceRef));
 }
 
 /** Právny záver: overené evidenceId + konkrétna strana alebo odsek. */

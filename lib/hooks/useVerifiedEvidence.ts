@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getSupabaseSessionToken } from "@/lib/forza/access-audit";
 import {
   NO_VERIFIED_EVIDENCE,
@@ -45,27 +45,34 @@ export function useVerifiedEvidence(caseId: string | null | undefined): Verified
   const [knownEvidence, setKnownEvidence] = useState<ReadonlySet<string>>(NO_VERIFIED_EVIDENCE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Iba posledná požiadavka smie zapísať stav (prepnutie prípadu počas načítania).
+  const generation = useRef(0);
 
   const reload = useCallback(async () => {
+    const current = ++generation.current;
+    // Nový prípad: okamžite bez väzby, kým sa jeho ledger nenačíta.
+    setItems([]);
+    setKnownEvidence(NO_VERIFIED_EVIDENCE);
     if (!caseId) {
-      setItems([]);
-      setKnownEvidence(NO_VERIFIED_EVIDENCE);
+      setLoading(false);
       return;
     }
     setLoading(true);
     try {
       const token = await getSupabaseSessionToken();
       const result = await loadVerifiedEvidence(caseId, fetch, token);
+      if (current !== generation.current) return;
       setItems(result.items);
       setKnownEvidence(result.knownEvidence);
       setError(null);
     } catch (e) {
+      if (current !== generation.current) return;
       // Fail-closed: bez ledgera nie je nič viazané na dôkaz.
       setItems([]);
       setKnownEvidence(NO_VERIFIED_EVIDENCE);
       setError(e instanceof Error ? e.message : "Ledger dôkazov nie je dostupný.");
     } finally {
-      setLoading(false);
+      if (current === generation.current) setLoading(false);
     }
   }, [caseId]);
 

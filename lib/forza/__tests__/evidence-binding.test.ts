@@ -164,7 +164,8 @@ describe("isBoundToEvidence", () => {
     expect(isBoundToEvidence({ documentId: "zapisnica.pdf" }, known)).toBe(false);
     expect(isBoundToEvidence({ documentId: VERIFIED }, known)).toBe(false);
     expect(isBoundToEvidence({ documentId: "x", evidenceId: PENDING }, known)).toBe(false);
-    expect(isBoundToEvidence({ documentId: "x", evidenceId: VERIFIED }, known)).toBe(true);
+    expect(isBoundToEvidence({ documentId: "x", evidenceId: VERIFIED }, known)).toBe(false); // bez locatora
+    expect(isBoundToEvidence({ documentId: "x", evidenceId: VERIFIED, page: 1 }, known)).toBe(true);
   });
 });
 

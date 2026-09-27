@@ -191,7 +191,7 @@ const instructions: Record<AiTask, string> = {
   normalize_descriptions:
     'Navrhni normalizovaný tvar popisov platieb a možné zhody protistrán na kontrolu používateľom. Nič nespájaj automaticky. Vráť JSON {"suggestions": [{"transaction": string, "normalized": string, "counterparty": string, "confidence": "low"|"medium"|"high"}], "unverified": string[]}.',
   alt_devil:
-    'ROLE: Forenzný oponent ("Devil\'s Advocate"). Rozbi tunelové videnie vyšetrovania. Ak v <data> sú stopy/transakcie/nálezy, vygeneruj minimálne 2 plnohodnotné alternatívne hypotézy s oporou v dátach (nevymýšľaj nové entity ani transakcie). Pri každej hypotéze uveď sourceReferences: aspoň jeden {evidenceId, page alebo paragraph}; evidenceId musí byť VÝHRADNE ID dôkazu z <data>.evidence (E1, E2 …) — ID entít (S…) ani transakcií (T…) nie sú dôkazy; locator musí označovať konkrétnu stranu alebo odsek. Hypotéza bez takejto väzby sa nezobrazí ako nález. Ak taký odkaz nemožno doložiť, hypotézu označ v unverified a nepriraď jej sourceReferences. Pre každú uveď explainedEvidence, requiredTracesIfTrue a rebuttalTest. Vráť JSON: {"hypotheses": [{"id": string, "title": string, "scenario": string, "sourceReferences": [{"evidenceId": string, "page"?: number, "paragraph"?: string}], "explainedEvidence": string[], "requiredTracesIfTrue": string[], "rebuttalTest": string}], "unverified": string[], "cited": string[]}.',
+    'ROLE: Forenzný oponent ("Devil\'s Advocate"). Rozbi tunelové videnie vyšetrovania. Ak v <data> sú stopy/transakcie/nálezy, vygeneruj minimálne 2 plnohodnotné alternatívne hypotézy s oporou v dátach (nevymýšľaj nové entity ani transakcie). Pri každej hypotéze uveď sourceReferences: aspoň jeden {evidenceId, page alebo paragraph}; evidenceId musí byť VÝHRADNE ID dôkazu z <data>.evidence (E1, E2 …) — ID entít (S…) ani transakcií (T…) nie sú dôkazy; locator musí označovať konkrétnu stranu alebo odsek. Ak <data>.evidence chýba alebo je prázdne, sourceReferences nechaj prázdne. Hypotéza bez takejto väzby sa nezobrazí ako nález. Ak taký odkaz nemožno doložiť, hypotézu označ v unverified a nepriraď jej sourceReferences. Pre každú uveď explainedEvidence, requiredTracesIfTrue a rebuttalTest. Vráť JSON: {"hypotheses": [{"id": string, "title": string, "scenario": string, "sourceReferences": [{"evidenceId": string, "page"?: number, "paragraph"?: string}], "explainedEvidence": string[], "requiredTracesIfTrue": string[], "rebuttalTest": string}], "unverified": string[], "cited": string[]}.',
   admiss_audit:
     'ROLE: Procesný audítor trestného konania (TP SR č. 301/2005 Z. z. § 119 a nasl.). Skontroluj zákonnosť a procesnú prípustnosť podľa dát v <data>. Nevymýšľaj vady bez opory. Ku každej vade uveď sourceEvidenceId a aspoň sourcePage alebo sourceParagraph ako presný locator do konkrétneho zdroja; samotná citácia paragrafu zákona nie je locator. K overallStatus, score a courtReadySummary uveď sourceReferences s presnými evidenceId a locatorom. sourceEvidenceId a evidenceId musia byť VÝHRADNE ID dôkazu z <data>.evidence (E1, E2 …) — ID entít (S…) ani transakcií (T…) nie sú dôkazy; ak väzba chýba, uveď záver/vadu v unverified. Ak nie sú podklady, vráť prázdne defects. Vráť JSON: {"overallStatus": "admissible"|"at_risk"|"inadmissible", "score": number, "defects": [{"severity": "critical"|"curable"|"formal", "paragraph": string, "description": string, "remedyAction": string, "sourceEvidenceId": string, "sourcePage"?: number, "sourceParagraph"?: string}], "courtReadySummary": string, "sourceReferences": [{"evidenceId": string, "page"?: number, "paragraph"?: string}], "unverified": string[], "cited": string[]}.',
 };
@@ -521,13 +521,15 @@ async function runAiTaskInner(
 
     // Task 4: právne závery sa smú viazať len na hash-overené dôkazy WORM ledgera.
     const bindsEvidence = data.task === "alt_devil" || data.task === "admiss_audit";
-    const { loadEvidenceRegistry, pseudonymizeRegistry, remapEvidenceReferences } =
-      await import("./evidence-registry");
-    const registryEntries = bindsEvidence
-      ? await loadEvidenceRegistry(context.supabase, data.caseId)
-      : [];
+    // Case-úlohy analyzujú záznamy prípadu (transakcie, entity), nie obsah dôkazov:
+    // model obsah WORM dôkazov nevidí, takže väzbu nemôže dokázať → prázdny register;
+    // hypotézy a vady sa zobrazia iba ako neoverené (enforceTaskEvidenceBinding).
+    const { pseudonymizeRegistry, remapEvidenceReferences } = await import("./evidence-registry");
+    const registryEntries: import("./evidence-registry").RegistryEntry[] = [];
     const evidencePseudonyms = pseudonymizeRegistry(registryEntries);
-    if (bindsEvidence) payload = { ...payload, evidence: evidencePseudonyms.entries };
+    if (bindsEvidence && evidencePseudonyms.entries.length > 0) {
+      payload = { ...payload, evidence: evidencePseudonyms.entries };
+    }
 
     const base = {
       task: data.task,
@@ -1316,6 +1318,8 @@ export const runForensicAutopilot = createServerFn({ method: "POST" })
       documentText: string;
       fileName?: string;
       documentIds?: string[];
+      /** Task 4: dôkazy z WORM ledgera — server ich stiahne, overí hash a extrahuje text sám. */
+      evidenceIds?: string[];
       consentVersion?: string;
       idempotencyKey?: string;
       /** 1-based indexes of failed chunks to re-run; omit = full analysis. */
@@ -1360,6 +1364,7 @@ export async function runForensicAutopilotInner(
     documentText: string;
     fileName?: string;
     documentIds?: string[];
+    evidenceIds?: string[];
     consentVersion?: string;
     idempotencyKey?: string;
     retryChunkIndexes?: number[];
@@ -1367,17 +1372,48 @@ export async function runForensicAutopilotInner(
   },
   context: { supabase: SupabaseLike; userId: string },
 ) {
-  const { caseId, documentText } = data;
+  const { caseId } = data;
+  await assertCaseOwned(context.supabase, caseId);
+
+  // Task 4: závery sa smú viazať iba na dôkazy, ktorých obsah model skutočne
+  // analyzuje. Text od klienta nemá dokázateľný pôvod → prázdny register
+  // (nič nie je viazané). Pri evidenceIds server stiahne objekty z WORM ledgera,
+  // overí SHA-256 a extrahuje text sám; register = práve tieto dokumenty.
+  let documentText = data.documentText;
+  let evidenceRegistry: import("./evidence-registry").RegistryEntry[] = [];
+  if (data.evidenceIds?.length) {
+    const { loadLedgerDocuments, ledgerDocumentsText } = await import("./evidence-source");
+    const { escapeLike } = await import("@/lib/storage/evidence-ledger");
+    const { downloadCaseDocument } = await import("@/lib/storage/s3-vault");
+    const loaded = await loadLedgerDocuments(caseId, data.evidenceIds, {
+      fetchRows: async (ids) => {
+        const { data: rows, error } = await context.supabase
+          .from("evidence_items")
+          .select("id, file_name, file_size, sha256_hash, s3_object_key, hash_verification_status")
+          .in("id", ids)
+          .like("s3_object_key", `cases/${escapeLike(caseId)}/evidence/%`);
+        if (error) throw new Error("Ledger dôkazov sa nepodarilo načítať.");
+        return rows ?? [];
+      },
+      download: async (storageKey) => (await downloadCaseDocument(storageKey))?.buffer ?? null,
+      extract: async (fileName, buffer) =>
+        (await extractSingleBufferText(fileName, buffer.toString("base64"))).text,
+    });
+    if (loaded.documents.length === 0) {
+      throw new Error(
+        `Žiadny z vybraných dôkazov nie je v ledgeri overený a dostupný (${loaded.rejected
+          .map((r) => r.reason)
+          .join(", ")}).`,
+      );
+    }
+    documentText = ledgerDocumentsText(loaded.documents);
+    evidenceRegistry = loaded.documents.map((d) => ({ evidenceId: d.evidenceId, fileName: d.fileName }));
+  }
   if (!documentText || documentText.trim().length < MIN_EXTRACT_CHARS) {
     throw new Error(
       `Dokument je príliš krátky (minimálne ${MIN_EXTRACT_CHARS} znakov).`,
     );
   }
-  await assertCaseOwned(context.supabase, caseId);
-
-  // Task 4: jediné platné evidenceId = hash-overené dôkazy WORM ledgera tohto prípadu.
-  const { loadEvidenceRegistry } = await import("./evidence-registry");
-  const evidenceRegistry = await loadEvidenceRegistry(context.supabase, caseId);
 
   const {
     buildUserPrompt,
