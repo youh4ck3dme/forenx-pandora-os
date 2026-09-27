@@ -38,7 +38,7 @@ Vercel, Supabase, S3, DNS, Nginx, or a desktop signing service is configured.
 | Main application tests                 | `DONE`    | `npx vitest run`: `254/254` passed.                                                                       |
 | Core engine tests                      | `DONE`    | `npx vitest run`: `559/559` passed.                                                                       |
 | Next production build                  | `DONE`    | `npm run build`: 30/30 routes generated.                                                                  |
-| Core engine TypeScript                 | `RED`     | Missing UI/worker modules: `UploadFileList`, `nav`, `useCaseStore`, `DetectorSheet`, and `base64.worker`. |
+| Core engine TypeScript                 | `DONE`    | Created worker/types bridge modules; `npx tsc --noEmit` returned 0 errors in core-engine. |
 | Production dependency audit            | `DONE`    | `xlsx` removed completely; replaced by `read-excel-file/node` with multi-sheet support and 0 security advisories. |
 | Supabase migration application         | `BLOCKED` | Supabase CLI/database access was unavailable; migrations have not been applied.                           |
 | VPS/Docker runtime verification        | `BLOCKED` | No production Docker manifest or VPS access is available in this workspace.                               |

@@ -19,8 +19,7 @@ export function useGlFbo(width: number, height: number, options: Record<string, 
                 type: FloatType,
                 ...options,
             }),
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- size/options are stable per mount
-        [width, height],
+        [width, height, options],
     );
 
     useEffect(() => () => target.dispose(), [target]);
