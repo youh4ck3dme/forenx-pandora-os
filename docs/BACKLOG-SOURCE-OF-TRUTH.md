@@ -38,7 +38,7 @@ alebo podpisovanie desktopu je nakonfigurované.
 | #  | Položka                                                        | Stav                | Kde           |
 | -- | -------------------------------------------------------------- | ------------------- | ------------- |
 | 1  | `POST /api/vault` bez autentifikácie, ownership a auditu (N-01) | `IN PROGRESS`       | P0-07         |
-| 2  | Dev auth bypass cez hlavičku mimo loopbacku (N-03)             | `RED`               | P0-08         |
+| 2  | Dev auth bypass cez hlavičku mimo loopbacku (N-03)             | `IN PROGRESS`       | P0-08         |
 | 3  | Server funkcie sa vykonávajú aj v prehliadači (PR #18)         | `IN PROGRESS`       | P0-10         |
 | 4  | Rotácia tajomstiev                                             | `ROTATION REQUIRED` | P0-02         |
 | 5  | Doména, TLS, WebAuthn na produkcii                             | `BLOCKED`           | P0-01         |
@@ -163,14 +163,16 @@ alebo podpisovanie desktopu je nakonfigurované.
 
 ### P0-08 — Dev auth bypass cez hlavičku (N-03) — **NOVÉ**
 
-**Stav:** `RED` (HIGH)
-**Dôkaz:** `lib/storage/vault-auth.ts:36, 67–71`. Pri `NODE_ENV !== "production"` sa prijme identita
+**Stav:** `IN PROGRESS` — oprava v kóde hotová (vetva `fix/dev-auth-bypass`); otvorené je vylúčenie z produkčného bundlu.
+**Pôvodný dôkaz:** `lib/storage/vault-auth.ts:36, 67–71`. Pri `NODE_ENV !== "production"` sa prijme identita
 z `x-dev-user-id` / `x-user-id` (default `dev-investigator-001`) bez tokenu; v GET sa zároveň vypína ownership aj audit.
 Na preview/staging nasadení s iným `NODE_ENV` sa dá vydávať za ľubovoľného vyšetrovateľa.
 
-- [ ] Bypass len pre loopback host a `NODE_ENV !== "production"`, inak 401 (vzor: `lib/forza/dev-auth.ts`).
-- [ ] Lepšie: dev-only modul, ktorý produkčný build vynechá; test, že `.next` neobsahuje `x-dev-user-id`, `investigator-session-user`, `dev-investigator-001`.
-- [ ] Unit test: vzdialený host + `x-dev-user-id` → 401 aj pri `NODE_ENV=development`.
+- [x] Obchvat (`devAuthBypassAllowed`) len pri `NODE_ENV=test`, alebo pri `next dev` s výslovným `PANDORA_DEV_AUTH_BYPASS=1`, mimo Vercelu a pre loopback požiadavku; inak 401. `Host` aj `x-forwarded-for` sa dajú podvrhnúť (Next nastaví XFF zo socketu len keď chýba), preto je hlavnou bránou flag a loopback len doplnková kontrola.
+- [x] Kontrolu vlastníctva a audit preskakuje iba skutočný obchvat (`auth.devBypass`), nie `NODE_ENV`: skutočný token má plné kontroly v každom prostredí (GET zoznam aj presign na stiahnutie, POST, presign na upload, commit).
+- [x] Presign na upload bez service role už vlastníctvo nepreskočí, ale vráti 503.
+- [x] Testy: `lib/__tests__/vault-dev-bypass.test.ts` (16, z toho 13 na pôvodnom kóde zlyhá) vrátane „vzdialený host + `x-dev-user-id` → 401 pri `NODE_ENV=development`“.
+- [ ] Dev-only modul, ktorý produkčný build vynechá; test, že `.next` neobsahuje `x-dev-user-id`, `investigator-session-user`, `dev-investigator-001`.
 
 ### P0-09 — Rate limity a stav v pamäti na serverless (N-04) — **NOVÉ**
 

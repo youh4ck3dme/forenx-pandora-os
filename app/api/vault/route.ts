@@ -75,7 +75,8 @@ async function handleGet(request: NextRequest): Promise<NextResponse> {
   if (auth.userId === null) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
-  const isDev = process.env.NODE_ENV !== "production";
+  // P0-08: kontroly preskakuje iba lokálny dev obchvat, nie samotné NODE_ENV.
+  const devBypass = auth.devBypass;
 
   const { searchParams } = new URL(request.url);
   const rawCaseId = searchParams.get("caseId");
@@ -99,7 +100,7 @@ async function handleGet(request: NextRequest): Promise<NextResponse> {
   if (validation.data.action === "presign" && validation.data.storageKey) {
     const storageKey = validation.data.storageKey;
     const caseId = caseIdFromStorageKey(storageKey);
-    if (!isDev) {
+    if (!devBypass) {
       if (!caseId) {
         return NextResponse.json(
           { error: "Neplatný storage kľúč: chýba identifikátor spisu." },
@@ -157,7 +158,7 @@ async function handleGet(request: NextRequest): Promise<NextResponse> {
 
   const caseId = validation.data.caseId;
 
-  if (!isDev) {
+  if (!devBypass) {
     if (!isUuidCaseId(caseId)) {
       return NextResponse.json(
         { error: "Neplatný identifikátor spisu." },
@@ -206,7 +207,7 @@ async function handleGet(request: NextRequest): Promise<NextResponse> {
         ledgerRowToItem(row, caseId, bucket, auth.userId),
       );
     } catch {
-      if (!isDev) {
+      if (!devBypass) {
         return NextResponse.json(
           { error: "Ledger dôkazov sa nepodarilo načítať." },
           { status: 503 },
@@ -261,8 +262,9 @@ async function handlePost(request: NextRequest): Promise<NextResponse> {
   if (auth.userId === null) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
-  const isDev = process.env.NODE_ENV !== "production";
-  if (!isDev && (!auth.token || !ledgerConfigured())) {
+  // P0-08: kontroly preskakuje iba lokálny dev obchvat, nie samotné NODE_ENV.
+  const devBypass = auth.devBypass;
+  if (!devBypass && (!auth.token || !ledgerConfigured())) {
     // Bez tokenu nie je audit ani zápis do ledgera s RLS — dôkaz by nebol nikde evidovaný.
     return NextResponse.json({ error: "Ledger dôkazov nie je dostupný." }, { status: 503 });
   }
@@ -322,7 +324,7 @@ async function handlePost(request: NextRequest): Promise<NextResponse> {
     }
 
     // ─── 0. VLASTNÍCTVO SPISU A AUDIT (IDOR ochrana, fail-closed) ─────────
-    if (!isDev) {
+    if (!devBypass) {
       if (!isUuidCaseId(caseId)) {
         return NextResponse.json({ error: "Neplatný identifikátor spisu." }, { status: 400 });
       }
@@ -458,7 +460,7 @@ async function handlePost(request: NextRequest): Promise<NextResponse> {
   } catch (error: unknown) {
     // V produkcii sa detail chyby (S3, DB) klientovi nevracia.
     const message =
-      isDev && error instanceof Error ? error.message : "Spracovanie dôkazu v trezore zlyhalo.";
+      devBypass && error instanceof Error ? error.message : "Spracovanie dôkazu v trezore zlyhalo.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

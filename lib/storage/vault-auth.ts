@@ -22,18 +22,65 @@ export function isUuidCaseId(value: string): boolean {
 }
 
 export type VaultAuth =
-  | { userId: string; token: string | null }
+  /**
+   * `devBypass: true` = identita z lokálneho vývojárskeho obchvatu, nie z tokenu.
+   * Iba vtedy smú routes preskočiť kontrolu vlastníctva a audit.
+   */
+  | { userId: string; token: string | null; devBypass: boolean }
   | { userId: null; token: null; error: string; status: number };
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+const LOOPBACK_IPS = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+
+/**
+ * Požiadavka smeruje na loopback a neprešla cez proxy zo vzdialenej adresy.
+ * Pozor: `Host` aj `x-forwarded-for` vie klient podvrhnúť (Next nastaví XFF
+ * zo socketu len keď chýba), preto je to iba doplnková kontrola — hlavnou
+ * bránou je výslovné zapnutie `PANDORA_DEV_AUTH_BYPASS=1`.
+ */
+function isLoopbackRequest(request: NextRequest): boolean {
+  let hostname: string;
+  try {
+    hostname = new URL(request.url).hostname;
+  } catch {
+    return false;
+  }
+  if (!LOOPBACK_HOSTS.has(hostname)) return false;
+  const forwardedHost = request.headers.get("x-forwarded-host")?.split(":")[0];
+  if (forwardedHost && !LOOPBACK_HOSTS.has(forwardedHost)) return false;
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) {
+    const hops = forwardedFor.split(",").map((hop) => hop.trim());
+    if (!hops.every((hop) => LOOPBACK_IPS.has(hop))) return false;
+  }
+  return true;
+}
+
+/**
+ * P0-08 (N-03): vývojársky obchvat autentifikácie (x-dev-user-id alebo
+ * predvolený `dev-investigator-001`) je povolený iba:
+ * - v unit testoch (`NODE_ENV=test`), alebo
+ * - pri `next dev` s výslovným `PANDORA_DEV_AUTH_BYPASS=1`, mimo Vercelu,
+ *   na loopback požiadavku.
+ * Samotné `NODE_ENV !== "production"` (staging, preview) už nestačí.
+ */
+export function devAuthBypassAllowed(request: NextRequest): boolean {
+  const env = process.env.NODE_ENV;
+  if (env === "production") return false;
+  if (env === "test") return true;
+  if (process.env.PANDORA_DEV_AUTH_BYPASS !== "1") return false;
+  if (process.env.VERCEL || process.env.VERCEL_ENV) return false;
+  return isLoopbackRequest(request);
+}
 
 /**
  * Overí vyšetrovateľa podľa Authorization: Bearer <supabase JWT>.
- * V dev režime (a testoch) beží bypass cez x-dev-user-id, v produkcii je
- * platný token povinný.
+ * Bez platného tokenu je jediná výnimka lokálny obchvat (`devAuthBypassAllowed`).
  */
 export async function authenticateVaultRequest(
   request: NextRequest,
 ): Promise<VaultAuth> {
-  const isDev = process.env.NODE_ENV !== "production";
+  const bypass = devAuthBypassAllowed(request);
   const authHeader = request.headers.get("authorization");
   const token = authHeader?.startsWith("Bearer ")
     ? authHeader.replace("Bearer ", "").trim()
@@ -49,8 +96,8 @@ export async function authenticateVaultRequest(
       try {
         const supabase = createClient(supabaseUrl, supabaseAnonKey);
         const { data, error } = await supabase.auth.getUser(token);
-        if (data?.user) return { userId: data.user.id, token };
-        if (error && !isDev) {
+        if (data?.user) return { userId: data.user.id, token, devBypass: false };
+        if (error && !bypass) {
           return {
             userId: null,
             token: null,
@@ -64,12 +111,12 @@ export async function authenticateVaultRequest(
     }
   }
 
-  if (isDev) {
+  if (bypass) {
     const devUserId =
       request.headers.get("x-dev-user-id") ||
       request.headers.get("x-user-id") ||
       "dev-investigator-001";
-    return { userId: devUserId, token };
+    return { userId: devUserId, token, devBypass: true };
   }
 
   return {
