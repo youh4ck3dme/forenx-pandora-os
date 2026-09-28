@@ -1,515 +1,330 @@
 # PΛND0RΛ Forensic OS — Backlog Source of Truth
 
-> **Status:** Authoritative  
-> **Last reviewed:** 2026-09-28  
-> **Scope:** `youh4ck3dme/forenx-pandora-os` and the linked
-> `-forenx-core-engine` repository  
-> **Rule:** This is the only planning and delivery backlog. Do not create a
-> second backlog; update the status, evidence, and next action in this file.
+> **Status:** Authoritative — jediný plánovací a dodací backlog.
+> **Last reviewed:** 2026-09-28 (overené proti `main` @ `801129b`)
+> **Scope:** `youh4ck3dme/forenx-pandora-os` a prepojený `-forenx-core-engine`
+> **Zdroje zlúčené do tejto verzie:**
+> - predchádzajúci backlog (P0–P3, § 7–11),
+> - forenzný bezpečnostný audit na commite `67a64f7` (nálezy **N-01 až N-10**).
+>   Každý nález bol 2026-09-28 znovu overený proti `main` @ `801129b`: **všetkých 10 je stále otvorených.**
+>
+> **Pravidlo:** Druhý backlog nevytvárať. Stav, dôkaz a ďalší krok sa menia iba tu.
+> Hotové položky sú zhrnuté v § 12; detailné znenie starých promptov (§ 10–11 pôvodnej verzie) je v histórii gitu (`801129b`).
 
-## 1. Status legend and operating rules
+## 1. Legenda a pravidlá
 
-| Status              | Meaning                                                                                                 |
-| ------------------- | ------------------------------------------------------------------------------------------------------- |
-| `DONE`              | Implemented and verified by the cited local check. It still needs deployment verification where stated. |
-| `IN PROGRESS`       | Implementation exists but one or more acceptance criteria remain open.                                  |
-| `TODO`              | Not started.                                                                                            |
-| `RED`               | A verified failure or production blocker. It prevents release.                                          |
-| `BLOCKED`           | Requires an unavailable external system, credential, administrator action, or repository asset.         |
-| `ROTATION REQUIRED` | A credential must be replaced before production release.                                                |
+| Stav                | Význam                                                                                        |
+| ------------------- | --------------------------------------------------------------------------------------------- |
+| `DONE`              | Implementované a overené uvedenou kontrolou. Nasadenie treba overiť, ak je to uvedené.          |
+| `IN PROGRESS`       | Implementácia existuje, ale časť akceptačných kritérií je otvorená.                            |
+| `TODO`              | Nezačaté.                                                                                     |
+| `RED`               | Overená chyba alebo produkčný blokátor. Bráni releasu.                                        |
+| `BLOCKED`           | Vyžaduje nedostupný externý systém, prístup, administrátorský krok alebo asset.                |
+| `ROTATION REQUIRED` | Tajomstvo treba pred produkciou vymeniť.                                                      |
 
-**Release rule:** Production is forbidden while any P0 item is `RED`,
-`BLOCKED`, or `ROTATION REQUIRED`. A successful local build never proves that
-Vercel, Supabase, S3, DNS, Nginx, or a desktop signing service is configured.
+**Pravidlo releasu:** Produkcia je zakázaná, kým je ktorákoľvek položka P0 `RED`, `BLOCKED` alebo
+`ROTATION REQUIRED`. Úspešný lokálny build nikdy nedokazuje, že Vercel, Supabase, S3, DNS, Nginx
+alebo podpisovanie desktopu je nakonfigurované.
 
-**Repository boundary:**
+**Hranica repozitárov:**
 
-| Repository            | Responsibility                                                                                  |
+| Repozitár             | Zodpovednosť                                                                                    |
 | --------------------- | ----------------------------------------------------------------------------------------------- |
-| `forenx-pandora-os`   | Next.js App Router, Electron shell, Forza UI, deployment templates, web API routes.             |
-| `-forenx-core-engine` | Headless Zod contracts, forensics, RPO parsing, ledger, graph commits, and Supabase migrations. |
-
-## 2. Current quality gate
-
-| Check                                  | Status    | Evidence                                                                                                          |
-| -------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------- |
-| Root TypeScript                        | `DONE`    | `npx tsc --noEmit` returned 0 errors.                                                             |
-| Electron TypeScript and security suite | `DONE`    | Electron main/preload typechecks passed; `electron/__tests__` passed `17/17`.                                     |
-| Main application tests                 | `DONE`    | `npx vitest run`: `494/494` passed across 72 test suites (100% pass rate).                                        |
-| Core engine tests                      | `DONE`    | `npx vitest run`: `559/559` passed.                                                                               |
-| Next production build                  | `DONE`    | `npm run build`: 30/30 routes generated.                                                                          |
-| Core engine TypeScript                 | `DONE`    | Created worker/types bridge modules; `npx tsc --noEmit` returned 0 errors in core-engine.                         |
-| Production dependency audit            | `DONE`    | `xlsx` removed completely; replaced by `read-excel-file/node` with multi-sheet support and 0 security advisories. |
-| Supabase migration application         | `BLOCKED` | Local verification complete (2026-09-27): `npx supabase db reset` applied all 24 migrations cleanly on the local Docker stack. Remote application remains BLOCKED: no Supabase access token/login, and the only configured project is the production project.                                   |
-| VPS/Docker runtime verification        | `IN PROGRESS` | Docker manifests (`docker/Dockerfile.production`, `docker-compose.production.yml`) and Nginx configs created. Runtime deployment verification on VPS pending.                                       |
-
-## 3. Release-critical P0 — security, deployment, and evidence integrity
-
-### P0-01 — Domain, PR, TLS, and WebAuthn
-
-**Status:** `BLOCKED`  
-**What works:** Production templates use `NEXT_PUBLIC_RP_ID="whoiswho.at"`.
-The app-side wiring is complete (P0-01/P1-01):
-lib/forza/webauthn-signature.ts calls navigator.credentials.create
-(platform passkey, ES256/RS256) for the export signature with a fallback to a
-local non-exportable ECDSA software key (IndexedDB); the Assistant export
-signs every dossier export with it.
-
-**Remaining acceptance criteria:**
-
-- [ ] Independently review and merge the appropriate production PR.
-- [ ] Verify DNS for `pandora.whoiswho.at`.
-- [ ] Verify valid TLS from the public Internet.
-- [ ] Register and use a WebAuthn passkey on `whoiswho.at` and
-      `pandora.whoiswho.at`.
-
-**Owner action:** Access to GitHub, Vercel/DNS, and a production browser test is
-required.
-
-### P0-02 — Secrets boundary and key rotation
-
-**Status:** `ROTATION REQUIRED`  
-**Done:**
-
-- [x] `.env`, `.env*.local`, certificate files, SQLite journals, IndexedDB,
-      local-storage, and dump artifacts are ignored.
-- [x] Sensitive values were not emitted by the diagnostics.
-
-**Remaining acceptance criteria:**
-
-- [ ] Rotate `SUPABASE_SERVICE_ROLE_KEY`, S3 credentials, Mistral, Gemini, and
-      any other credential that may have appeared in history.
-- [ ] Replace them in Vercel, VPS, Supabase, S3, and local developer secrets.
-- [ ] Run `npm run verify:vercel-env -- --strict` with real deployment
-      configuration.
-- [ ] Scan the complete Git history using an approved secret-scanning service.
-
-### P0-03 — Direct S3 evidence vault and RLS
-
-**Status:** `IN PROGRESS`  
-**Done:**
-
-- [x] Vault upload and presign API inputs/outputs use strict validation.
-- [x] Ownership checks fail closed in production.
-- [x] S3 keys, MIME metadata, expiry, SHA-256, and provenance metadata are
-      validated.
-- [x] Vault tests passed: 10 original plus 4 hardening tests.
-- [x] WORM ledger immutability and audited deletion: `20260927234500_evidence_ledger_worm.sql` makes `sha256_hash`, `s3_object_key`, `created_at`, `investigator_id` immutable; direct `DELETE` prohibited in favor of `delete_evidence_item_audited`.
-- [x] Server-side hash verification worker: `/api/vault/verify` recalculates SHA-256 and byte length from S3.
-- [x] Supabase RLS policies for `evidence_items` verified: `supabase/verify/evidence_items_rls.sql` reports 17/17 PASS in automated PGlite test suite.
-- [x] Evidence unique key constraint: `supabase/migrations/20260928000000_evidence_unique_key.sql` ensures single active evidence per case/hash; verified by `supabase/tests/evidence-unique-key.test.ts` (2/2 pass).
-- [x] Attacker commit validation test suite: `lib/__tests__/evidence-commit-attacker.test.ts` (10/10 pass) verifies cross-tenant IDOR, spoofed hash, and forged provenance rejections.
-
-**Remaining acceptance criteria:**
-
-- [ ] Apply migrations to hosted Supabase instance (`supabase db push`).
-- [ ] Upload a 250 MB fixture through the production presigned URL.
-- [ ] Persist the post-upload evidence record transactionally.
-- [ ] Verify rejected cross-case access with an authenticated attacker test on live deployment.
-
-### P0-04 — Monitoring, alerting, and operational visibility
-
-**Status:** `IN PROGRESS`
-
-- [ ] Configure Sentry or equivalent frontend/server exception reporting.
-- [x] Alert on AI timeout over 60 seconds, S3 upload failure above 1%, and
-      Supabase failures. Done: `app/api/health/observe` endpoint and SQL metrics in
-      `supabase/migrations/20260928000100_operational_metrics.sql`; verified by
-      `supabase/tests/operational-metrics.test.ts` (3/3 pass) and
-      `lib/__tests__/health-observe.test.ts` (5/5 pass).
-- [x] Add correlation/trace IDs to server-side audit-safe logs. Done: lib/forza/trace.ts
-      (x-trace-id UUIDv4) wraps every Next.js API route, callMistral and the
-      browser Mistral client, and every server-fn call gets context.traceId.
-      traced* helpers sanitize logs (redactPii + masked bearer/API keys).
-- [x] Define alert owner, escalation channel, and response runbook. Done:
-      `docs/ALERTING.md` documents SLO thresholds, alert severities, escalation
-      tiers, and operational response procedures.
-
-### P0-05 — Headers and CSP
-
-**Status:** `IN PROGRESS`  
-**Done:**
-
-- [x] Nginx template has 250 MB upload limit, request streaming, 500 second
-      proxy timeouts, HSTS, `nosniff`, `DENY` framing, and permissions policy.
-- [x] Next emits CSP Report-Only and browser security headers.
-- [x] Collector route implemented at `/api/csp-report/` with rate limiting,
-      sanitization, and Supabase audit logging. Verified by
-      `lib/__tests__/csp-report.test.ts` (5/5 pass).
-- [x] Eliminated 308 Permanent Redirect loop on CSP reports by matching
-      `report-uri /api/csp-report/` with `trailingSlash: true`.
-- [x] Added development `'unsafe-eval'` to suppress Webpack HMR false positives;
-      configured `allowedDevOrigins` for localhost and Tailscale IP (`100.70.1.16`).
-
-**Remaining acceptance criteria:**
-
-- [ ] Deploy the Nginx template and validate it with `nginx -t` on the VPS.
-- [ ] Collect CSP reports and remove `unsafe-inline` through a nonce/hash
-      design before enforcing CSP.
-- [ ] Decide whether HSTS preload requirements are safe for the parent domain;
-      only then use `preload` and the longer max-age.
-
-### P0-06 — Backup and disaster recovery
-
-**Status:** `BLOCKED`
-
-- [ ] Enable and verify Supabase PITR.
-- [ ] Enable S3 versioning and Object Lock/WORM for the evidence bucket.
-- [ ] Execute and document a restore drill of a full case within 15 minutes.
+| `forenx-pandora-os`   | Next.js App Router, Electron shell, Forza UI, deployment šablóny, web API routes.              |
+| `-forenx-core-engine` | Headless Zod kontrakty, forenzika, RPO parsing, ledger, graph commity, Supabase migrácie.       |
+
+## 2. Čo dnes blokuje release (zhrnutie)
+
+| #  | Položka                                                        | Stav                | Kde           |
+| -- | -------------------------------------------------------------- | ------------------- | ------------- |
+| 1  | `POST /api/vault` bez autentifikácie, ownership a auditu (N-01) | `RED`               | P0-07         |
+| 2  | Dev auth bypass cez hlavičku mimo loopbacku (N-03)             | `RED`               | P0-08         |
+| 3  | Server funkcie sa vykonávajú aj v prehliadači (PR #18)         | `IN PROGRESS`       | P0-10         |
+| 4  | Rotácia tajomstiev                                             | `ROTATION REQUIRED` | P0-02         |
+| 5  | Doména, TLS, WebAuthn na produkcii                             | `BLOCKED`           | P0-01         |
+| 6  | Migrácie na hostovanom Supabase                                | `BLOCKED`           | P0-03         |
+| 7  | Záloha a obnova (PITR, Object Lock, drill)                     | `BLOCKED`           | P0-06         |
+| 8  | CSP len Report-Only + API kľúč v localStorage (N-02, N-09)     | `IN PROGRESS`       | P0-05         |
+| 9  | Rate limity v pamäti na serverless (N-04)                      | `TODO`              | P0-09         |
+| 10 | Merge do `main` blokuje branch protection (§ 4)                | `BLOCKED`           | § 4           |
+
+## 3. Quality gate
+
+| Kontrola                               | Stav          | Dôkaz / poznámka                                                                                                   |
+| -------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Root TypeScript                        | `DONE`        | `npx tsc --noEmit` 0 chýb (2026-09-28, vetva `fix/gate-remaining-ai-text`).                                         |
+| Testy aplikácie                        | `DONE`        | `npx vitest run`: 80 súborov / 570 testov (2026-09-28, vetva `fix/gate-remaining-ai-text`); `main` + #14: 79 / 555. |
+| Electron TypeScript a security suite   | `DONE`        | `electron/__tests__` 17/17 (predchádzajúca verzia backlogu).                                                        |
+| Core engine testy                      | `DONE`        | 559/559 (predchádzajúca verzia backlogu).                                                                           |
+| Core engine TypeScript                 | `IN PROGRESS` | **Rozpor:** pôvodný § 2 hlásil 0 chýb, P3-03 hlásil TODO. Znova spustiť `npx tsc --noEmit` v core-engine a zapísať.  |
+| Next produkčný build                   | `DONE`        | `npm run build` (30/30 routes, predchádzajúca verzia).                                                             |
+| Audit závislostí                       | `RED`         | N-05: 3 high + 13 moderate; CI kontroluje len `--audit-level=critical`. Pozri P1-06.                               |
+| Secret scan (gitleaks, celá história)  | `DONE`        | V CI beží. Falošné poplachy z `fix/gate-remaining-ai-text` sú od merge #19 v `.gitleaksignore`.                   |
+| E2E (Playwright)                       | `TODO`        | Testy existujú (`e2e/`), ale CI ich nespúšťa.                                                                       |
+| AST guard (`ci:guard`)                 | `TODO`        | Pokrýva iba `lib/ai` a CI ho nespúšťa (N-08).                                                                       |
+| Migrácie Supabase                      | `BLOCKED`     | Lokálne `npx supabase db reset` prešiel (2026-09-27). Remote: chýba access token, nakonfigurovaný je len produkčný projekt. V repozitári je teraz 26 migrácií, lokálne overených bolo 24. |
+| VPS / Docker runtime                   | `IN PROGRESS` | Manifesty a Nginx konfigurácia existujú; nasadenie na VPS neoverené.                                               |
+
+## 4. Otvorené PR, issues a správa repozitára
+
+| Položka | Stav | Ďalší krok |
+| ------- | ---- | ---------- |
+| PR #17 `fix/gate-remaining-ai-text` (fixes #16 + UI označenie neoverených tvrdení) | CI zelené, merge `BLOCKED` | Merge (pozri riadok o branch protection). |
+| PR #18 `fix/server-fn-route-handlers` | otvorený | Review a manuálny test na stagingu (P0-10). |
+| PR #19 `ci/gitleaks-ignore-question-ids` | `DONE` (mergnutý 2026-09-28) | Otvorené PR si majú aktualizovať vetvu z `main`, aby gitleaks prešiel. |
+| PR #15 `chore/untrack-preflight-sql` (draft) | otvorený | Mergnúť. |
+| Issue #16 (ďalší voľný text modelu bez väzby na dôkaz) | otvorené | Zavrie ho merge PR #17. |
+| **Branch protection na `main`** | `BLOCKED` | Nastavené je `require_last_push_approval: true`: posledný push musí schváliť niekto iný než autor. Pri jednom správcovi sa PR nedá mergnúť bez `--admin`. Rozhodnúť: pridať druhého reviewera, alebo toto pravidlo vypnúť. |
+| **Priame pushe do `main`** | `TODO` | Commity idú do `main` aj mimo PR (napr. `a281836`, `1015148`, `801129b`). Zapnúť „Require a pull request before merging“, ale až po vyriešení riadku vyššie. |
+| **Zmergované vetvy na GitHube** | `TODO` | 13 zmergovaných vetiev (`chore/vercel-pandora-domain` … `ops/staging-update`) zmazať. |
+
+## 5. P0 — bezpečnosť, nasadenie, integrita dôkazov
+
+### P0-01 — Doména, TLS a WebAuthn
+
+**Stav:** `BLOCKED`
+**Funguje:** produkčné šablóny používajú `NEXT_PUBLIC_RP_ID="whoiswho.at"`; export sa podpisuje cez
+`navigator.credentials.create` (`lib/forza/webauthn-signature.ts`) s fallbackom na lokálny ECDSA kľúč.
+
+- [ ] Overiť DNS pre `pandora.whoiswho.at`.
+- [ ] Overiť platné TLS z verejného internetu.
+- [ ] Zaregistrovať a použiť passkey na `whoiswho.at` a `pandora.whoiswho.at`.
+
+**Potrebné od vlastníka:** prístup k Vercel/DNS a test v produkčnom prehliadači.
+
+### P0-02 — Hranica tajomstiev a rotácia kľúčov
+
+**Stav:** `ROTATION REQUIRED`
+
+- [x] `.env`, `.env*.local`, certifikáty, SQLite journaly, IndexedDB a dumpy sú ignorované.
+- [x] gitleaks skenuje celú históriu v CI (`production-verification.yml`); falošné poplachy sú v `.gitleaksignore` podľa presného fingerprintu.
+- [ ] Vymeniť `SUPABASE_SERVICE_ROLE_KEY`, S3 prístupy, Mistral, Gemini a každé ďalšie tajomstvo, ktoré sa mohlo objaviť v histórii.
+- [ ] Nahradiť ich vo Vercel, na VPS, v Supabase, S3 a u vývojárov.
+- [ ] Spustiť `npm run verify:vercel-env -- --strict` s reálnou konfiguráciou.
+
+### P0-03 — S3 trezor dôkazov a RLS
+
+**Stav:** `IN PROGRESS` (vstupnú vrstvu blokuje P0-07)
+
+- [x] Presign/upload vstupy a výstupy striktne validované; ownership fail-closed pre GET a presign.
+- [x] WORM ledger (`20260927234500_evidence_ledger_worm.sql`), auditované mazanie, serverové overenie SHA-256 (`/api/vault/verify`).
+- [x] RLS `evidence_items` 17/17 PASS (PGlite); unikátny kľúč dôkazu (`20260928000000_evidence_unique_key.sql`); attacker suite 10/10.
+- [ ] Aplikovať migrácie na hostovaný Supabase (`supabase db push`).
+- [ ] Nahrať 250 MB fixture cez produkčnú presigned URL.
+- [ ] Zapísať záznam dôkazu po uploade transakčne.
+- [ ] Overiť odmietnutie cudzieho prípadu autentifikovaným útočníkom na živom nasadení.
+- [ ] Overiť súbežnosť: paralelné `POST /api/vault` + commit + verify proti živej DB (audit D5).
+
+### P0-04 — Monitoring a alerting
+
+**Stav:** `IN PROGRESS`
 
-## 4. P1 — compliance and court readiness
+- [x] Alerty na AI timeout > 60 s, zlyhania S3 > 1 % a Supabase (`/api/health/observe`, `20260928000100_operational_metrics.sql`).
+- [x] Trace ID (`x-trace-id`) na API routes a Mistral volaniach, sanitizované logy.
+- [x] Vlastník alertov, eskalácia a runbook (`docs/ALERTING.md`).
+- [ ] Nasadiť Sentry alebo ekvivalent na frontend aj server.
+- [ ] Otestovať alert end-to-end na produkcii.
 
-### P1-01 — Deterministic court-ready dossier
-
-**Status:** `IN PROGRESS`  
-**Done:** Court export tests cover document hashes, SHA-256, page/paragraph
-references, and the in-memory custody chain.
+### P0-05 — Hlavičky, CSP a ochrana klienta (N-02, N-09, N-10)
 
-**Remaining:**
+**Stav:** `IN PROGRESS`
 
-- [x] Bind every exported claim and financial transaction to a concrete
-      immutable evidence identifier. Done: lib/forza/evidence-binding.ts —
-      the ONLY evidence source is the WORM ledger evidence_items with
-      hash_verification_status = verified (via /api/vault). Timeline events,
-      flows, Devil's Advocate hypotheses and § 119 defects are facts only with
-      sourceRef.evidenceId of such a record plus a page/paragraph locator. The
-      AI-generated custodyLedger and analysisMeta.documentIds are never
-      evidence. Unbound claims render as "nie sú skutkom"; innocence claims
-      without their own valid reference are dropped before persistence
-      (lib/forza/legal-conclusions.ts).
-- [x] Add a WebAuthn-backed investigator signature and independently verify it.
-      Done: lib/forza/investigator-signature.ts — signature block binds investigator
-      identity, UTC timestamp, dossier/report/manifest SHA-256 via a hash-chain
-      (signatureHash + chainHash) with independent verification; embedded into the
-      PDF export (withEmbeddedSignature/stripEmbeddedSignature) and signed from the
-      account profile in the Assistant. WebAuthn binding is typed
-      (credentialId/clientDataHash); wiring navigator.credentials.create in the UI
-      remains an optional hardening step.
-- [ ] Produce and review a real PDF/JSON-LD dossier with legal stakeholders.
-
-### P1-02 — Admissibility and Slovak criminal procedure
-
-**Status:** `DONE`  
-Prompt/Zod/readiness controls, legal authorities, defect classification, and §119 findings are deterministically bound to evidence IDs.
+- [x] Nginx šablóna: 250 MB limit, streaming, 500 s timeouty, HSTS, `nosniff`, `DENY`, permissions policy.
+- [x] CSP Report-Only a zberač `/api/csp-report/` (rate limit, sanitizácia, audit) — 5/5 testov.
+- [ ] **N-02 (HIGH):** CSP je iba `Content-Security-Policy-Report-Only` so `script-src 'unsafe-inline'` a `connect-src https: wss:` (`next.config.mjs:81–82`). Prejsť na nonce CSP v middleware, odstrániť `unsafe-inline` zo `script-src` a zúžiť `connect-src` na allowlist (`self`, Mistral, Supabase URL, S3 endpoint). Až potom vynucovať.
+- [ ] **N-09 (MEDIUM):** BYOK kľúč Mistral/OpenAI je v `localStorage` (`lib/store/browser-store.ts:133, 223, 235`), takže jediné XSS znamená jeho únik. Minimum: vynútená CSP. Lepšie: session-scoped úložisko s krátkou TTL alebo proxy cez server.
+- [ ] **N-10 (LOW):** `images.remotePatterns` povoľuje `hostname: "**"` (`next.config.mjs:20`). Zúžiť pred zapnutím optimalizácie obrázkov.
+- [ ] Nasadiť Nginx šablónu a overiť `nginx -t` na VPS.
+- [ ] Rozhodnúť o HSTS `preload` pre rodičovskú doménu; až potom predĺžiť max-age.
 
-- [x] Model legal authority, source evidence, and admissibility defect as typed
-      records.
-- [x] Require a source reference for every legal or exculpatory conclusion.
-- [x] Render process-risk remediation in the dossier.
-
-### P1-03 — Retention, legal hold, and controlled destruction
-
-**Status:** `DONE`  
-`cases.status` holds the full lifecycle (draft/closed/legal_hold/archived/
-destroyed). Status moves only via set_case_status; releasing a legal hold
-requires an admin. Every child table rejects mutations unless the case is
-draft, so legal hold blocks all mutation and deletion paths. destroy_case
-(admin-only, archived cases, mandatory reason) writes an immutable
-`case_destroyed` audit entry before the cascade, and the audit chain survives.
+### P0-06 — Záloha a obnova
 
-- [x] Add case lifecycle states: Draft, Closed, Legal Hold, Archived, and
-      Destroyed.
-- [x] Enforce legal hold in every mutation and deletion path.
-- [x] Require administrator approval and immutable audit logging for destruction.
+**Stav:** `BLOCKED` (runbook hotový: `docs/DISASTER_RECOVERY_RUNBOOK.md`)
 
-### P1-04 — GDPR and privacy gateway
+- [ ] Zapnúť a overiť Supabase PITR.
+- [ ] Zapnúť S3 versioning a Object Lock/WORM pre bucket dôkazov.
+- [ ] Vykonať a zdokumentovať drill obnovy celého prípadu do 15 minút.
 
-**Status:** `IN PROGRESS`  
-**Done:** Outbound LLM privacy gateway redacts PII (including `person_name` for witnesses/victims, rodné čísla, IBAN, IDs, phones, emails) before Mistral/Gemini calls; immutable access audit log implemented via `log_case_access` RPC (`20260927150000_access_audit_log.sql`) and `/api/audit/access` route.
-
-- [x] Verify redaction in every Mistral, Gemini, export, telemetry, and server
-      logging path.
-- [x] Maintain access audit records with actor, timestamp, and source IP under
-      the applicable legal basis (§ 119 TP / GDPR Article 6 & 9).
-- [ ] Perform a DPIA and retention-policy review.
-
-## 5. P2 — product, UX, accessibility, and terminology
-
-### P2-01 — Mutation feedback
-
-**Status:** `DONE`  
-Forza mutation actions use busy/disabled states, spinners, success/error/retry
-feedback, and guarded destructive actions. Case deletion requires the case name.
-
-### P2-02 — Accessibility and dynamic viewport
-
-**Status:** `DONE`
-
-- [x] Radix dialogs provide focus trapping and Escape handling.
-- [x] Forza shell uses dynamic viewport behavior.
-- [x] Existing contrast tests pass.
-- [x] Perform keyboard-only and screen-reader acceptance tests on all routes.
-- [x] Measure WCAG 2.1 AA contrast across every theme and state.
-- [x] Dark backdrop blur and high-contrast liquid glass (`bg-black/70`–`bg-black/80 backdrop-blur-md`) implemented across `Assistant.tsx`, `Shell.tsx`, and `globals.css` to guarantee legibility over the 3D particle canvas.
-- [x] Favicon service IP bypass: skips external Google S2 lookups for raw IPs and local subnets, preventing browser 404 console errors.
-
-### P2-03 — Terminology
-
-**Status:** `DONE`
-
-- [x] Forza/Malte user-visible terminology was normalized toward **Prípad**.
-- [x] Scan web, Electron, email/export templates, and translations for
-      remaining visible **Projekt** terminology. Enforced by
-      lib/__tests__/terminology.test.ts (source scan, zero occurrences).
-
-### P2-04 — Loading, empty, and offline states
-
-**Status:** `IN PROGRESS`
-
-- [x] Skeletons and actionable empty states exist for Osoby, Vzťahy, Zbrane,
-      and Bankové výpisy.
-- [x] Add the same standardized state to Trezor (skeleton rows while
-      loading + actionable EmptyState in the Evidence Vault panel).
-- [ ] Clearly distinguish locally cached/offline data from synchronized data.
-
-## 6. P3 — architecture, performance, and desktop release
-
-### P3-01 — Web/Electron boundary
-
-**Status:** `DONE`  
-Renderer code accesses desktop capabilities through typed, narrow
-`contextBridge` API. Electron windows run isolated and sandboxed without Node
-integration; navigation, popups, and IPC are restricted and validated.
-
-### P3-02 — large-data performance
-
-**Status:** `IN PROGRESS`  
-**Done:** Bank CSV import runs in the csv.worker (bank kind) with a chunked
-parseBankCsvAsync fallback; the import-csv page uses parseBankCsvOffThread.
-Benchmark: 100 000 rows in ~0.3 s with 49 UI yields
-(lib/forza/csv/__tests__/large-data.test.ts).
-
-- [ ] Benchmark 5,000 graph nodes/edges at a defined target device and 60 FPS.
-- [x] Process 100,000-row CSV imports in chunks or a worker without blocking UI.
-- [x] Virtualize transaction lists over 10,000 rows. Done:
-      components/malte/virtual-window.ts (pure windowing core) +
-      VirtualTransactionList — TransactionList switches to the virtualized
-      window above 200 rows; DOM stays bounded (~25 nodes) at 12 000+ items.
-- [ ] Add performance budgets and repeatable benchmark fixtures to CI.
-
-### P3-03 — Zod contracts and strict typing
-
-**Status:** `IN PROGRESS`
-
-- [x] Vault, presign, graph, and core case boundaries gained strict Zod
-      validation.
-- [x] Root application TypeScript check passes.
-- [ ] Eliminate remaining `any`, unsafe casts, and non-null assertions from all
-      production paths.
-- [ ] Restore core-engine `tsc --noEmit` by supplying or removing its missing
-      UI/worker boundary dependencies.
-- [ ] Add contract tests for every external API/RPC boundary.
-
-### P3-04 — desktop code signing and updates
-
-**Status:** `TODO`
-
-- [ ] Acquire/configure Windows code-signing certificate.
-- [ ] Configure macOS notarization credentials and notarization validation.
-- [ ] Publish a staged GitHub Releases auto-update channel with rollback.
-
-## 7. Cross-cutting forensic data integrity
-
-| Item                                   | Status        | Required next action                                                           |
-| -------------------------------------- | ------------- | ------------------------------------------------------------------------------ |
-| Homonym-safe case identity             | `DONE`        | Keep distinct entities for conflicting date of birth, IČO, or source identity. |
-| RPO parsing                            | `DONE`        | Keep the explicit 13-activity IČO `54684994` regression fixture.               |
-| Temporal relations                     | `DONE`        | Add imports that prove historical relations are not overwritten.               |
-| Atomic AI graph commit                 | `IN PROGRESS` | Local (2026-09-27): `202609270001_atomic_ai_graph.sql` and all 23 other migrations applied cleanly via `npx supabase db reset` on the local stack. Remote BLOCKED: no access token, only the production project is configured. The megaprompt's `20260927113000_case_graph_hardening.sql` does not exist in this repo.  |
-| Canonical ledger hashes                | `DONE`        | Add compatibility fixtures before changing canonical serialization.            |
-| Custody ledger UI and tamper detection | `IN PROGRESS` | Apply database migration and run an end-to-end tamper scenario.                |
-| Minor-unit money arithmetic            | `DONE`        | Prohibit floating-point amounts in new financial code.                         |
-| Bank CSV normalization                 | `DONE`        | Maintain fixtures for TB, SLSP, VÚB, ČSOB, and Fio.                            |
-| Prompt-injection isolation             | `IN PROGRESS` | Require evidence delimiters and `sourceRef` on every model conclusion.         |
-
-## 8. Ordered release plan
-
-1. **Stop release and rotate secrets.** Complete P0-02 before exposing any new
-   deployment.
-2. **Repair the RED gates.** Replace or isolate `xlsx`; resolve core-engine
-   typecheck errors; bind §119/Devil's Advocate findings to evidence IDs.
-3. **Apply database migrations.** Apply the core graph/ledger migration and
-   verify RLS, owner locking, rollback, and custody ledger behavior in Supabase.
-4. **Deploy and validate operations.** Provision a production Docker manifest or
-   formally adopt the PM2 deployment model; deploy Nginx; verify TLS, DNS,
-   passkeys, monitoring, S3, PITR, Object Lock, and restore procedure.
-5. **Complete court and privacy acceptance.** Perform legal review, DPIA,
-   adversarial prompt-injection tests, and an export verification.
-6. **Complete product acceptance.** Keyboard, screen-reader, contrast, offline,
-   and mobile tests across all Forza modules.
-7. **Scale and release desktop.** Complete performance budgets, code signing,
-   notarization, staged auto-update, and rollback validation.
-
-## 9. Required release evidence
-
-Before changing the overall gate from `RED` to `GREEN`, attach dated evidence
-for all of the following:
-
-- secret rotation completion;
-- `npm audit` with no high or critical findings;
-- root and core-engine `tsc --noEmit` with zero errors;
-- complete test suite reports;
-- production Next and Electron builds;
-- applied Supabase migration IDs and integration-test output;
-- public DNS/TLS/WebAuthn test;
-- RLS/IDOR and 250 MB direct-S3 upload test;
-- backup restore drill;
-- monitoring/alert test;
-- court dossier review;
-- desktop signing and update verification.
-
-## 10. Next execution megaprompt — five release blockers
-
-Use this prompt as one bounded implementation run. It is intentionally ordered:
-each task removes a verified blocker or produces the evidence needed to unblock
-the next task.
-
-```text
-You are the release-hardening engineer for PΛND0RΛ Forensic OS.
-Work only with real code and actual configured environments. Do not invent
-credentials, deployment success, legal findings, or test results. Never print
-secret values. Follow docs/BACKLOG-SOURCE-OF-TRUTH.md as the sole plan.
-
-Goal: eliminate the five highest release blockers below. Start each task by
-inspecting the cited code and current git status. Preserve unrelated worktree
-changes. Use strict TypeScript, Zod at external boundaries, no any, no unsafe
-casts, no non-null assertions, and fail closed for authorization/integrity.
-
-Task 1 — Remove the dependency-audit RED gate
-- Repository: forenx-pandora-os.
-- Prove whether xlsx is reachable from production code. It currently has one
-  high-severity advisory without an upstream fix.
-- If unused, remove it from package.json/package-lock.json and confirm that
-  builds/tests still pass. If used, replace it with a maintained parser or
-  strictly isolate parsing server-side with validated, bounded inputs.
-- Run npm audit --omit=dev. Do not label this task green while high or critical
-  vulnerabilities remain.
-
-Task 2 — Restore -forenx-core-engine TypeScript to zero errors
-- Repository: -forenx-core-engine.
-- Resolve missing UI/worker module boundaries without importing browser UI into
-  the headless core. Extract typed interfaces or move browser-only tests to the
-  owning application package.
-- Fix implicit-any errors through real types, not casts.
-- Exit criterion: npx tsc --noEmit returns code 0 and the complete core Vitest
-  suite passes.
-
-Task 3 — Apply and prove atomic graph/RLS database integrity
-- Repositories: -forenx-core-engine migration and forenx-pandora-os caller.
-- Apply supabase/migrations/20260927113000_case_graph_hardening.sql only to an
-  explicitly identified non-production/staging project first.
-- Verify commit_ai_case_graph locks the case row, rejects a non-owner, rolls
-  back when one relation is invalid, and persists no partial entity/event data.
-- Verify evidence_items RLS blocks cross-case and cross-user access.
-- Add integration tests. If Supabase CLI, credentials, or a safe target project
-  are unavailable, stop and report BLOCKED with the exact missing prerequisite.
-
-Task 4 — Make court/legal conclusions evidence-bound
-- Repositories: both, according to where the real models live.
-- Model every Devil's Advocate hypothesis, §119/admissibility result, and
-  exculpatory conclusion with immutable evidence IDs plus SourceRef
-  (document/page/paragraph).
-- Reject and omit a claim without valid evidence linkage. Keep untrusted AI
-  evidence inside explicit EVIDENCE delimiters and validate generated output
-  with Zod before persistence or PDF export.
-- Add deterministic tests for valid linkage, absent linkage, tampered custody
-  history, and prompt-injection text claiming innocence without a SourceRef.
-
-Task 5 — Produce production deployment evidence
-- Repository: forenx-pandora-os plus explicitly authorized Vercel/Supabase/S3/
-  VPS environments.
-- Do not apply infrastructure changes without confirmed target and credentials.
-- Validate DNS/TLS/WebAuthn, Nginx port 3005 and streaming headers, CSP report
-  collection, 250 MB presigned S3 upload, RLS/IDOR rejection, monitoring
-  alerts, backup restore, and secret rotation.
-- Record command outputs and timestamps in this source-of-truth document.
-- Every unavailable external service is BLOCKED, never GREEN.
-
-For every completed task:
-1. List changed files and migration IDs.
-2. Run the narrow tests first, then npx tsc --noEmit, npx vitest run, and the
-   applicable production build.
-3. Update this source-of-truth document with DONE, RED, or BLOCKED and exact
-   evidence.
-4. Commit only verified changes with a concise message and report the commit
-   SHA. Do not commit secrets.
-```
-
-## 11. Chýbajúce súbory na dogenerovanie a presné prompt zadania
-
-| # | Názov súboru | Účel & Kategória | Stav |
-|---|--------------|------------------|------|
-| 1 | `docker/Dockerfile.production` | P0-06 / VPS Docker deployment manifest s multi-stage Next.js standalone buildom | `HOTOVO` |
-| 2 | `docker-compose.production.yml` | P0-06 / Orchestrácia Next.js (port 3005), Nginx reverzného proxy a healtchecku | `HOTOVO` |
-| 3 | `scripts/ci/run-performance-budget.mjs` | P3-02 / CI test bundle size, TBT a performance rozpočtov (Lighthouse budget) | `HOTOVO` |
-| 4 | `supabase/migrations/20260927113000_case_graph_hardening.sql` | P0-03 / Megaprompt Task 3 alias / synchronizácia schémy pre atomický graph commit | `HOTOVO` |
-| 5 | `docs/DISASTER_RECOVERY_RUNBOOK.md` | P0-06 / 15-minútový scenár obnovy databázy a S3 trezoru pri havárii | `HOTOVO` |
-| 6 | `scripts/desktop/sign-and-notarize.mjs` | P3-04 / Automatizácia Windows Authenticode a macOS Apple Notarization pre Electron | `HOTOVO` |
-
----
-
-### Prompt 1 — `docker/Dockerfile.production`
-```text
-Vytvor produkčný multi-stage Dockerfile pre PΛND0RΛ Forensic OS v umiestnení docker/Dockerfile.production.
-Požiadavky:
-1. Base image: node:20-alpine s libc6-compat a dumb-init pre bezpečný process reaping.
-2. Stage 1 (dependencies): npm ci s cache mountom, inštalácia len produkčných závislostí a devDependencies pre build.
-3. Stage 2 (builder): Spustenie npx tsc --noEmit a npm run build:vps (STANDALONE=true).
-4. Stage 3 (runner): Neprivilegovaný používateľ (nextjs:nodejs, uid 1001), skopírovanie .next/standalone, .next/static a public priečinka.
-5. EXPOSE 3005, ENV PORT=3005 NODE_ENV=production HOSTNAME="0.0.0.0".
-6. HEALTHCHECK cez curl alebo wget na http://localhost:3005/api/health/observe.
-7. ENTRYPOINT ["dumb-init", "node", "server.js"].
-```
-
-### Prompt 2 — `docker-compose.production.yml`
-```text
-Vytvor produkčný docker-compose súbor v koreni repozitára docker-compose.production.yml pre orchestráciu PΛND0RΛ Forensic OS na VPS.
-Požiadavky:
-1. Služba app: build z docker/Dockerfile.production, restart: always, port 3005 viazaný na 127.0.0.1:3005 (aby nebol priamo prístupný z verejného internetu mimo Nginx).
-2. Služba nginx: montovanie existujúceho nginx reverzného proxy konfiguračného súboru z deployment templates, porty 80 a 443, SSL certifikáty Let's Encrypt cez volume, limit 250 MB pre priame uploady do S3 trezoru.
-3. Definované environment variables cez env_file (.env.production).
-4. Prísne logging limity (max-size: 50m, max-file: 3) na ochranu miesta na disku VPS.
-```
-
-### Prompt 3 — `scripts/ci/run-performance-budget.mjs`
-```text
-Vytvor Node.js ESM skript scripts/ci/run-performance-budget.mjs pre kontrolu rozpočtov výkonu (Performance Budgets) v CI.
-Požiadavky:
-1. Skontroluj veľkosť vygenerovaných klientskych chunkov v .next/static/:
-   - Žiadny jednotlivý JS chunk nesmie presiahnuť 250 KB (gzipped) / 800 KB (raw).
-   - Celkový first-load JS na hlavnej trase / nesmie presiahnuť 350 KB.
-2. Integruj validáciu prítomnosti scripts/check-leva.mjs --strict na zamedzenie úniku Three.js debug GUI do produkcie.
-3. Formátovaný výstup do terminálu s farebnými stavmi (✅ PASS / ❌ FAIL) a tabuľkou najväčších chunkov.
-4. Návratový kód 1 pri prekročení limitu v režime --strict.
-```
-
-### Prompt 4 — `supabase/migrations/20260927113000_case_graph_hardening.sql`
-```text
-Vytvor migráciu supabase/migrations/20260927113000_case_graph_hardening.sql, ktorá je referencovaná v Task 3 megaprompte.
-Požiadavky:
-1. Idempotentne over a zaisti funkciu commit_ai_case_graph(_case uuid, _actor uuid, _entities jsonb, _events jsonb, _relations jsonb).
-2. Prísny row-level lock (FOR UPDATE na cases tabuľke) zamedzujúci súbežným zápisom a race conditions.
-3. RLS a security definer kontrola: overenie vlastníctva prípadu (_owner = _actor).
-4. Atomický rollback celej transakcie v prípade chyby v relačných väzbách (foreign key constraints medzi case_relations, case_entities a case_events).
-5. Nemenný audit záznam v case_audit_log s akciou "ai_graph_committed" a detailnými počtami objektov.
-```
-
-### Prompt 5 — `docs/DISASTER_RECOVERY_RUNBOOK.md`
-```text
-Vytvor autoritatívny operačný dokument docs/DISASTER_RECOVERY_RUNBOOK.md pre obnovu systému PΛND0RΛ Forensic OS v prípade havárie (RTO < 15 minút).
-Požiadavky:
-1. PITR (Point-in-Time Recovery) postup pre Supabase PostgreSQL: presné CLI príkazy a kroky obnovy stavu databázy pred incidentom.
-2. S3 Evidence Vault Disaster Recovery: overenie integrity SHA-256 hashu cez WORM ledger a opätovné naviazanie metadát.
-3. Scenár rotácie uniknutých kľúčov: krok za krokom návod na okamžitú výmenu SUPABASE_SERVICE_ROLE_KEY, S3 credentials a Mistral API kľúčov vo Vercel/VPS.
-4. Kontrolný checklist obnovy s podpisom veliteľa incidentu a protokolom o zachovaní reťazca dôkazov (Chain of Custody).
-```
-
-### Prompt 6 — `scripts/desktop/sign-and-notarize.mjs`
-```text
-Vytvor skript scripts/desktop/sign-and-notarize.mjs pre automatizáciu podpisovania a notarizácie Electron desktop aplikácie.
-Požiadavky:
-1. Windows: kontrola premenných CSC_LINK, CSC_KEY_PASSWORD a spustenie signtool / electron-builder sign.
-2. macOS: kontrola APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID a volanie notarytool pre validáciu ticketu.
-3. Preflight kontrola existencie dist-electron/ a inštalovaných binárok pred spustením.
-4. Graceful dry-run režim (--dry-run), ak certifikáty nie sú na lokálnom stroji k dispozícii.
-```
+### P0-07 — `POST /api/vault` bez autentifikácie (N-01) — **NOVÉ**
+
+**Stav:** `RED` (CRITICAL)
+**Dôkaz (overené na `801129b`):** `handlePost` (`app/api/vault/route.ts:228`) nevolá
+`authenticateVaultRequest`, `verifyCaseOwnership` ani `logVaultAccess`. GET ich volá (`:70`, `:105`, `:163`, `:123`, `:180`).
+`uploadedBy` je napevno `"investigator-session-user"` (`:315`); upload končí v `inMemoryEvidenceStore` (`:330–331`).
+**Dopad:** kto pozná URL, zapíše do trezoru ľubovoľný súbor do 250 MB pod ľubovoľný `caseId`. Kontaminácia reťazca dôkazov, DoS a neobhájiteľný audit.
+
+- [ ] Auth na začiatku `handlePost` (401), v produkcii UUID `caseId` (400).
+- [ ] Ownership: `not_found` → 404, `forbidden` → 403, `unavailable` → 503.
+- [ ] Audit `action: "upload"` fail-closed (500 pri zlyhaní zápisu; bez tokenu v produkcii odmietnuť).
+- [ ] `uploadedBy` = reálne `auth.userId`.
+- [ ] V produkcii žiadna cesta, kde dôkaz skončí v S3 bez zápisu do ledgera (commit cez `evidence-ledger` alebo 503).
+- [ ] Testy na 401 / 403 / 404 / 503 a happy path s auditným riadkom.
+
+### P0-08 — Dev auth bypass cez hlavičku (N-03) — **NOVÉ**
+
+**Stav:** `RED` (HIGH)
+**Dôkaz:** `lib/storage/vault-auth.ts:36, 67–71`. Pri `NODE_ENV !== "production"` sa prijme identita
+z `x-dev-user-id` / `x-user-id` (default `dev-investigator-001`) bez tokenu; v GET sa zároveň vypína ownership aj audit.
+Na preview/staging nasadení s iným `NODE_ENV` sa dá vydávať za ľubovoľného vyšetrovateľa.
+
+- [ ] Bypass len pre loopback host a `NODE_ENV !== "production"`, inak 401 (vzor: `lib/forza/dev-auth.ts`).
+- [ ] Lepšie: dev-only modul, ktorý produkčný build vynechá; test, že `.next` neobsahuje `x-dev-user-id`, `investigator-session-user`, `dev-investigator-001`.
+- [ ] Unit test: vzdialený host + `x-dev-user-id` → 401 aj pri `NODE_ENV=development`.
+
+### P0-09 — Rate limity a stav v pamäti na serverless (N-04) — **NOVÉ**
+
+**Stav:** `TODO` (HIGH)
+**Dôkaz:** `new Map()` v `app/api/csp-report/limiter.ts:3`, `app/api/health/observe/limiter.ts:2` a
+`inMemoryEvidenceStore` v `app/api/vault/route.ts:51`. Na serverless má každá inštancia vlastnú pamäť,
+takže limit sa obíde rozložením požiadaviek.
+
+- [ ] Rozhranie `RateLimiter` so zdieľaným úložiskom (napr. Upstash Redis) v produkcii, `Map` len pre dev/testy.
+- [ ] `inMemoryEvidenceStore` úplne mimo produkčnej cesty (výpis iba z ledgera).
+- [ ] Load test: 100 paralelných požiadaviek cez viac inštancií rešpektuje limit.
+
+### P0-10 — Server funkcie len na serveri — **NOVÉ**
+
+**Stav:** `IN PROGRESS` (PR #18)
+Všetkých 39 `createServerFn` sa má vykonávať iba v route handleri `/api/fn/[...id]` s Bearer tokenom.
+
+- [ ] Review a merge PR #18 spolu s novým `deploy/nginx.conf` (inak veľké uploady narazia na 10 MB limit a AI na 60 s timeout).
+- [ ] Manuálny test na stagingu: AI status, uloženie prípadu, autopilot, hromadný upload.
+- [ ] Follow-up: `whoiswho.functions.ts` číta serverové env v prehliadači (integrácia je potichu vypnutá) → presunúť za route.
+- [ ] Follow-up: serverový kód handlerov je stále v klientskom bundli → oddeliť od `*.functions.ts`.
+
+## 6. P1 — súlad a pripravenosť pre súd
+
+### P1-01 — Deterministický dossier pre súd
+
+**Stav:** `IN PROGRESS`
+
+- [x] Tvrdenia, toky, hypotézy Devil's Advocate a § 119 vady sú faktom len s `sourceRef.evidenceId` hash-overeného záznamu WORM ledgera a locatorom strana/odsek (`lib/forza/evidence-binding.ts`).
+- [x] Číslované závery I.–III. len z viazaných tvrdení; naratív modelu iba ako označený neoverený návrh (#13 → PR #14).
+- [x] Podpis vyšetrovateľa s nezávislým overením (`lib/forza/investigator-signature.ts`), WebAuthn prepojený s exportom (P0-01).
+- [ ] Odpovede ÚBOK, záver o financovaní a stav zákonných znakov viazať na dôkaz; v UI označiť neviazané (#16 → PR #17, čaká na merge).
+- [ ] Ďalší voľný text modelu stále bez väzby: `testimonyContradictions` (tvrdenia osôb, „miera nepravdy“ v %), `directEvidence`, `unverifiedHypotheses`, súhrnné sumy `financialAnalysis` (total/cash/transfer). Rozhodnúť väzbu alebo označenie, ako pri #16.
+- [ ] Spustiť Autopilot s načítaným ledgerom a overiť, že model vypĺňa nové polia `sourceRef`.
+- [ ] Vytvoriť a s právnikmi preveriť reálny PDF/JSON-LD dossier.
+
+### P1-04 — GDPR a privacy gateway
+
+**Stav:** `IN PROGRESS`
+
+- [x] Redakcia PII pred Mistral/Gemini, v exporte, telemetrii a logoch.
+- [x] Nemenný audit prístupov (`log_case_access`, `/api/audit/access`).
+- [ ] **N-06 (MEDIUM):** IP v audite sa berie z prvej hodnoty `x-forwarded-for` bez validácie (`app/api/audit/access/route.ts:80–81`), takže je falšovateľná. Použiť IP pridanú platformou (posledná hodnota / `x-real-ip` podľa dokumentácie platformy), identitu brať z `auth.uid()` v SECURITY DEFINER funkcii; test so spoofovanou hlavičkou.
+- [ ] Overiť RLS a `log_case_access` v živej DB ako rola `authenticated` (audit D2).
+- [ ] DPIA a review politiky uchovávania.
+
+### P1-05 — Konfigurácia produkcie (N-07) — **NOVÉ**
+
+**Stav:** `TODO` (MEDIUM)
+
+- [ ] `.env.production.example` (aj `.env.example`) má `ICO_ATLAS_API_URL` cez nešifrované `http://` na surovú IP. Zmeniť na `https://` placeholder a v `scripts/vercel-preflight.mjs` odmietnuť produkčnú hodnotu bez `https`.
+- [ ] Preflight rozšíriť o kontrolu https-only externých URL a prítomnosti `CRON_SECRET`.
+
+### P1-06 — Supply chain a CI brány (N-05, N-08) — **NOVÉ**
+
+**Stav:** `RED`
+
+- [ ] **N-05:** `npm audit`: 3 high (extract-zip cez electron, postcss ≤ 8.5.22) + 13 moderate. Aktualizovať postcss a electron mimo zraniteľného rozsahu.
+- [ ] **N-05:** v `production-verification.yml:68` zmeniť `--audit-level=critical` na `high`. Dnes je to v rozpore s § 11 (požiadavka „žiadne high“).
+- [ ] **N-08:** `eslint.ignoreDuringBuilds: true` (`next.config.mjs:15`) → `false` po vyčistení lint chýb.
+- [ ] **N-08:** `ast-guard` rozšíriť z `lib/ai` na `app/api/**`: každý handler musí volať auth guard, alebo mať zdokumentovanú výnimku `// @no-auth-reason`. Spúšťať v CI.
+- [ ] Spúšťať Playwright E2E v CI na každý PR do `main`.
+
+## 7. P2 — produkt, UX, prístupnosť
+
+### P2-04 — Načítavanie, prázdne a offline stavy
+
+**Stav:** `IN PROGRESS`
+
+- [x] Skeletony a akčné prázdne stavy pre Osoby, Vzťahy, Zbrane, Bankové výpisy a Trezor.
+- [ ] Jasne odlíšiť lokálne cacheované/offline dáta od synchronizovaných.
+
+## 8. P3 — architektúra, výkon, desktop
+
+### P3-02 — Výkon pri veľkých dátach
+
+**Stav:** `IN PROGRESS`
+
+- [x] 100 000-riadkový CSV import vo workeri (~0,3 s), virtualizovaný zoznam transakcií.
+- [x] Skript rozpočtov `scripts/ci/run-performance-budget.mjs` existuje.
+- [ ] Zapojiť rozpočty výkonu a opakovateľné benchmark fixtures do CI (dnes ich CI nespúšťa).
+- [ ] Benchmark 5 000 uzlov/hrán grafu na definovanom zariadení pri 60 FPS.
+
+### P3-03 — Zod kontrakty a striktné typy
+
+**Stav:** `IN PROGRESS`
+
+- [x] Striktná Zod validácia na hraniciach vault, presign, graph a case; root `tsc` čistý.
+- [ ] Odstrániť zvyšné `any`, nebezpečné casty a non-null assertions z produkčných ciest.
+- [ ] Core-engine `tsc --noEmit`: vyriešiť rozpor z § 3 a zapísať aktuálny výsledok.
+- [ ] Kontraktové testy pre každú externú API/RPC hranicu; minimálne pre každú API route test na 401, 403 a happy path.
+
+### P3-04 — Podpisovanie a aktualizácie desktopu
+
+**Stav:** `BLOCKED` (skript `scripts/desktop/sign-and-notarize.mjs` s `--dry-run` existuje, chýbajú certifikáty)
+
+- [ ] Získať a nastaviť Windows code-signing certifikát.
+- [ ] Nastaviť macOS notarizáciu (`APPLE_ID`, heslo aplikácie, `APPLE_TEAM_ID`) a validáciu ticketu.
+- [ ] Staged auto-update kanál cez GitHub Releases s rollbackom.
+- [ ] Vyhodnotiť zabalený Electron artifact: ASAR, podpis, update kanál (audit D4).
+
+## 9. Prierezová integrita forenzných dát
+
+| Položka                                | Stav          | Ďalší krok                                                                                  |
+| -------------------------------------- | ------------- | ------------------------------------------------------------------------------------------- |
+| Atomický AI graph commit               | `BLOCKED`     | Migrácia `20260927113000_case_graph_hardening.sql` už v repozitári je. Overiť na stagingu: zámok riadku prípadu, odmietnutie cudzieho vlastníka, rollback bez čiastočných dát. Remote chýba prístup. |
+| Custody ledger UI a detekcia manipulácie | `IN PROGRESS` | Aplikovať migráciu a spustiť end-to-end scenár manipulácie.                                 |
+| Izolácia prompt injection              | `IN PROGRESS` | `sourceRef` povinný pri každom závere modelu (P1-01); adversariálne testy vložených pokynov. |
+| Homonymá, RPO, časové vzťahy, kanonické hashe, peniaze v centoch, bankové CSV | `DONE` | Udržiavať regresné fixtures (IČO `54684994`; TB, SLSP, VÚB, ČSOB, Fio). |
+
+## 10. Poradie práce
+
+1. **Odblokovať repozitár:** vyriešiť branch protection (§ 4), potom mergnúť #17, #15 a tento backlog.
+2. **Zavrieť `RED` bezpečnostné nálezy v kóde:** P0-07 (N-01), P0-08 (N-03), P0-10 (PR #18), P0-09 (N-04). Jeden nález = jeden PR s testom.
+3. **Rotovať tajomstvá** (P0-02) pred akýmkoľvek novým nasadením.
+4. **CI brány:** P1-06 (audit high, eslint, ast-guard pre `app/api/**`, E2E), P1-05 (https-only konfigurácia).
+5. **CSP a klient:** P0-05 (nonce CSP → enforce, BYOK kľúč, remotePatterns).
+6. **Databáza:** migrácie na stagingu, potom produkcia (P0-03, § 9); RLS a audit v živej DB (P1-04).
+7. **Nasadenie a prevádzka:** DNS/TLS/WebAuthn (P0-01), Nginx na VPS, Sentry (P0-04), PITR, Object Lock a drill obnovy (P0-06).
+8. **Súd a súkromie:** zvyšok P1-01, DPIA (P1-04), právne review dossieru.
+9. **Produkt a desktop:** P2-04, P3-02, P3-03, P3-04.
+
+## 11. Dôkazy potrebné pred releasom
+
+Pred zmenou celkovej brány z `RED` na `GREEN` priložiť datované dôkazy pre:
+
+- dokončenú rotáciu tajomstiev;
+- `npm audit` bez high a critical;
+- root aj core-engine `tsc --noEmit` s nulou chýb;
+- kompletné reporty testov vrátane E2E;
+- produkčné buildy Next a Electron;
+- ID aplikovaných Supabase migrácií a výstup integračných testov;
+- verejný test DNS/TLS/WebAuthn;
+- test RLS/IDOR, `POST /api/vault` 401/403 a 250 MB priamy S3 upload;
+- produkčný build bez reťazcov `x-dev-user-id`, `investigator-session-user`, `dev-investigator-001`;
+- vynútenú CSP s 0 porušeniami za 7 dní;
+- rate limity funkčné naprieč inštanciami (load test);
+- drill obnovy zo zálohy;
+- test monitoringu a alertov;
+- právne review dossieru;
+- overenie podpisu a aktualizácií desktopu.
+
+## 12. Hotovo (archív, skrátene)
+
+| Oblasť | Dôkaz |
+| ------ | ----- |
+| P1-02 Prípustnosť a slovenský trestný poriadok | Typované právne záznamy, zdroj pri každom závere, náprava procesných rizík v dossieri. |
+| P1-03 Uchovávanie, legal hold, riadené zničenie | `set_case_status`, admin pre uvoľnenie holdu, `destroy_case` s nemenným auditom. |
+| P2-01 Spätná väzba mutácií | Busy/disabled stavy, retry, potvrdenie názvom prípadu pri mazaní. |
+| P2-02 Prístupnosť a dynamický viewport | Radix focus trap, klávesnica a čítačka, WCAG 2.1 AA kontrast, testy kontrastu. |
+| P2-03 Terminológia „Prípad“ | `lib/__tests__/terminology.test.ts` (0 výskytov „Projekt“). |
+| P3-01 Hranica Web/Electron | Úzke typované `contextBridge` API, sandbox, izolácia, obmedzené IPC a navigácia. |
+| Závislosti — `xlsx` | Odstránené, nahradené `read-excel-file/node`. |
+| Deployment artefakty (pôvodný § 11) | `docker/Dockerfile.production`, `docker-compose.production.yml`, `scripts/ci/run-performance-budget.mjs`, `supabase/migrations/20260927113000_case_graph_hardening.sql`, `docs/DISASTER_RECOVERY_RUNBOOK.md`, `scripts/desktop/sign-and-notarize.mjs` — súbory existujú; ich nasadenie a zapojenie do CI sledujú P0-06, P3-02, P3-04 a § 9. |
+| Megaprompt Task 1–4 (pôvodný § 10) | Task 1 (`xlsx`) a Task 4 (závery viazané na dôkazy) hotové; Task 2 a Task 3 pokračujú v P3-03 a § 9; Task 5 je rozpísaný do P0-01 až P0-06. |
+
+**Mimo auditu bez nálezu (pre úplnosť):** Electron `webPreferences` (sandbox, contextIsolation, bez nodeIntegration)
+a SSRF guard vrátane IPv6-mapped IPv4; migrácie dôsledne používajú RLS a SECURITY DEFINER so `search_path = public`.
