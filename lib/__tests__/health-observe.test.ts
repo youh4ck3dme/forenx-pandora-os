@@ -25,6 +25,8 @@ vi.mock("@supabase/supabase-js", () => ({
 
 vi.mock("@/integrations/supabase/client.server", () => ({
   supabaseAdmin: {
+    // P0-09: zdieľaný limiter volá rate_limit_hit cez admin klienta.
+    rpc: (...args: unknown[]) => rpcSpy(...args),
     from: (table: string) => ({
       insert: (row: unknown) => insertSpy(table, row),
     }),

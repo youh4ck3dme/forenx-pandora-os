@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
 /**
@@ -112,12 +111,13 @@ export function getRateLimiter(): RateLimiter {
   }
   if (sharedLimiter) return sharedLimiter;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) return unavailableLimiter;
-  const client = createClient(url, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
+  if (!url || !process.env.SUPABASE_SERVICE_ROLE_KEY) return unavailableLimiter;
+  // Zdieľaný admin klient: vie aj nové nepriehľadné kľúče `sb_secret_…`
+  // (posiela ich ako `apikey`, nie ako Bearer JWT).
+  sharedLimiter = createSupabaseRateLimiter(async (fn, args) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    return supabaseAdmin.rpc(fn, args);
   });
-  sharedLimiter = createSupabaseRateLimiter((fn, args) => client.rpc(fn, args));
   return sharedLimiter;
 }
 
