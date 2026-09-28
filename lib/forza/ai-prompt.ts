@@ -25,7 +25,7 @@ PRINCÍPY:
 10. Pri každom závere uvádzaj zdroj a confidence (0–100%).
 11. Ak chýba priamy dôkaz, jednoznačne uveď "NEOVERENÉ" alebo "CHÝBAJÚCI DÔKAZ".
 12. Ak si nie si istý poradím udalostí alebo tým, kto je kto, NEHÁDAJ. Namiesto odhadu napíš presne: "NEOVERENÉ — chýba zdroj v spise".
-13. Každá udalosť chronológie (sourceRef), podozrivý tok, bod útoku obhajoby (defenseAttack.attacks), stopa v evidenceStrength.traces, alternatívna hypotéza a každé § 119 posúdenie musí mať evidenceId VÝHRADNE z bloku <evidence_registry> (WORM ledger dôkazov, hash overený serverom) a konkrétny page alebo paragraph. custodyLedger (ani traceId, ani id), analysisMeta.documentIds, názov súboru ani voľný text NIE SÚ evidenceId. Samotný popis, názov dôkazu ani právny paragraf nie sú locator. Ak väzbu nevieš uviesť, nechaj evidenceId prázdne — tvrdenie sa zobrazí ako neoverené a nesmie byť súčasťou skutkového záveru. Tvrdenie o nevine alebo zbavení viny bez takejto väzby sa zahodí.
+13. Každá udalosť chronológie (sourceRef), podozrivý tok, bod útoku obhajoby (defenseAttack.attacks), stopa v evidenceStrength.traces, stav zákonného znaku v evidenceStrength.paragraphs, každá odpoveď v investigativeAnswers (menuje osoby), záver o financovaní (financialAnalysis.sourceRef), alternatívna hypotéza a každé § 119 posúdenie musí mať evidenceId VÝHRADNE z bloku <evidence_registry> (WORM ledger dôkazov, hash overený serverom) a konkrétny page alebo paragraph. custodyLedger (ani traceId, ani id), analysisMeta.documentIds, názov súboru ani voľný text NIE SÚ evidenceId. Samotný popis, názov dôkazu ani právny paragraf nie sú locator. Ak väzbu nevieš uviesť, nechaj evidenceId prázdne — tvrdenie sa zobrazí ako neoverené a nesmie byť súčasťou skutkového záveru. Tvrdenie o nevine alebo zbavení viny bez takejto väzby sa zahodí.
 
 ═══════════════════════════════════════════════════════════════════
 POVINNÁ ÚPLNOSŤ A KONZISTENCIA VÝSTUPU
@@ -241,7 +241,7 @@ ZÁVÄZNÝ ANALYTICKÝ RÁMEC ÚBOK — 3 VYŠETROVACIE OTÁZKY & ROZPORY
       }
     ],
     "paragraphs": [
-      { "para": "§ 100 TP", "title": "<názov>", "status": "OK|Narušené|Príprava", "note": "<poznámka>" }
+      { "para": "§ 100 TP", "title": "<názov>", "status": "OK|Narušené|Príprava", "note": "<poznámka>", "sourceRef": { "documentId": "<ID dokumentu>", "evidenceId": "<evidenceId z evidence_registry>", "page": 1, "excerpt": "<krátky citát>" } }
     ]
   },
 
@@ -308,7 +308,8 @@ ZÁVÄZNÝ ANALYTICKÝ RÁMEC ÚBOK — 3 VYŠETROVACIE OTÁZKY & ROZPORY
       "directEvidence": ["<priame dôkazy>"],
       "unverifiedHypotheses": ["<hypotézy>"],
       "missingEvidence": ["<chýbajúce dôkazy>"],
-      "confidenceLevel": <0-100>
+      "confidenceLevel": <0-100>,
+      "sourceRef": { "documentId": "<ID dokumentu>", "evidenceId": "<evidenceId z evidence_registry>", "page": 1, "excerpt": "<krátky citát>" }
     },
     "q2_planner_coordinator": {
       "questionNumber": 2,
@@ -318,7 +319,8 @@ ZÁVÄZNÝ ANALYTICKÝ RÁMEC ÚBOK — 3 VYŠETROVACIE OTÁZKY & ROZPORY
       "directEvidence": ["<priame dôkazy>"],
       "unverifiedHypotheses": ["<hypotézy>"],
       "missingEvidence": ["<chýbajúce dôkazy>"],
-      "confidenceLevel": <0-100>
+      "confidenceLevel": <0-100>,
+      "sourceRef": { "documentId": "<ID dokumentu>", "evidenceId": "<evidenceId z evidence_registry>", "page": 1, "excerpt": "<krátky citát>" }
     },
     "q3_financier": {
       "questionNumber": 3,
@@ -328,7 +330,8 @@ ZÁVÄZNÝ ANALYTICKÝ RÁMEC ÚBOK — 3 VYŠETROVACIE OTÁZKY & ROZPORY
       "directEvidence": ["<priame dôkazy>"],
       "unverifiedHypotheses": ["<hypotézy>"],
       "missingEvidence": ["<chýbajúce dôkazy>"],
-      "confidenceLevel": <0-100>
+      "confidenceLevel": <0-100>,
+      "sourceRef": { "documentId": "<ID dokumentu>", "evidenceId": "<evidenceId z evidence_registry>", "page": 1, "excerpt": "<krátky citát>" }
     }
   },
 
@@ -362,7 +365,8 @@ ZÁVÄZNÝ ANALYTICKÝ RÁMEC ÚBOK — 3 VYŠETROVACIE OTÁZKY & ROZPORY
         "redFlag": "<prečo je tok podozrivý>"
       }
     ],
-    "financingConclusion": "<záver o finančnom modeli a zdrojoch peňazí>"
+    "financingConclusion": "<záver o finančnom modeli a zdrojoch peňazí>",
+    "sourceRef": { "documentId": "<ID dokumentu>", "evidenceId": "<evidenceId z evidence_registry>", "page": 1, "excerpt": "<krátky citát>" }
   }
 }
 

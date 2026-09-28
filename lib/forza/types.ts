@@ -73,6 +73,8 @@ export interface ParagraphStatus {
   title: string;
   status: "OK" | "Narušené" | "Príprava";
   note: string;
+  /** Issue #16: bez väzby na overený dôkaz sa stav ani poznámka neexportujú ako zistenie. */
+  sourceRef?: SourceRef;
 }
 
 export interface JudgeReadyText {
@@ -91,6 +93,8 @@ export interface InvestigativeQuestionAnswer {
   unverifiedHypotheses: string[];
   missingEvidence: string[];
   confidenceLevel: number; // 0–100%
+  /** Issue #16: bez väzby na overený dôkaz sa odpoveď ani menované osoby neexportujú. */
+  sourceRef?: SourceRef;
 }
 
 // ─── ROZPORY VO VÝPOVEDIACH & MATICA KLAMSTVA / NEPRAVDY ──────────
@@ -126,6 +130,8 @@ export interface FinancialTransactionSummary {
   cashRatioPercent: number;
   suspiciousFlows: SuspiciousFlowItem[];
   financingConclusion: string;
+  /** Issue #16: väzba záveru o financovaní na overený dôkaz; bez nej sa záver neexportuje. */
+  sourceRef?: SourceRef;
 }
 
 /** Proveniencia a stav AI analýzy — povinné na produkčných dossieroach. */

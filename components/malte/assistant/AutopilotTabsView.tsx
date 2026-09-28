@@ -29,6 +29,11 @@ import { AdmissibilityAuditView } from "@/components/features/forensic/Admissibi
 import { CustodyLedgerViewer } from "@/components/features/forensic/CustodyLedgerViewer";
 import type { ForensicDossier } from "@/lib/types";
 import { formatSourceRef } from "@/lib/types";
+import {
+  gatedInvestigativeAnswers,
+  isBoundToEvidence,
+  isFinancingConclusionBound,
+} from "@/lib/forza/evidence-binding";
 import { lightClasses, riskBadgeClasses } from "./types";
 import { toast } from "sonner";
 
@@ -240,53 +245,79 @@ export function AutopilotTabsView({
             </div>
 
             <div className="space-y-3">
-              {[
-                dossier.investigativeAnswers?.q1_buyer_seller,
-                dossier.investigativeAnswers?.q2_planner_coordinator,
-                dossier.investigativeAnswers?.q3_financier,
-              ]
-                .filter(Boolean)
-                .map((q) => {
-                  if (!q) return null;
+              {gatedInvestigativeAnswers(dossier, knownEvidence).map(
+                ({ number, question, answer: q, bound }) => {
                   return (
                     <div
-                      key={q.questionNumber}
-                      className="rounded-xl border border-border bg-card p-3.5 space-y-2.5 text-xs shadow-xs"
+                      key={number}
+                      className={`rounded-xl border p-3.5 space-y-2.5 text-xs shadow-xs ${
+                        bound
+                          ? "border-border bg-card"
+                          : "border-amber-500/30 bg-amber-500/5"
+                      }`}
                     >
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-border/50 pb-2">
+                        {/* Issue #16: kanonické znenie otázky, nikdy text modelu. */}
                         <h4 className="font-bold text-foreground text-sm flex items-center gap-2">
                           <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/20 text-[11px] font-bold text-primary">
-                            {q.questionNumber}
+                            {number}
                           </span>
-                          {q.question}
+                          {question}
                         </h4>
-                        <Badge
-                          variant="outline"
-                          className={
-                            q.confidenceLevel >= 90
-                              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400 text-[10px]"
-                              : "border-amber-500/40 bg-amber-500/10 text-amber-400 text-[10px]"
-                          }
-                        >
-                          Preukázanosť: {q.confidenceLevel} %
-                        </Badge>
+                        {bound ? (
+                          <Badge
+                            variant="outline"
+                            className={
+                              q.confidenceLevel >= 90
+                                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400 text-[10px]"
+                                : "border-amber-500/40 bg-amber-500/10 text-amber-400 text-[10px]"
+                            }
+                          >
+                            Preukázanosť: {q.confidenceLevel} %
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="border-amber-500/40 bg-amber-500/10 text-amber-400 text-[10px]"
+                          >
+                            Neoverené — bez väzby na dôkaz
+                          </Badge>
+                        )}
                       </div>
+
+                      {!bound && (
+                        <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] text-amber-200">
+                          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                          Odpoveď nie je viazaná na hash-overený dôkaz z WORM
+                          ledgera. Je to neoverený AI návrh, nie skutkový záver;
+                          do reportu sa nedostane.
+                        </p>
+                      )}
 
                       {/* Odpoveď */}
                       <div className="rounded-lg bg-muted/40 border border-border/60 p-2.5">
                         <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">
-                          Zistený skutkový záver:
+                          {bound
+                            ? "Zistený skutkový záver:"
+                            : "AI návrh odpovede (neoverený):"}
                         </p>
                         <p className="text-foreground/95 leading-relaxed">
                           {q.answer}
                         </p>
+                        {bound && (
+                          <p className="mt-1.5 font-mono text-[10px] text-cyan-300">
+                            Zdroj: {formatSourceRef(q.sourceRef)}
+                          </p>
+                        )}
                       </div>
 
                       {/* Stotožnené osoby */}
                       {q.identifiedPersons.length > 0 && (
                         <div className="space-y-1">
                           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            Stotožnené osoby a role:
+                            {bound
+                              ? "Stotožnené osoby a role:"
+                              : "Osoby uvedené AI (neoverené, nie sú stotožnené):"}
                           </span>
                           <div className="flex flex-wrap gap-1.5">
                             {q.identifiedPersons.map((p, pIdx) => (
@@ -307,8 +338,10 @@ export function AutopilotTabsView({
                       {q.directEvidence.length > 0 && (
                         <div className="space-y-1 rounded-lg bg-emerald-500/5 border border-emerald-500/20 p-2">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1">
-                            <CheckCheck className="h-3 w-3" /> Priame
-                            usvedčujúce dôkazy v spise:
+                            <CheckCheck className="h-3 w-3" />
+                            {bound
+                              ? "Priame usvedčujúce dôkazy v spise:"
+                              : "Dôkazy uvedené AI (neoverené):"}
                           </span>
                           <ul className="space-y-1 mt-1">
                             {q.directEvidence.map((ev, eIdx) => (
@@ -362,7 +395,8 @@ export function AutopilotTabsView({
                       )}
                     </div>
                   );
-                })}
+                },
+              )}
             </div>
           </Card>
         </TabsContent>
@@ -666,15 +700,34 @@ export function AutopilotTabsView({
                 </div>
 
                 {/* Záver financovania */}
-                <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-primary">
-                    <Scale className="h-3.5 w-3.5" /> Záver forenzného
-                    vyšetrovania tokov financií
+                {isFinancingConclusionBound(dossier, knownEvidence) ? (
+                  <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-primary">
+                      <Scale className="h-3.5 w-3.5" /> Záver forenzného
+                      vyšetrovania tokov financií
+                    </div>
+                    <p className="text-xs text-foreground/90 leading-relaxed">
+                      {dossier.financialAnalysis.financingConclusion}
+                    </p>
+                    <p className="font-mono text-[10px] text-cyan-300">
+                      Zdroj: {formatSourceRef(dossier.financialAnalysis.sourceRef)}
+                    </p>
                   </div>
-                  <p className="text-xs text-foreground/90 leading-relaxed">
-                    {dossier.financialAnalysis.financingConclusion}
-                  </p>
-                </div>
+                ) : (
+                  <div className="rounded-xl bg-amber-500/5 border border-amber-500/30 p-3 space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-400">
+                      <AlertTriangle className="h-3.5 w-3.5" /> AI návrh záveru
+                      o financovaní (neoverený)
+                    </div>
+                    <p className="text-[11px] text-amber-200">
+                      Záver nie je viazaný na hash-overený dôkaz z WORM ledgera
+                      — nie je skutkovým zistením a do reportu sa nedostane.
+                    </p>
+                    <p className="text-xs text-foreground/80 leading-relaxed">
+                      {dossier.financialAnalysis.financingConclusion}
+                    </p>
+                  </div>
+                )}
               </>
             )}
           </Card>
@@ -877,33 +930,52 @@ export function AutopilotTabsView({
               paragrafy (Trestný poriadok)
             </div>
             <div className="space-y-1.5">
-              {(dossier.evidenceStrength?.paragraphs ?? []).map((p) => (
-                <div
-                  key={p.para}
-                  className="flex items-center justify-between rounded-lg border border-border/70 bg-muted/20 p-2 text-xs"
-                >
-                  <div>
-                    <span className="font-mono font-bold text-foreground/90">
-                      {p.para}
-                    </span>
-                    <span className="ml-2 text-muted-foreground">
-                      {p.title}
-                    </span>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={
-                      p.status === "OK"
-                        ? "border-emerald-500/30 text-emerald-400 bg-emerald-500/10"
-                        : p.status === "Narušené"
-                          ? "border-rose-500/30 text-rose-400 bg-rose-500/10"
-                          : "border-amber-500/30 text-amber-400 bg-amber-500/10"
-                    }
+              {(dossier.evidenceStrength?.paragraphs ?? []).map((p) => {
+                const bound = isBoundToEvidence(p.sourceRef, knownEvidence);
+                return (
+                  <div
+                    key={p.para}
+                    className={`flex items-center justify-between gap-2 rounded-lg border p-2 text-xs ${
+                      bound
+                        ? "border-border/70 bg-muted/20"
+                        : "border-amber-500/30 bg-amber-500/5"
+                    }`}
                   >
-                    {p.status}
-                  </Badge>
-                </div>
-              ))}
+                    <div>
+                      <span className="font-mono font-bold text-foreground/90">
+                        {p.para}
+                      </span>
+                      <span className="ml-2 text-muted-foreground">
+                        {p.title}
+                      </span>
+                      {bound ? (
+                        <span className="block font-mono text-[10px] text-cyan-300">
+                          Zdroj: {formatSourceRef(p.sourceRef)}
+                        </span>
+                      ) : (
+                        <span className="block text-[10px] text-amber-300">
+                          Neoverené — posúdenie AI bez väzby na hash-overený
+                          dôkaz
+                        </span>
+                      )}
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={
+                        !bound
+                          ? "border-amber-500/30 text-amber-400 bg-amber-500/10"
+                          : p.status === "OK"
+                            ? "border-emerald-500/30 text-emerald-400 bg-emerald-500/10"
+                            : p.status === "Narušené"
+                              ? "border-rose-500/30 text-rose-400 bg-rose-500/10"
+                              : "border-amber-500/30 text-amber-400 bg-amber-500/10"
+                      }
+                    >
+                      {bound ? p.status : `${p.status} (neoverené)`}
+                    </Badge>
+                  </div>
+                );
+              })}
             </div>
           </Card>
         </TabsContent>

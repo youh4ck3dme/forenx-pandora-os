@@ -3,15 +3,23 @@ import { ARMIVEX_CASE_DOSSIER } from "../demo-dossier";
 import {
   NO_VERIFIED_EVIDENCE,
   isBoundToEvidence,
+  isFinancingConclusionBound,
   isValidEvidenceReference,
   listBoundFacts,
   partitionAdmissibilityAudit,
   partitionAlternativeHypotheses,
+  gatedInvestigativeAnswers,
+  partitionLegalParagraphs,
   partitionSuspiciousFlows,
   partitionTimeline,
   verifiedEvidenceIds,
 } from "../evidence-binding";
-import { buildReportHTML, escapeHtml } from "../export-pdf";
+import {
+  NO_BOUND_ANSWER_TEXT,
+  NO_BOUND_FINANCING_TEXT,
+  buildReportHTML,
+  escapeHtml,
+} from "../export-pdf";
 import { NO_BOUND_FACTS_TEXT, buildJudgeClipboardText } from "../judge-text";
 import type { ForensicDossier, TimelineEvent } from "../types";
 
@@ -384,5 +392,107 @@ describe("export escapes untrusted AI/document text (stored XSS)", () => {
 
   it("escapeHtml covers the five HTML metacharacters", () => {
     expect(escapeHtml(`<a href="x" title='y'>&</a>`)).toBe("&lt;a href=&quot;x&quot; title=&#39;y&#39;&gt;&amp;&lt;/a&gt;");
+  });
+});
+
+describe("remaining free model text is gated by evidence binding (issue #16)", () => {
+  const PERSON = "OSOBA_BEZ_DOKAZU";
+  const FINANCING = "ZAVER_FINANCOVANIA_BEZ_DOKAZU";
+  const NOTE = "POZNAMKA_ZNAKU_BEZ_DOKAZU";
+  const boundRef = { documentId: "zapisnica.pdf", evidenceId: VERIFIED, page: 4 };
+
+  function gatedDossier(): ForensicDossier {
+    const d = dossierWith([boundEvent]);
+    const answers = d.investigativeAnswers!;
+    for (const q of [answers.q1_buyer_seller, answers.q2_planner_coordinator, answers.q3_financier]) {
+      q.answer = `${PERSON} odpoveď ${q.questionNumber}`;
+      q.identifiedPersons = [`${PERSON} ${q.questionNumber}`];
+      delete q.sourceRef;
+    }
+    d.financialAnalysis!.financingConclusion = FINANCING;
+    d.evidenceStrength.paragraphs = [
+      { para: "§ 294 TZ", title: "Nedovolené ozbrojovanie", status: "OK", note: NOTE },
+    ];
+    return d;
+  }
+
+  it("without a verified ledger no named person, answer or financing conclusion is exported", () => {
+    const out = buildReportHTML(gatedDossier());
+    expect(out).not.toContain(PERSON);
+    expect(out).not.toContain(FINANCING);
+    expect(out).toContain(NO_BOUND_ANSWER_TEXT);
+    expect(out).toContain(NO_BOUND_FINANCING_TEXT);
+  });
+
+  it("an answer or conclusion bound to an unverified ledger record stays hidden", () => {
+    const d = gatedDossier();
+    d.investigativeAnswers!.q1_buyer_seller.sourceRef = { ...boundRef, evidenceId: PENDING };
+    d.financialAnalysis!.sourceRef = { ...boundRef, evidenceId: UNKNOWN };
+    const out = buildReportHTML(d, known);
+    expect(out).not.toContain(PERSON);
+    expect(out).not.toContain(FINANCING);
+  });
+
+  it("bound answers and the bound financing conclusion are exported with their source", () => {
+    const d = gatedDossier();
+    d.investigativeAnswers!.q3_financier.sourceRef = boundRef;
+    d.financialAnalysis!.sourceRef = boundRef;
+    const out = buildReportHTML(d, known);
+    expect(out).toContain(`${PERSON} odpoveď 3`);
+    expect(out).toContain(`${PERSON} 3`);
+    expect(out).not.toContain(`${PERSON} 1`);
+    expect(out).not.toContain(`${PERSON} 2`);
+    expect(out).toContain(FINANCING);
+    expect(
+      gatedInvestigativeAnswers(d, known)
+        .filter((q) => q.bound)
+        .map((q) => q.number),
+    ).toEqual([3]);
+    expect(isFinancingConclusionBound(d, known)).toBe(true);
+    expect(isFinancingConclusionBound(d, NO_VERIFIED_EVIDENCE)).toBe(false);
+  });
+
+  it("an unbound legal-element note appears only among the unverified claims", () => {
+    const out = buildReportHTML(gatedDossier(), known);
+    const unverifiedStart = out.indexOf("<h2>Neoverené tvrdenia");
+    const sectionIV = out.slice(out.indexOf("<h2>IV."), out.indexOf("<h2>V."));
+    expect(unverifiedStart).toBeGreaterThan(-1);
+    expect(out.indexOf(NOTE)).toBeGreaterThan(unverifiedStart);
+    expect(out.indexOf(NOTE)).toBeLessThan(out.indexOf("<h2>I. Zistený skutkový stav"));
+    expect(sectionIV).not.toContain(NOTE);
+    expect(sectionIV).toContain("Neoverené");
+  });
+
+  it("a bound legal-element note stays in section IV with its source", () => {
+    const d = gatedDossier();
+    d.evidenceStrength.paragraphs[0]!.sourceRef = boundRef;
+    const out = buildReportHTML(d, known);
+    const sectionIV = out.slice(out.indexOf("<h2>IV."), out.indexOf("<h2>V."));
+    expect(sectionIV).toContain(NOTE);
+    expect(partitionLegalParagraphs(d, known).unbound).toEqual([]);
+  });
+
+  it("an unbound answer never exports the model-supplied question text", () => {
+    const d = gatedDossier();
+    const q1 = d.investigativeAnswers!.q1_buyer_seller;
+    q1.question = `${PERSON} je vinný`;
+    q1.questionNumber = 3;
+    const out = buildReportHTML(d, known);
+    expect(out).not.toContain(PERSON);
+    const gated = gatedInvestigativeAnswers(d, known);
+    expect(gated.map((q) => q.number)).toEqual([1, 2, 3]);
+    expect(gated[0]!.question).toBe("Kto zbrane nakupoval a následne predával alebo odovzdával?");
+    expect(out).toContain("1. Kto zbrane nakupoval a následne predával alebo odovzdával?");
+  });
+
+  it("gated fields stay escaped", () => {
+    const d = gatedDossier();
+    d.investigativeAnswers!.q1_buyer_seller.sourceRef = boundRef;
+    d.investigativeAnswers!.q1_buyer_seller.answer = `<img src=x onerror=alert(1)>`;
+    d.evidenceStrength.paragraphs[0]!.note = `<script>alert(2)</script>`;
+    const out = buildReportHTML(d, known);
+    expect(out).not.toContain("<img src=x");
+    expect(out).not.toContain("<script>alert(2)");
+    expect(out).toContain("&lt;img src=x onerror=alert(1)&gt;");
   });
 });
