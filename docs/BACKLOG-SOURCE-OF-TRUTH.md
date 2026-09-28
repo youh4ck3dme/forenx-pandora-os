@@ -59,7 +59,7 @@ alebo podpisovanie desktopu je nakonfigurované.
 | Core engine TypeScript                 | `IN PROGRESS` | **Rozpor:** pôvodný § 2 hlásil 0 chýb, P3-03 hlásil TODO. Znova spustiť `npx tsc --noEmit` v core-engine a zapísať.  |
 | Next produkčný build                   | `DONE`        | `npm run build` (30/30 routes, predchádzajúca verzia).                                                             |
 | Audit závislostí                       | `RED`         | N-05: 3 high + 13 moderate; CI kontroluje len `--audit-level=critical`. Pozri P1-06.                               |
-| Secret scan (gitleaks, celá história)  | `IN PROGRESS` | V CI beží. Falošné poplachy z `fix/gate-remaining-ai-text` zhadzujú všetky PR, kým sa nezmerguje #17 alebo #19.     |
+| Secret scan (gitleaks, celá história)  | `DONE`        | V CI beží. Falošné poplachy z `fix/gate-remaining-ai-text` sú od merge #19 v `.gitleaksignore`.                   |
 | E2E (Playwright)                       | `TODO`        | Testy existujú (`e2e/`), ale CI ich nespúšťa.                                                                       |
 | AST guard (`ci:guard`)                 | `TODO`        | Pokrýva iba `lib/ai` a CI ho nespúšťa (N-08).                                                                       |
 | Migrácie Supabase                      | `BLOCKED`     | Lokálne `npx supabase db reset` prešiel (2026-09-27). Remote: chýba access token, nakonfigurovaný je len produkčný projekt. V repozitári je teraz 26 migrácií, lokálne overených bolo 24. |
@@ -71,7 +71,7 @@ alebo podpisovanie desktopu je nakonfigurované.
 | ------- | ---- | ---------- |
 | PR #17 `fix/gate-remaining-ai-text` (fixes #16 + UI označenie neoverených tvrdení) | CI zelené, merge `BLOCKED` | Merge (pozri riadok o branch protection). |
 | PR #18 `fix/server-fn-route-handlers` | otvorený | Review a manuálny test na stagingu (P0-10). |
-| PR #19 `ci/gitleaks-ignore-question-ids` | otvorený | Mergnúť hneď (odblokuje gitleaks vo všetkých PR) alebo zavrieť po merge #17. |
+| PR #19 `ci/gitleaks-ignore-question-ids` | `DONE` (mergnutý 2026-09-28) | Otvorené PR si majú aktualizovať vetvu z `main`, aby gitleaks prešiel. |
 | PR #15 `chore/untrack-preflight-sql` (draft) | otvorený | Mergnúť. |
 | Issue #16 (ďalší voľný text modelu bez väzby na dôkaz) | otvorené | Zavrie ho merge PR #17. |
 | **Branch protection na `main`** | `BLOCKED` | Nastavené je `require_last_push_approval: true`: posledný push musí schváliť niekto iný než autor. Pri jednom správcovi sa PR nedá mergnúť bez `--admin`. Rozhodnúť: pridať druhého reviewera, alebo toto pravidlo vypnúť. |
@@ -282,7 +282,7 @@ Všetkých 39 `createServerFn` sa má vykonávať iba v route handleri `/api/fn/
 
 ## 10. Poradie práce
 
-1. **Odblokovať repozitár:** vyriešiť branch protection (§ 4), mergnúť #19 alebo #17 (gitleaks), potom #15.
+1. **Odblokovať repozitár:** vyriešiť branch protection (§ 4), potom mergnúť #17, #15 a tento backlog.
 2. **Zavrieť `RED` bezpečnostné nálezy v kóde:** P0-07 (N-01), P0-08 (N-03), P0-10 (PR #18), P0-09 (N-04). Jeden nález = jeden PR s testom.
 3. **Rotovať tajomstvá** (P0-02) pred akýmkoľvek novým nasadením.
 4. **CI brány:** P1-06 (audit high, eslint, ast-guard pre `app/api/**`, E2E), P1-05 (https-only konfigurácia).
