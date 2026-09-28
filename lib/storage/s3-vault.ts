@@ -202,10 +202,14 @@ function getSigningKey(
 /**
  * 1. Upload súdneho PDF alebo spisu (až do 150 MB+) do Hetzner S3 bucketu `forenx-vault-sk`.
  * Pri absencii S3 konfigurácie automaticky ukladá do in-memory úložiska.
+ *
+ * `folder: "evidence"` ukladá pod rovnaký kľúč, aký vydáva presign endpoint
+ * (`evidenceStorageKey`), aby sa objekt dal zapísať do ledgera dôkazov.
  */
 export async function uploadCaseDocument(
   caseId: string,
   file: { name: string; buffer: Buffer; mimeType: string; sha256: string },
+  options: { folder?: "documents" | "evidence" } = {},
 ): Promise<string> {
   const parsedCaseId = caseIdSchema.safeParse(caseId);
   if (!parsedCaseId.success) {
@@ -227,7 +231,8 @@ export async function uploadCaseDocument(
   }
 
   const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const storageKey = `cases/${parsedCaseId.data}/documents/${calculatedSha256}-${sanitizedFileName}`;
+  const folder = options.folder ?? "documents";
+  const storageKey = `cases/${parsedCaseId.data}/${folder}/${calculatedSha256}-${sanitizedFileName}`;
   const now = new Date().toISOString();
 
   const config = getS3Config();

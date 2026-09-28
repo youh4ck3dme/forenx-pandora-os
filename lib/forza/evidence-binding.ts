@@ -6,6 +6,8 @@ import type {
   DefenseAttack,
   EvidenceRow,
   HypothesisSourceRef,
+  InvestigativeQuestionAnswer,
+  ParagraphStatus,
   SourceRef,
   SuspiciousFlowItem,
   TimelineEvent,
@@ -190,6 +192,63 @@ export function partitionEvidenceTraces(
   const unbound: EvidenceRow[] = [];
   for (const trace of dossier.evidenceStrength?.traces ?? []) {
     (isBoundToEvidence(trace.sourceRef, knownEvidence) ? bound : unbound).push(trace);
+  }
+  return { bound, unbound };
+}
+
+/**
+ * Kanonické znenie 3 vyšetrovacích otázok ÚBOK. Text `question` aj
+ * `questionNumber` dodáva model — môžu niesť meno alebo podvrhnutý záver,
+ * preto sa pri zobrazení používa výhradne toto znenie a poradie.
+ */
+export const INVESTIGATIVE_QUESTIONS = [
+  { field: "q1_buyer_seller", number: 1, question: "Kto zbrane nakupoval a následne predával alebo odovzdával?" },
+  { field: "q2_planner_coordinator", number: 2, question: "Kto celý plán vymyslel, riadil alebo koordinoval?" },
+  { field: "q3_financier", number: 3, question: "Kto celý plán financoval?" },
+] as const;
+
+export type GatedInvestigativeAnswer = {
+  number: 1 | 2 | 3;
+  /** Kanonická otázka — nikdy text modelu. */
+  question: string;
+  answer: InvestigativeQuestionAnswer;
+  bound: boolean;
+};
+
+/**
+ * Issue #16: odpovede menujú osoby a mieru istoty — bez väzby na overený dôkaz
+ * sa nesmú zobraziť ani odpoveď, ani mená. Vracia ich v kanonickom poradí.
+ */
+export function gatedInvestigativeAnswers(
+  dossier: ForensicDossier,
+  knownEvidence: ReadonlySet<string>,
+): GatedInvestigativeAnswer[] {
+  const answers = dossier.investigativeAnswers;
+  if (!answers) return [];
+  return INVESTIGATIVE_QUESTIONS.flatMap(({ field, number, question }) => {
+    const answer = answers[field];
+    if (!answer) return [];
+    return [{ number, question, answer, bound: isBoundToEvidence(answer.sourceRef, knownEvidence) }];
+  });
+}
+
+/** Issue #16: záver o financovaní je zistením iba s väzbou na overený dôkaz. */
+export function isFinancingConclusionBound(
+  dossier: ForensicDossier,
+  knownEvidence: ReadonlySet<string>,
+): boolean {
+  return isBoundToEvidence(dossier.financialAnalysis?.sourceRef, knownEvidence);
+}
+
+/** Issue #16: rozdelí stav zákonných znakov (IV.) na viazaný a neviazaný. */
+export function partitionLegalParagraphs(
+  dossier: ForensicDossier,
+  knownEvidence: ReadonlySet<string>,
+): BoundPartition<ParagraphStatus> {
+  const bound: ParagraphStatus[] = [];
+  const unbound: ParagraphStatus[] = [];
+  for (const paragraph of dossier.evidenceStrength?.paragraphs ?? []) {
+    (isBoundToEvidence(paragraph.sourceRef, knownEvidence) ? bound : unbound).push(paragraph);
   }
   return { bound, unbound };
 }

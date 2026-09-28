@@ -68,7 +68,7 @@ export type SystemHealth = {
 const WINDOW_HOURS = 24;
 
 /** Prehľad stavu databázy, pripojení a AI volaní. Len pre administrátora. */
-export const getSystemHealth = createServerFn({ method: "GET" })
+export const getSystemHealth = createServerFn({ method: "GET", id: "health/getSystemHealth" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<SystemHealth> => {
     const { supabase, userId } = context;

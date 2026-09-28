@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect } from "vitest";
 import {
   CaseIdSchema,
@@ -100,14 +101,17 @@ describe("Forensic Evidence Vault (Hetzner S3 & Types)", () => {
       }
     });
 
-    it("rejects requests without a form-data body", async () => {
-      const mockReq = {
-        formData: async () => {
-          throw new TypeError("Unsupported content type");
-        },
-      } as unknown as NextRequest;
+    // POST najprv overuje identitu z hlavičiek (P0-07), preto skutočný NextRequest.
+    function postForm(body: FormData | string): NextRequest {
+      return new NextRequest("http://localhost:3000/api/vault", {
+        method: "POST",
+        body,
+        headers: typeof body === "string" ? { "content-type": "text/plain" } : undefined,
+      });
+    }
 
-      const res = await POST(mockReq);
+    it("rejects requests without a form-data body", async () => {
+      const res = await POST(postForm("nie je formulár"));
       expect(res.status).toBe(400);
       await expect(res.json()).resolves.toMatchObject({
         error: expect.stringContaining("multipart/form-data"),
@@ -120,11 +124,7 @@ describe("Forensic Evidence Vault (Hetzner S3 & Types)", () => {
       formData.append("caseId", "CASE-KS-2026");
       formData.append("clientSha256", "0".repeat(64)); // Fake / mismatched hash
 
-      const mockReq = {
-        formData: async () => formData,
-      } as unknown as NextRequest;
-
-      const res = await POST(mockReq);
+      const res = await POST(postForm(formData));
       expect(res.status).toBe(400);
       const json = await res.json();
       expect(json.error).toContain("KRITICKÉ ZLYHANIE INTEGRITY");
@@ -140,11 +140,7 @@ describe("Forensic Evidence Vault (Hetzner S3 & Types)", () => {
       formData.append("caseId", "CASE-KS-2026-881");
       formData.append("clientSha256", realHash);
 
-      const mockReq = {
-        formData: async () => formData,
-      } as unknown as NextRequest;
-
-      const res = await POST(mockReq);
+      const res = await POST(postForm(formData));
       expect(res.status).toBe(200);
       const json = await res.json();
       expect(json.success).toBe(true);

@@ -4,45 +4,53 @@ on:
   push:
     branches: [main]
     paths:
-      - 'capacitor.config.json'
-      - 'scripts/mobile/**'
-      - 'android/**'
-      - 'ios/**'
+      - "capacitor.config.json"
+      - "scripts/mobile/**"
+      - ".github/workflows/mobile-ci.yml"
   pull_request:
     paths:
-      - 'capacitor.config.json'
-      - 'scripts/mobile/**'
-      - 'android/**'
-      - 'ios/**'
+      - "capacitor.config.json"
+      - "scripts/mobile/**"
+      - ".github/workflows/mobile-ci.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   mobile-verify:
-    name: Verify Mobile Profiles and Capacitor Sync
+    name: Verify mobile profiles
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      # set-profile.mjs uses only node: built-ins — no npm ci, no build.
+      # Build + `cap sync` is intentionally not run: the app has dynamic API
+      # routes, so a static export (`CAPACITOR_BUILD=true` → webDir `out/`)
+      # cannot be built, and no android/ or ios/ project is committed. Re-add
+      # it once a native project exists.
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Generate and validate every profile
+        run: |
+          for profile in local staging production; do
+            node scripts/mobile/set-profile.mjs "$profile"
+            node -e '
+              const c = JSON.parse(require("fs").readFileSync("capacitor.config.json", "utf8"));
+              for (const k of ["appId", "appName", "webDir"]) {
+                if (!c[k]) throw new Error(`capacitor.config.json: missing ${k}`);
+              }
+            '
+          done
 
-      - name: Test Mobile Profiles (local, staging, production)
+      - name: Committed capacitor.config.json matches the local profile
         run: |
           node scripts/mobile/set-profile.mjs local
-          node scripts/mobile/set-profile.mjs staging
-          node scripts/mobile/set-profile.mjs production
-
-      - name: Build Web Bundle for Capacitor
-        run: npm run build
-
-      - name: Validate Capacitor Sync
-        run: npx cap sync --inline
+          git diff --exit-code -- capacitor.config.json
