@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { callServerFnRemote, createServerFn } from "@/lib/tanstack-start-shim";
+import { callServerFnRemote, createServerFn, serverFnBaseUrl } from "@/lib/tanstack-start-shim";
 
 vi.mock("@/lib/forza/access-audit", () => ({ getSupabaseSessionToken: async () => "user.jwt.token" }));
 
@@ -48,5 +48,39 @@ describe("server functions in the browser", () => {
     await expect(callServerFnRemote(undefined, {}, { fetch: fetchMock, getToken: async () => null })).rejects.toThrow(
       /identifikátor/,
     );
+  });
+});
+
+describe("server function transport limits and packaged clients", () => {
+  it("refuses an oversized body before sending it (clear error instead of a platform 413)", async () => {
+    const fetchMock = vi.fn();
+    await expect(
+      callServerFnRemote("ai/runForensicAutopilot", { documentText: "č".repeat(600) }, {
+        fetch: fetchMock,
+        getToken: async () => "t",
+        maxBodyBytes: 1000,
+      }),
+    ).rejects.toThrow(/príliš veľké/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("calls a configured server origin without cookies (Electron app://)", async () => {
+    const fetchMock = vi.fn(async () => json(200, { ok: true, result: 1 }));
+    await callServerFnRemote("profile/getMyProfile", undefined, {
+      fetch: fetchMock,
+      getToken: async () => "t",
+      baseUrl: serverFnBaseUrl("https://pandora.example.org"),
+    });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://pandora.example.org/api/fn/profile/getMyProfile/");
+    expect(init.credentials).toBe("omit");
+  });
+
+  it("accepts only an https origin without a path", () => {
+    expect(serverFnBaseUrl(undefined)).toBe("");
+    expect(serverFnBaseUrl("http://localhost:3000")).toBe("http://localhost:3000");
+    expect(() => serverFnBaseUrl("http://pandora.example.org")).toThrow(/https/);
+    expect(() => serverFnBaseUrl("https://pandora.example.org/api")).toThrow(/bez cesty/);
+    expect(() => serverFnBaseUrl("nope")).toThrow(/platná URL/);
   });
 });

@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { createServerFn, getRequest } from "@/lib/tanstack-start-shim";
-import { handleServerFnRequest } from "@/lib/server-fn/handle.server";
+import { handleServerFnRequest, serverFnCorsHeaders } from "@/lib/server-fn/handle.server";
 import { buildServerFnRegistry, type RegisteredServerFn } from "@/lib/server-fn/registry.server";
 
 const echoHeaders = createServerFn({ method: "POST", id: "test/echo" })
@@ -97,5 +97,19 @@ describe("handleServerFnRequest", () => {
       body: { ok: false, error: "Server nie je správne nakonfigurovaný." },
     });
     errorSpy.mockRestore();
+  });
+});
+
+describe("serverFnCorsHeaders", () => {
+  it("allows only explicitly configured origins, never with credentials", () => {
+    const allowed = "app://-, https://desktop.example.org";
+    expect(serverFnCorsHeaders("app://-", allowed)).toMatchObject({
+      "access-control-allow-origin": "app://-",
+      "access-control-allow-headers": "authorization, content-type",
+    });
+    expect(serverFnCorsHeaders("app://-", allowed)).not.toHaveProperty("access-control-allow-credentials");
+    expect(serverFnCorsHeaders("https://evil.example", allowed)).toBeNull();
+    expect(serverFnCorsHeaders("app://-", "")).toBeNull();
+    expect(serverFnCorsHeaders(null, allowed)).toBeNull();
   });
 });

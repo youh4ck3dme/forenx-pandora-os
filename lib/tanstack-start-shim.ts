@@ -135,6 +135,40 @@ function mustCallRemotely(): boolean {
   return typeof window !== "undefined" && process.env.NODE_ENV !== "test";
 }
 
+/**
+ * Najväčšie telo jednej požiadavky z klienta. Predvolene pod limitom Vercelu
+ * (~4.5 MB, pozri SAFE_SERVER_FN_BYTES); self-hosted nasadenie ho môže zvýšiť
+ * cez NEXT_PUBLIC_SERVER_FN_MAX_BODY_BYTES (najviac SERVER_FN_MAX_BODY_BYTES).
+ */
+export const DEFAULT_CLIENT_MAX_BODY_BYTES = 4 * 1024 * 1024;
+
+function clientMaxBodyBytes(): number {
+  const configured = Number(process.env.NEXT_PUBLIC_SERVER_FN_MAX_BODY_BYTES);
+  return Number.isInteger(configured) && configured > 0 ? configured : DEFAULT_CLIENT_MAX_BODY_BYTES;
+}
+
+/**
+ * Origin servera pre zabalené klienty (Electron app://, statický export), kde
+ * relatívna /api/fn nevedie na Next.js server. Prázdne = rovnaký origin.
+ */
+export function serverFnBaseUrl(configured = process.env.NEXT_PUBLIC_SERVER_FN_ORIGIN): string {
+  const value = configured?.trim();
+  if (!value) return "";
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("NEXT_PUBLIC_SERVER_FN_ORIGIN nie je platná URL.");
+  }
+  const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  if ((url.protocol !== "https:" && !(local && url.protocol === "http:")) || url.pathname !== "/" || url.search || url.hash) {
+    throw new Error("NEXT_PUBLIC_SERVER_FN_ORIGIN musí byť https origin bez cesty.");
+  }
+  return url.origin;
+}
+
+const formatMb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
 /** Volanie serverovej funkcie cez /api/fn/<id> s Bearer tokenom používateľa. */
 export async function callServerFnRemote<TOutput>(
   id: string | undefined,
@@ -142,24 +176,38 @@ export async function callServerFnRemote<TOutput>(
   deps: {
     fetch?: typeof fetch;
     getToken?: () => Promise<string | null>;
+    baseUrl?: string;
+    maxBodyBytes?: number;
   } = {},
 ): Promise<TOutput> {
   if (!id || !SERVER_FN_ID_PATTERN.test(id)) {
     throw new Error("Serverová funkcia nemá platný identifikátor.");
   }
+  const body = JSON.stringify({ data: data === undefined ? null : data });
+  const bodyBytes = new TextEncoder().encode(body).byteLength;
+  const maxBodyBytes = deps.maxBodyBytes ?? clientMaxBodyBytes();
+  if (bodyBytes > maxBodyBytes) {
+    // Radšej jasná chyba tu, ako nečitateľné 413 od platformy.
+    throw new Error(
+      `Dáta sú príliš veľké na jednu požiadavku (${formatMb(bodyBytes)}, limit ${formatMb(maxBodyBytes)}). ` +
+        "Rozdeľte dokumenty na menšie časti.",
+    );
+  }
   const getToken =
     deps.getToken ??
     (async () => (await import("@/lib/forza/access-audit")).getSupabaseSessionToken());
   const token = await getToken();
-  // trailingSlash: true — bez koncovej lomky by 308 poslal telo (až 240 MB) dvakrát.
-  const response = await (deps.fetch ?? fetch)(`/api/fn/${id}/`, {
+  const baseUrl = deps.baseUrl ?? serverFnBaseUrl();
+  // trailingSlash: true — bez koncovej lomky by 308 poslal telo dvakrát.
+  const response = await (deps.fetch ?? fetch)(`${baseUrl}/api/fn/${id}/`, {
     method: "POST",
-    credentials: "same-origin",
+    // Autorizácia je výhradne Bearer token; cookies na cudzí origin neposielame.
+    credentials: baseUrl ? "omit" : "same-origin",
     headers: {
       "content-type": "application/json",
       ...(token ? { authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ data: data === undefined ? null : data }),
+    body,
   });
   type Payload = { ok?: boolean; result?: unknown; error?: unknown };
   let payload: Payload | null = null;

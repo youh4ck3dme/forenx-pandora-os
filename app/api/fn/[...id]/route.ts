@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { handleServerFnRequest } from "@/lib/server-fn/handle.server";
+import { handleServerFnRequest, serverFnCorsHeaders } from "@/lib/server-fn/handle.server";
 
 // AI autopilot a hromadná extrakcia bežia dlho (nginx: proxy_read_timeout 600s).
 export const maxDuration = 600;
@@ -20,6 +20,15 @@ export async function POST(
   const { status, body } = await handleServerFnRequest(request, fnId);
   return NextResponse.json(body, {
     status,
-    headers: { "cache-control": "no-store" },
+    headers: {
+      "cache-control": "no-store",
+      ...(serverFnCorsHeaders(request.headers.get("origin")) ?? {}),
+    },
   });
+}
+
+/** CORS preflight pre zabalené klienty (Electron app://) z povoleného zoznamu. */
+export async function OPTIONS(request: NextRequest): Promise<NextResponse> {
+  const cors = serverFnCorsHeaders(request.headers.get("origin"));
+  return new NextResponse(null, { status: cors ? 204 : 403, headers: cors ?? {} });
 }

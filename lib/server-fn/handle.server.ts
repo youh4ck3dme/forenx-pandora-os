@@ -6,10 +6,32 @@ import { SERVER_FN_ID_PATTERN } from "@/lib/tanstack-start-shim";
  * Serverové spracovanie POST /api/fn/<id>. Route súbor smie exportovať iba
  * handlery, preto logika (a jej testy) žije tu.
  *
- * 20 súborov × 12 M znakov base64 (extractBulkFilesText) ≈ 240 MB; limit
- * zodpovedá nginx client_max_body_size pre /api/fn/.
+ * Klient posiela súbory po jednom (SAFE_SERVER_FN_BYTES) a sám stráži limit
+ * (DEFAULT_CLIENT_MAX_BODY_BYTES); toto je horná hranica pre self-hosted
+ * nasadenie. Zodpovedá nginx client_max_body_size pre /api/fn/.
  */
-export const SERVER_FN_MAX_BODY_BYTES = 256 * 1024 * 1024;
+export const SERVER_FN_MAX_BODY_BYTES = 32 * 1024 * 1024;
+
+/**
+ * CORS iba pre explicitne povolené originy zabalených klientov
+ * (SERVER_FN_ALLOWED_ORIGINS, čiarkou oddelené). Bez nastavenia: iba same-origin.
+ * Autorizácia je Bearer token, cookies sa nepovoľujú.
+ */
+export function serverFnCorsHeaders(
+  origin: string | null,
+  allowed = process.env.SERVER_FN_ALLOWED_ORIGINS ?? "",
+): Record<string, string> | null {
+  if (!origin) return null;
+  const list = allowed.split(",").map((o) => o.trim()).filter(Boolean);
+  if (!list.includes(origin)) return null;
+  return {
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "POST, OPTIONS",
+    "access-control-allow-headers": "authorization, content-type",
+    "access-control-max-age": "600",
+    vary: "Origin",
+  };
+}
 const MAX_ERROR_LENGTH = 500;
 
 type Json = { ok: true; result: unknown } | { ok: false; error: string };
