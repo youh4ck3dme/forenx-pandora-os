@@ -83,12 +83,19 @@ async function handlePost(request: NextRequest, traceId: string): Promise<NextRe
       validation.data;
 
     // 3. RLS Kontrola vlastníctva spisu (Ochrana pred IDOR - Flaw 3)
-    const isDev = process.env.NODE_ENV !== "production";
+    // P0-08: kontrolu preskakuje iba lokálny dev obchvat. Bez konfigurácie
+    // (service rola) sa vlastníctvo nedá overiť → fail-closed, nie preskočiť.
     const supabaseUrl =
       process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (supabaseUrl && serviceRoleKey && !isDev) {
+    if (!auth.devBypass) {
+      if (!supabaseUrl || !serviceRoleKey) {
+        return NextResponse.json(
+          { error: "Overenie oprávnenia k spisu nie je nakonfigurované; nahratie nebolo povolené." },
+          { status: 503 },
+        );
+      }
       try {
         const { supabaseAdmin } =
           await import("@/integrations/supabase/client.server");
@@ -129,13 +136,15 @@ async function handlePost(request: NextRequest, traceId: string): Promise<NextRe
     }
 
     // 3b. P1-04: serverový audit uploadu do auditného ledgeri (fail-closed).
-    if (process.env.NODE_ENV === "production" && auth.token) {
-      const audited = await logVaultAccess({
-        token: auth.token,
-        caseId,
-        action: "upload",
-        ...accessContext(request),
-      });
+    if (!auth.devBypass) {
+      const audited = auth.token
+        ? await logVaultAccess({
+            token: auth.token,
+            caseId,
+            action: "upload",
+            ...accessContext(request),
+          })
+        : false;
       if (!audited) {
         return NextResponse.json(
           { error: "Záznam prístupu k spisu sa nepodarilo zapísať." },

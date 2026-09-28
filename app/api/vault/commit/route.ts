@@ -14,11 +14,18 @@ export const preferredRegion = "fra1";
  * (stav `pending`; overenie hashu robí serverový worker /api/vault/verify).
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  // P0-08: bez ledgera smie „uspieť“ (persisted: false) iba lokálny dev obchvat;
+  // skutočný token v akomkoľvek prostredí vyžaduje zápis do ledgera.
+  let devBypass = false;
   return withTraceRoute(request, () =>
     handleCommitEvidence(request, {
-      authenticate: (req) => authenticateVaultRequest(req as NextRequest),
+      authenticate: async (req) => {
+        const auth = await authenticateVaultRequest(req as NextRequest);
+        devBypass = auth.userId !== null && auth.devBypass;
+        return auth;
+      },
       configured: ledgerConfigured,
-      isProduction: () => process.env.NODE_ENV === "production",
+      isProduction: () => !devBypass,
       ledgerFor: supabaseLedgerDeps,
     }),
   );
