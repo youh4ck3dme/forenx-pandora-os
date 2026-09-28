@@ -1,7 +1,7 @@
 # PΛND0RΛ Forensic OS — Backlog Source of Truth
 
 > **Status:** Authoritative  
-> **Last reviewed:** 2026-09-27  
+> **Last reviewed:** 2026-09-28  
 > **Scope:** `youh4ck3dme/forenx-pandora-os` and the linked
 > `-forenx-core-engine` repository  
 > **Rule:** This is the only planning and delivery backlog. Do not create a
@@ -41,7 +41,7 @@ Vercel, Supabase, S3, DNS, Nginx, or a desktop signing service is configured.
 | Core engine TypeScript                 | `DONE`    | Created worker/types bridge modules; `npx tsc --noEmit` returned 0 errors in core-engine.                         |
 | Production dependency audit            | `DONE`    | `xlsx` removed completely; replaced by `read-excel-file/node` with multi-sheet support and 0 security advisories. |
 | Supabase migration application         | `BLOCKED` | Local verification complete (2026-09-27): `npx supabase db reset` applied all 24 migrations cleanly on the local Docker stack. Remote application remains BLOCKED: no Supabase access token/login, and the only configured project is the production project.                                   |
-| VPS/Docker runtime verification        | `BLOCKED` | No production Docker manifest or VPS access is available in this workspace.                                       |
+| VPS/Docker runtime verification        | `IN PROGRESS` | Docker manifests (`docker/Dockerfile.production`, `docker-compose.production.yml`) and Nginx configs created. Runtime deployment verification on VPS pending.                                       |
 
 ## 3. Release-critical P0 — security, deployment, and evidence integrity
 
@@ -439,12 +439,12 @@ For every completed task:
 
 | # | Názov súboru | Účel & Kategória | Stav |
 |---|--------------|------------------|------|
-| 1 | `docker/Dockerfile.production` | P0-06 / VPS Docker deployment manifest s multi-stage Next.js standalone buildom | `CHÝBA` |
-| 2 | `docker-compose.production.yml` | P0-06 / Orchestrácia Next.js (port 3005), Nginx reverzného proxy a healtchecku | `CHÝBA` |
-| 3 | `scripts/ci/run-performance-budget.mjs` | P3-02 / CI test bundle size, TBT a performance rozpočtov (Lighthouse budget) | `CHÝBA` |
-| 4 | `supabase/migrations/20260927113000_case_graph_hardening.sql` | P0-03 / Megaprompt Task 3 alias / synchronizácia schémy pre atomický graph commit | `CHÝBA` (alias pre `202609270001_atomic_ai_graph.sql`) |
-| 5 | `docs/DISASTER_RECOVERY_RUNBOOK.md` | P0-06 / 15-minútový scenár obnovy databázy a S3 trezoru pri havárii | `CHÝBA` |
-| 6 | `scripts/desktop/sign-and-notarize.mjs` | P3-04 / Automatizácia Windows Authenticode a macOS Apple Notarization pre Electron | `CHÝBA` |
+| 1 | `docker/Dockerfile.production` | P0-06 / VPS Docker deployment manifest s multi-stage Next.js standalone buildom | `HOTOVO` |
+| 2 | `docker-compose.production.yml` | P0-06 / Orchestrácia Next.js (port 3005), Nginx reverzného proxy a healtchecku | `HOTOVO` |
+| 3 | `scripts/ci/run-performance-budget.mjs` | P3-02 / CI test bundle size, TBT a performance rozpočtov (Lighthouse budget) | `HOTOVO` |
+| 4 | `supabase/migrations/20260927113000_case_graph_hardening.sql` | P0-03 / Megaprompt Task 3 alias / synchronizácia schémy pre atomický graph commit | `HOTOVO` |
+| 5 | `docs/DISASTER_RECOVERY_RUNBOOK.md` | P0-06 / 15-minútový scenár obnovy databázy a S3 trezoru pri havárii | `HOTOVO` |
+| 6 | `scripts/desktop/sign-and-notarize.mjs` | P3-04 / Automatizácia Windows Authenticode a macOS Apple Notarization pre Electron | `HOTOVO` |
 
 ---
 
