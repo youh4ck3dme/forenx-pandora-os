@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash, randomUUID } from "node:crypto";
 import { withTraceRoute } from "@/lib/forza/trace";
 import {
+  CommitEvidenceSchema,
+  evidenceStorageKey,
   ledgerConfigured,
   ledgerRowToItem,
   listLedgerEvidence,
@@ -20,7 +22,6 @@ import {
   ForensicEvidenceItem,
   ForensicEvidenceItemSchema,
   EvidenceIdSchema,
-  S3StorageKeySchema,
 } from "@/lib/forza/vault-types";
 import {
   accessContext,
@@ -302,6 +303,24 @@ async function handlePost(request: NextRequest): Promise<NextResponse> {
       );
     }
 
+    // Rovnaké pravidlá ako presign/commit (napr. prázdny súbor nie je dôkaz).
+    const mimeType = file.type || "application/octet-stream";
+    const storageKey = evidenceStorageKey(caseId, expectedClientHash, fileName);
+    const commitInput = CommitEvidenceSchema.safeParse({
+      caseId,
+      storageKey,
+      fileName,
+      fileSizeBytes: file.size,
+      mimeType,
+      sha256Hash: expectedClientHash,
+    });
+    if (!commitInput.success) {
+      return NextResponse.json(
+        { error: "Súbor nespĺňa požiadavky na dôkaz (napr. je prázdny).", details: commitInput.error.issues },
+        { status: 400 },
+      );
+    }
+
     // ─── 0. VLASTNÍCTVO SPISU A AUDIT (IDOR ochrana, fail-closed) ─────────
     if (!isDev) {
       if (!isUuidCaseId(caseId)) {
@@ -343,42 +362,51 @@ async function handlePost(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // ─── 3. STREAMOVANÝ UPLOAD DO HETZNER S3 VAULTU ─────────────────────
-    const mimeType = file.type || "application/octet-stream";
     const bucket = process.env.S3_BUCKET || "forenx-vault-sk";
-    // Kľúč pod `evidence/` = rovnaký, aký vydáva presign, aby ho ledger prijal.
-    const storageKeyRaw = await uploadCaseDocument(
-      caseId,
-      { name: fileName, buffer: fileBuffer, mimeType, sha256: serverHash },
-      { folder: "evidence" },
-    );
-
-    const storageKeyValidation = S3StorageKeySchema.safeParse(storageKeyRaw);
-    if (!storageKeyValidation.success) {
-      return NextResponse.json(
-        { error: "Úložisko vrátilo neplatný kľúč dôkazu.", details: storageKeyValidation.error.issues },
-        { status: 500 },
+    const upload = async () => {
+      // Kľúč pod `evidence/` = rovnaký, aký vydáva presign, aby ho ledger prijal.
+      const uploadedKey = await uploadCaseDocument(
+        caseId,
+        { name: fileName, buffer: fileBuffer, mimeType, sha256: serverHash },
+        { folder: "evidence" },
       );
-    }
-    const storageKey = storageKeyValidation.data;
+      if (uploadedKey !== storageKey) throw new Error("storage_key_mismatch");
+    };
 
-    // ─── 4. ZÁPIS DO LEDGERA DÔKAZOV (evidence_items, RLS + WORM) ─────────
+    // ─── 3. LEDGER PRED S3 (evidence_items, RLS + WORM) ─────────────────
     // V produkcii povinný (overené vyššie); v dev len keď je ledger dostupný.
+    // Záznam `pending` vzniká PRED uploadom: keď upload zlyhá, dôkaz nie je
+    // sirota v S3, ale sledovaný záznam, ktorý worker označí `object_missing`
+    // a opakovaný upload doplní (registerEvidence je idempotentné). Objekt sa
+    // po zlyhaní nikdy nemaže — kľúč je deterministický a mohol by patriť
+    // skôr zaevidovanému dôkazu.
     if (auth.token && ledgerConfigured()) {
-      const committed = await registerEvidence(
-        {
-          caseId,
-          storageKey,
-          fileName,
-          fileSizeBytes: file.size,
-          mimeType,
-          sha256Hash: serverHash,
-        },
-        auth.userId,
-        await supabaseLedgerDeps(auth.token),
-      );
+      let committed: Awaited<ReturnType<typeof registerEvidence>>;
+      try {
+        committed = await registerEvidence(
+          commitInput.data,
+          auth.userId,
+          await supabaseLedgerDeps(auth.token),
+        );
+      } catch {
+        return NextResponse.json({ error: "Zápis dôkazu do ledgeru zlyhal." }, { status: 500 });
+      }
       if (!committed.ok) {
         return NextResponse.json({ error: committed.error }, { status: committed.status });
+      }
+
+      // ─── 4. UPLOAD DO HETZNER S3 VAULTU ─────────────────────────────
+      try {
+        await upload();
+      } catch {
+        return NextResponse.json(
+          {
+            error:
+              "Dôkaz je zaevidovaný, ale súbor sa nepodarilo uložiť do trezoru. Zopakujte nahratie toho istého súboru.",
+            evidenceId: committed.row.id,
+          },
+          { status: 502 },
+        );
       }
       return NextResponse.json(
         {
@@ -392,6 +420,7 @@ async function handlePost(request: NextRequest): Promise<NextResponse> {
     }
 
     // ─── 5. DEV BEZ LEDGERA: len pamäťový register procesu ────────────────
+    await upload();
     const evidenceItemRaw: unknown = {
       id: EvidenceIdSchema.parse(randomUUID()),
       caseId,

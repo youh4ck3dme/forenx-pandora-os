@@ -157,7 +157,7 @@ alebo podpisovanie desktopu je nakonfigurované.
 - [x] Ownership: `not_found` → 404, `forbidden` → 403, `unavailable` → 503.
 - [x] Audit `action: "upload"` fail-closed (500 pri zlyhaní zápisu; bez tokenu v produkcii 503).
 - [x] `uploadedBy` = reálne `auth.userId`.
-- [x] V produkcii žiadna cesta, kde dôkaz skončí v S3 bez zápisu do ledgera: bez ledgera 503 ešte pred uploadom; objekt ide pod kľúč `evidence/` (rovnaký ako presign) a zapíše sa cez `registerEvidence` (stav `pending`, `verified` nastaví worker `/api/vault/verify`).
+- [x] V produkcii žiadna cesta, kde dôkaz skončí v S3 bez zápisu do ledgera: bez ledgera 503 ešte pred uploadom; záznam `pending` vzniká cez `registerEvidence` **pred** uploadom pod kľúč `evidence/` (rovnaký ako presign). Keď S3 zlyhá, záznam ostáva sledovaný (502, opakovaný upload ho doplní); objekt sa nikdy nemaže. Prázdny súbor → 400.
 - [x] Testy: `lib/__tests__/vault-route-auth.test.ts` (401 ×2, 403, 404, 503 ×2, 400, audit 500, happy path s auditom a ledgerom, nesúlad hashu); 9 z nich na pôvodnom kóde zlyhá.
 - [ ] Na nasadení: `curl -X POST /api/vault` bez `Authorization` → 401; s tokenom a cudzím prípadom → 403; vlastný prípad → 201 a riadok v audite s `action = 'upload'`.
 

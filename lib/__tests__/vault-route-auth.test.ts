@@ -307,6 +307,43 @@ describe("POST /api/vault — autentifikácia, vlastníctvo, audit a ledger (P0-
     expect(JSON.stringify(json)).not.toContain("investigator-session-user");
   });
 
+  it("prázdny súbor → 400 bez uploadu (rovnaké pravidlá ako presign/commit)", async () => {
+    const form = new FormData();
+    form.append("file", new File([], FILE_NAME, { type: "application/pdf" }));
+    form.append("caseId", CASE_ID);
+    form.append("clientSha256", createHash("sha256").update("").digest("hex"));
+    const res = await POST(
+      new NextRequest("http://localhost:3000/api/vault", {
+        method: "POST",
+        body: form,
+        headers: { authorization: `Bearer ${TOKEN}` },
+      }),
+    );
+    expect(res.status).toBe(400);
+    expectNothingStored();
+  });
+
+  it("zlyhanie ledgera → 500 a nič sa nenahrá do S3 (žiadna sirota)", async () => {
+    ledgerInsert = vi.fn<InsertFn>().mockRejectedValue(new Error("ledger_insert_failed:57P01"));
+    const res = await POST(uploadRequest({ token: TOKEN }));
+    expect(res.status).toBe(500);
+    expect(uploadCaseDocument).not.toHaveBeenCalled();
+    expect(JSON.stringify(await res.json())).not.toContain("57P01");
+  });
+
+  it("zlyhanie S3 po zápise do ledgera → 502, záznam ostáva sledovaný (pending) a nič sa nemaže", async () => {
+    vi.mocked(uploadCaseDocument).mockRejectedValue(new Error("Zlyhal upload do S3 (500)"));
+    const res = await POST(uploadRequest({ token: TOKEN }));
+    expect(res.status).toBe(502);
+    const json = await res.json();
+    expect(json.evidenceId).toBe("44444444-4444-4444-8444-444444444444");
+    expect(ledgerInsert).toHaveBeenCalledTimes(1);
+    // Ledger vzniká pred uploadom.
+    expect(ledgerInsert.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(uploadCaseDocument).mock.invocationCallOrder[0]!,
+    );
+  });
+
   it("nesúlad klientskeho a serverového SHA-256 → 400 bez uploadu", async () => {
     const res = await POST(uploadRequest({ token: TOKEN, sha: "b".repeat(64) }));
     expect(res.status).toBe(400);
