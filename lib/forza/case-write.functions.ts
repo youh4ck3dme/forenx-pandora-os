@@ -52,7 +52,7 @@ function assertUpdated(count: number | null): void {
 
 /* ---------------------------------- prípad --------------------------------- */
 
-export const saveCase = createServerFn({ method: "POST" })
+export const saveCase = createServerFn({ method: "POST", id: "case-write/saveCase" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) =>
     z
@@ -124,7 +124,7 @@ const entityInput = z.object({
   expectedRevision: revision.optional(),
 });
 
-export const saveEntity = createServerFn({ method: "POST" })
+export const saveEntity = createServerFn({ method: "POST", id: "case-write/saveEntity" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => entityInput.parse(input))
   .handler(async ({ data, context }) => {
@@ -200,7 +200,7 @@ const transactionInput = z.object({
   expectedRevision: revision.optional(),
 });
 
-export const saveTransaction = createServerFn({ method: "POST" })
+export const saveTransaction = createServerFn({ method: "POST", id: "case-write/saveTransaction" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) =>
     transactionInput
@@ -249,7 +249,7 @@ export const saveTransaction = createServerFn({ method: "POST" })
 
 /* ---------------------------------- vzťahy --------------------------------- */
 
-export const saveRelation = createServerFn({ method: "POST" })
+export const saveRelation = createServerFn({ method: "POST", id: "case-write/saveRelation" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) =>
     z
@@ -299,7 +299,7 @@ export const saveRelation = createServerFn({ method: "POST" })
 
 /* ---------------------------------- zbrane --------------------------------- */
 
-export const saveWeapon = createServerFn({ method: "POST" })
+export const saveWeapon = createServerFn({ method: "POST", id: "case-write/saveWeapon" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) =>
     z
@@ -353,7 +353,7 @@ export const saveWeapon = createServerFn({ method: "POST" })
 
 /* --------------------------------- udalosti -------------------------------- */
 
-export const saveEvent = createServerFn({ method: "POST" })
+export const saveEvent = createServerFn({ method: "POST", id: "case-write/saveEvent" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) =>
     z
@@ -425,7 +425,7 @@ const deleteInput = z.object({
 });
 
 /** Zistí, čo mazanie ovplyvní — aby nevznikli osirelé referencie. */
-export const getDeleteImpact = createServerFn({ method: "POST" })
+export const getDeleteImpact = createServerFn({ method: "POST", id: "case-write/getDeleteImpact" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => deleteInput.parse(input))
   .handler(async ({ data, context }) => {
@@ -495,7 +495,7 @@ export const getDeleteImpact = createServerFn({ method: "POST" })
     return { blockers, cascades, canDelete: blockers.length === 0 };
   });
 
-export const deleteRecord = createServerFn({ method: "POST" })
+export const deleteRecord = createServerFn({ method: "POST", id: "case-write/deleteRecord" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => deleteInput.parse(input))
   .handler(async ({ data, context }) => {
@@ -527,7 +527,7 @@ const caseStatusInput = z.object({
  * Zmena stavu prípadu. Databáza vynucuje povolené prechody a audituje ich;
  * zrušenie legal holdu navyše vyžaduje administrátora.
  */
-export const setCaseStatus = createServerFn({ method: "POST" })
+export const setCaseStatus = createServerFn({ method: "POST", id: "case-write/setCaseStatus" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => caseStatusInput.parse(input))
   .handler(async ({ data, context }) => {
@@ -544,7 +544,7 @@ export const setCaseStatus = createServerFn({ method: "POST" })
  * Kontrolované zničenie prípadu (P1-03). Vyžaduje administrátora, prípad musí
  * byť archivovaný a zničenie sa najprv nezmeniteľne zaznamená do audit logu.
  */
-export const destroyCase = createServerFn({ method: "POST" })
+export const destroyCase = createServerFn({ method: "POST", id: "case-write/destroyCase" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) =>
     z
@@ -582,7 +582,7 @@ export const destroyCase = createServerFn({ method: "POST" })
  * Neobsahuje osobné údaje a vytvára sa len na výslovné vyžiadanie používateľa —
  * nikdy sa nepridáva automaticky do reálnych prípadov.
  */
-export const createDemoCase = createServerFn({ method: "POST" })
+export const createDemoCase = createServerFn({ method: "POST", id: "case-write/createDemoCase" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;

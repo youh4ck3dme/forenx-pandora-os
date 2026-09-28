@@ -22,7 +22,7 @@ function fail(
 /**
  * Importuje report z Dimitri Checker pre daný prípad.
  */
-export const importDimitriCheckerReport = createServerFn({ method: "POST" })
+export const importDimitriCheckerReport = createServerFn({ method: "POST", id: "dimitri/importDimitriCheckerReport" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) =>
     z
@@ -112,7 +112,7 @@ export const importDimitriCheckerReport = createServerFn({ method: "POST" })
 /**
  * Zoznam uložených cezhraničných analýz pre prípad.
  */
-export const listCrossBorderAnalyses = createServerFn({ method: "POST" })
+export const listCrossBorderAnalyses = createServerFn({ method: "POST", id: "dimitri/listCrossBorderAnalyses" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => z.object({ caseId: uuid }).parse(input))
   .handler(async ({ data, context }) => {

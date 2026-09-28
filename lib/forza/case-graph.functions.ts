@@ -58,7 +58,7 @@ export function normalizeDate(raw: string | undefined): string | null {
   return null;
 }
 
-export const applyAiResultsToCase = createServerFn({ method: "POST" })
+export const applyAiResultsToCase = createServerFn({ method: "POST", id: "case-graph/applyAiResultsToCase" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => inputSchema.parse(input))
   .handler(async ({ data, context }) => {

@@ -5,8 +5,8 @@ import { PLANS, type PlanId } from "@/config/billing";
  * (funkcia `current_plan` je volateľná len service_role), nikdy z klienta.
  */
 export async function getPlanId(userId: string): Promise<PlanId> {
-  // Shim createServerFn spúšťa handler aj v prehliadači, kde service_role kľúč
-  // nie je (a nesmie byť) — RPC by skončilo 401. Fail-closed na "free".
+  // Handlery bežia iba na serveri (/api/fn/<id>); poistka pre prípad, že by sa
+  // modul predsa vykonal v prehliadači, kde service_role kľúč nie je. Fail-closed.
   if (typeof window !== "undefined") return "free";
   try {
     const { supabaseAdmin } =

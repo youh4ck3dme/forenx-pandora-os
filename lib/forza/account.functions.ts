@@ -21,7 +21,7 @@ const CASE_TABLES = [
 ] as const;
 
 /** Kompletný export vlastných údajov vo formáte JSON. */
-export const exportMyData = createServerFn({ method: "POST" })
+export const exportMyData = createServerFn({ method: "POST", id: "account/exportMyData" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
@@ -58,7 +58,7 @@ export const exportMyData = createServerFn({ method: "POST" })
   });
 
 /** Vymaže jeden prípad vrátane závislých záznamov. */
-export const deleteCaseCompletely = createServerFn({ method: "POST" })
+export const deleteCaseCompletely = createServerFn({ method: "POST", id: "account/deleteCaseCompletely" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) =>
     z.object({ caseId: z.string().uuid() }).parse(input),
@@ -102,7 +102,7 @@ export const deleteCaseCompletely = createServerFn({ method: "POST" })
  * Vymazanie účtu. Vyžaduje potvrdenie e-mailom prihláseného používateľa.
  * Postup: dáta prípadov → AI výstupy → profil → identita.
  */
-export const deleteMyAccount = createServerFn({ method: "POST" })
+export const deleteMyAccount = createServerFn({ method: "POST", id: "account/deleteMyAccount" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) =>
     z.object({ confirmEmail: z.string().trim().email() }).parse(input),

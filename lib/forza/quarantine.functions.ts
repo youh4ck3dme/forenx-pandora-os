@@ -26,7 +26,7 @@ export type QuarantineListItem = {
   mime: string;
 };
 
-export const getAdminQuarantineAccess = createServerFn({ method: "GET" })
+export const getAdminQuarantineAccess = createServerFn({ method: "GET", id: "quarantine/getAdminQuarantineAccess" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const email = claimEmail(context.claims);
@@ -36,7 +36,7 @@ export const getAdminQuarantineAccess = createServerFn({ method: "GET" })
     };
   });
 
-export const listQuarantineDocuments = createServerFn({ method: "GET" })
+export const listQuarantineDocuments = createServerFn({ method: "GET", id: "quarantine/listQuarantineDocuments" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<{ files: QuarantineListItem[] }> => {
     assertAdmin(context.claims);
@@ -80,7 +80,7 @@ export type QuarantineLoadedFile = {
   bytes: number;
 };
 
-export const loadQuarantineDocuments = createServerFn({ method: "POST" })
+export const loadQuarantineDocuments = createServerFn({ method: "POST", id: "quarantine/loadQuarantineDocuments" })
   .inputValidator((data: unknown) => loadSchema.parse(data))
   .middleware([requireSupabaseAuth])
   .handler(

@@ -219,7 +219,12 @@ function Sandbox() {
 
     try {
       const payloads = await Promise.all(fileList.map(toUploadPayload));
-      const result = await extractBulkFilesText({ data: { files: payloads } });
+      // Po jednom súbore: všetky naraz by prekročili limit tela požiadavky (Vercel ~4.5 MB).
+      const result: { results: Awaited<ReturnType<typeof extractBulkFilesText>>["results"] } = { results: [] };
+      for (const payload of payloads) {
+        const single = await extractBulkFilesText({ data: { files: [payload] } });
+        result.results.push(...single.results);
+      }
       let combined = "";
 
       result.results.forEach((r: any, idx: number) => {

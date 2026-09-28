@@ -171,7 +171,7 @@ async function loadAnalysis(
 
 
 /** Stav AI: či je nakonfigurovaná a koľko volaní ostáva v dennom limite. */
-export const getAiStatus = createServerFn({ method: "POST" })
+export const getAiStatus = createServerFn({ method: "POST", id: "ai/getAiStatus" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const {
@@ -207,7 +207,7 @@ export const getAiStatus = createServerFn({ method: "POST" })
   });
 
 /** Náhľad presných dát, ktoré by odišli poskytovateľovi (bez volania AI). */
-export const previewAiPayload = createServerFn({ method: "POST" })
+export const previewAiPayload = createServerFn({ method: "POST", id: "ai/previewAiPayload" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) =>
     z
@@ -284,7 +284,7 @@ export type AiRunResult = {
   };
 };
 
-export const runAiTask = createServerFn({ method: "POST" })
+export const runAiTask = createServerFn({ method: "POST", id: "ai/runAiTask" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) =>
     z
@@ -708,7 +708,7 @@ async function runAiTaskInner(
 
 
 
-export const extractFileText = createServerFn({ method: "POST" })
+export const extractFileText = createServerFn({ method: "POST", id: "ai/extractFileText" })
   .middleware([requireSupabaseAuth])
   .validator((d: unknown) => uploadFileSchema.parse(d))
   .handler(async ({ data }) => {
@@ -719,7 +719,7 @@ export const extractFileText = createServerFn({ method: "POST" })
     );
   });
 
-export const extractBulkFilesText = createServerFn({ method: "POST" })
+export const extractBulkFilesText = createServerFn({ method: "POST", id: "ai/extractBulkFilesText" })
   .middleware([requireSupabaseAuth])
   .validator((d: unknown) =>
     z
@@ -797,7 +797,7 @@ export const extractBulkFilesText = createServerFn({ method: "POST" })
 
 
 
-export const parseUploadedCaseDocument = createServerFn({ method: "POST" })
+export const parseUploadedCaseDocument = createServerFn({ method: "POST", id: "ai/parseUploadedCaseDocument" })
   .middleware([requireSupabaseAuth])
   .validator((d: unknown) =>
     uploadFileSchema.extend({ consentVersion: z.string().optional() }).parse(d),
@@ -842,7 +842,7 @@ async function assertCaseOwned(supabase: SupabaseLike, caseId: string) {
   if (!data) throw new Error("Prípad sa nenašiel alebo naň nemáte oprávnenie.");
 }
 
-export const runForensicAutopilot = createServerFn({ method: "POST" })
+export const runForensicAutopilot = createServerFn({ method: "POST", id: "ai/runForensicAutopilot" })
   .middleware([requireSupabaseAuth])
   .validator(
     (d: {
@@ -1256,14 +1256,14 @@ export async function handleSaveCaseDossier(
   };
 }
 
-export const getForensicDossier = createServerFn({ method: "GET" })
+export const getForensicDossier = createServerFn({ method: "GET", id: "ai/getForensicDossier" })
   .middleware([requireSupabaseAuth])
   .validator((d: { caseId: string }) => d)
   .handler(async ({ data, context }) =>
     handleGetForensicDossier(data.caseId, context.supabase),
   );
 
-export const saveCaseDossier = createServerFn({ method: "POST" })
+export const saveCaseDossier = createServerFn({ method: "POST", id: "ai/saveCaseDossier" })
   .middleware([requireSupabaseAuth])
   .validator(
     (d: { caseId: string; dossier: import("./types").ForensicDossier }) => d,
