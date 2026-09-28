@@ -13,3 +13,8 @@
 28fd3cccb421715881319aa5d6db04f2fcaad783:lib/ai/__tests__/llm-redaction-gateway.test.ts:generic-api-key:12
 # Readable test fixture ("test-…-key-1234567890"), added with trace IDs:
 0341e2f085691e882b8128a8ae9066859d7c54d0:lib/__tests__/trace.test.ts:generic-api-key:144
+# Canonical investigative-question identifier q2_planner_coordinator (INVESTIGATIVE_QUESTIONS),
+# not a credential; the object field was renamed to `field` afterwards:
+27daabba82b33ed15558e5f7c13a3e71260b010c:lib/forza/evidence-binding.ts:generic-api-key:206
+# The comment added with the entry above in d47bb9c quoted the flagged line verbatim:
+d47bb9ce5c1d90aeb062f2f3b231f9b403ad91fc:.gitleaksignore:generic-api-key:16
