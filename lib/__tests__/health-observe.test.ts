@@ -49,16 +49,31 @@ function request(
   });
 }
 
+/** Zdieľané počítadlo DB funkcie rate_limit_hit (spoločné pre všetky „inštancie“). */
+let rateCounters: Map<string, number>;
+
+function metricsOrRateLimit(name: string, args?: Record<string, unknown>) {
+  if (name === "rate_limit_hit") {
+    const key = `${String(args?._bucket)}:${String(args?._key_hash)}`;
+    const limit = Number(args?._limit);
+    const hits = (rateCounters.get(key) ?? 0) + 1;
+    rateCounters.set(key, hits);
+    return { data: { allowed: hits <= limit, remaining: Math.max(limit - hits, 0) }, error: null };
+  }
+  return { data: { window_hours: 24, alerts: { ai_timeouts_over_60s: false } }, error: null };
+}
+
 beforeEach(() => {
   resetReportRateLimiter();
+  rateCounters = new Map();
   insertSpy = vi.fn().mockResolvedValue({ error: null });
-  rpcSpy = vi.fn().mockResolvedValue({
-    data: { window_hours: 24, alerts: { ai_timeouts_over_60s: false } },
-    error: null,
-  });
+  rpcSpy = vi.fn().mockImplementation(async (name: string, args?: Record<string, unknown>) =>
+    metricsOrRateLimit(name, args),
+  );
   vi.stubEnv("NODE_ENV", "production");
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://supabase.test");
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon-key");
+  vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-role");
 });
 
 afterEach(() => {
@@ -122,6 +137,44 @@ describe("P0-04 — /api/health/observe", () => {
       body: JSON.stringify({ message: "Chyba 11" }),
     }));
     expect(res.status).toBe(429);
+  });
+
+  function report(message: string) {
+    return POST(request("/api/health/observe", {
+      method: "POST",
+      token: TOKEN,
+      body: JSON.stringify({ message }),
+    }));
+  }
+
+  it("P0-09: limit je zdieľaný naprieč inštanciami (nová inštancia nezačína od nuly)", async () => {
+    for (let i = 0; i < 10; i += 1) {
+      // Každá požiadavka ako nová serverless inštancia (čerstvý proces limitera).
+      resetReportRateLimiter();
+      expect((await report(`Chyba ${i}`)).status).toBe(204);
+    }
+    resetReportRateLimiter();
+    expect((await report("Chyba 11")).status).toBe(429);
+    const hashes = rpcSpy.mock.calls
+      .filter(([name]) => name === "rate_limit_hit")
+      .map(([, args]) => (args as Record<string, unknown>)._key_hash);
+    expect(new Set(hashes).size).toBe(1);
+    // V DB sa neukladá čitateľné ID používateľa.
+    expect(hashes[0]).toMatch(/^[a-f0-9]{64}$/);
+    expect(hashes[0]).not.toContain(OWNER_ID);
+  });
+
+  it("P0-09: produkcia bez service role → 503 (žiadny pád do pamäťového limitera)", async () => {
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
+    resetReportRateLimiter();
+    expect((await report("Chyba")).status).toBe(503);
+    expect(insertSpy).not.toHaveBeenCalled();
+  });
+
+  it("P0-09: chyba DB pri overení limitu → 503 (fail-closed)", async () => {
+    rpcSpy = vi.fn().mockResolvedValue({ data: null, error: { message: "db down" } });
+    expect((await report("Chyba")).status).toBe(503);
+    expect(insertSpy).not.toHaveBeenCalled();
   });
 
   it("GET vracia metriky administrátorovi", async () => {

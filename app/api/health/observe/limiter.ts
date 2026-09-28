@@ -1,20 +1,22 @@
-const MAX_REPORTS_PER_MINUTE = 10;
-const reportsByUser = new Map<string, number[]>();
+import {
+  getRateLimiter,
+  resetRateLimiterForTests,
+  type RateLimitDecision,
+  type RateLimitRule,
+} from "@/lib/security/rate-limiter.server";
 
-/** Test hook: vymaže in-memory rate limit okná (používa len test suite). */
+/** 10 hlásení / používateľ / minúta — zdieľané naprieč inštanciami (P0-09). */
+export const OBSERVE_REPORT_RATE_LIMIT: RateLimitRule = {
+  bucket: "health-observe",
+  limit: 10,
+  windowSeconds: 60,
+};
+
+/** Test hook: vymaže pamäťový limiter (používa len test suite). */
 export function resetReportRateLimiter(): void {
-  reportsByUser.clear();
+  resetRateLimiterForTests();
 }
 
-export function isObserveReportRateLimited(userId: string): boolean {
-  const now = Date.now();
-  const windowStart = now - 60_000;
-  const recent = (reportsByUser.get(userId) ?? []).filter((t) => t > windowStart);
-  if (recent.length >= MAX_REPORTS_PER_MINUTE) {
-    reportsByUser.set(userId, recent);
-    return true;
-  }
-  recent.push(now);
-  reportsByUser.set(userId, recent);
-  return false;
+export function checkObserveReportRateLimit(userId: string): Promise<RateLimitDecision> {
+  return getRateLimiter().hit(OBSERVE_REPORT_RATE_LIMIT, userId);
 }

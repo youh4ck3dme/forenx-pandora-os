@@ -19,7 +19,7 @@ export const preferredRegion = "fra1";
  * credentials; prístup je čisto write-only, sanitizovaný a rate-limitovaný.
  */
 
-import { isCspReportRateLimited, MAX_BODY_BYTES } from "./limiter";
+import { checkCspReportRateLimit, MAX_BODY_BYTES } from "./limiter";
 
 /** Podporuje obe bežné formy: application/csp-report aj application/reports+json. */
 const CspReportSchema = z.union([
@@ -105,8 +105,10 @@ async function handlePost(
     request.headers.get("x-real-ip") ||
     "unknown";
 
-  if (isCspReportRateLimited(ip)) {
-    return new NextResponse(null, { status: 429 });
+  // P0-09: zdieľaný limit naprieč inštanciami; nedostupný limiter = odmietnutie.
+  const rate = await checkCspReportRateLimit(ip);
+  if (!rate.allowed) {
+    return new NextResponse(null, { status: rate.unavailable ? 503 : 429 });
   }
 
   const raw = await request.text().catch(() => "");

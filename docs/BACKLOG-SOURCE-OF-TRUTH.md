@@ -45,7 +45,7 @@ alebo podpisovanie desktopu je nakonfigurované.
 | 6  | Migrácie na hostovanom Supabase                                | `BLOCKED`           | P0-03         |
 | 7  | Záloha a obnova (PITR, Object Lock, drill)                     | `BLOCKED`           | P0-06         |
 | 8  | CSP len Report-Only + API kľúč v localStorage (N-02, N-09)     | `IN PROGRESS`       | P0-05         |
-| 9  | Rate limity v pamäti na serverless (N-04)                      | `TODO`              | P0-09         |
+| 9  | Rate limity v pamäti na serverless (N-04)                      | `IN PROGRESS`       | P0-09         |
 | 10 | Merge do `main` blokuje branch protection (§ 4)                | `BLOCKED`           | § 4           |
 
 ## 3. Quality gate
@@ -176,14 +176,17 @@ Na preview/staging nasadení s iným `NODE_ENV` sa dá vydávať za ľubovoľné
 
 ### P0-09 — Rate limity a stav v pamäti na serverless (N-04) — **NOVÉ**
 
-**Stav:** `TODO` (HIGH)
-**Dôkaz:** `new Map()` v `app/api/csp-report/limiter.ts:3`, `app/api/health/observe/limiter.ts:2` a
+**Stav:** `IN PROGRESS` — oprava v kóde hotová (vetva `fix/shared-rate-limit`); chýba aplikovanie migrácie a load test na nasadení.
+**Pôvodný dôkaz:** `new Map()` v `app/api/csp-report/limiter.ts:3`, `app/api/health/observe/limiter.ts:2` a
 `inMemoryEvidenceStore` v `app/api/vault/route.ts:51`. Na serverless má každá inštancia vlastnú pamäť,
 takže limit sa obíde rozložením požiadaviek.
 
-- [ ] Rozhranie `RateLimiter` so zdieľaným úložiskom (napr. Upstash Redis) v produkcii, `Map` len pre dev/testy.
-- [ ] `inMemoryEvidenceStore` úplne mimo produkčnej cesty (výpis iba z ledgera).
+- [x] Rozhranie `RateLimiter` (`lib/security/rate-limiter.server.ts`): v produkcii zdieľané počítadlo v Postgrese (`rate_limit_hit`, migrácia `20260929000000_shared_rate_limit.sql`) namiesto Redisu, bez nového dodávateľa. `Map` len pre dev/testy. Fail-closed: produkcia bez service role alebo pri chybe DB vráti 503, nikdy nespadne do pamäte. Kľúč (IP / ID používateľa) sa ukladá len ako SHA-256.
+- [x] `inMemoryEvidenceStore` mimo produkčnej cesty: číta sa aj zapisuje iba pri lokálnom dev obchvate, zoznam so skutočným tokenom je výhradne z ledgera.
+- [x] Testy: `supabase/tests/shared-rate-limit.test.ts` (PGlite: počítanie, neplatné parametre, práva anon/authenticated), `lib/__tests__/rate-limiter.test.ts`, route testy (zdieľaný limit naprieč „inštanciami“, 503 bez konfigurácie a pri chybe DB, izolácia pamäťového registra); 5 route testov na pôvodnom kóde zlyhá.
+- [ ] Aplikovať migráciu na hostovaný Supabase (spolu s P0-03).
 - [ ] Load test: 100 paralelných požiadaviek cez viac inštancií rešpektuje limit.
+- Poznámka: kľúč CSP limitu je IP z `x-forwarded-for`, ktorá je podvrhnuteľná (N-06, P1-04); pevné okno pripúšťa na hranici okna až 2× limit.
 
 ### P0-10 — Server funkcie len na serveri — **NOVÉ**
 

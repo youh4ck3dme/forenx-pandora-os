@@ -246,3 +246,32 @@ describe("POST /api/vault/presign mimo produkcie so skutočným tokenom", () => 
     expect(res.status).toBe(403);
   });
 });
+
+describe("P0-09 — pamäťový register dôkazov len pre dev obchvat", () => {
+  it("položku nahratú cez obchvat nevidí požiadavka so skutočným tokenom", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    const { uploadCaseDocument } = await import("@/lib/storage/s3-vault");
+    const { evidenceStorageKey } = await import("@/lib/storage/evidence-ledger");
+    const { POST } = await import("@/app/api/vault/route");
+    vi.mocked(uploadCaseDocument).mockImplementation(async (caseId, file) =>
+      evidenceStorageKey(caseId, file.sha256, file.name),
+    );
+    const { createHash } = await import("node:crypto");
+    const content = "len lokálny dôkaz";
+    const form = new FormData();
+    form.append("file", new File([content], "lokalny.pdf", { type: "application/pdf" }));
+    form.append("caseId", CASE_ID);
+    form.append("clientSha256", createHash("sha256").update(content).digest("hex"));
+    const uploaded = await POST(new NextRequest("http://localhost:3000/api/vault", { method: "POST", body: form }));
+    expect(uploaded.status).toBe(200);
+
+    const bypassList = await GET(req(`http://localhost:3000/api/vault?caseId=${CASE_ID}`));
+    expect((await bypassList.json()).items).toHaveLength(1);
+
+    const realList = await GET(
+      req(`http://localhost:3000/api/vault?caseId=${CASE_ID}`, { authorization: `Bearer ${TOKEN}` }),
+    );
+    expect(realList.status).toBe(200);
+    expect((await realList.json()).items).toEqual([]);
+  });
+});

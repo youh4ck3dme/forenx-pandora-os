@@ -1,21 +1,24 @@
-const MAX_REPORTS_PER_MINUTE = 20;
-export const MAX_BODY_BYTES = 8 * 1024;
-const reportsByIp = new Map<string, number[]>();
+import {
+  getRateLimiter,
+  resetRateLimiterForTests,
+  type RateLimitDecision,
+  type RateLimitRule,
+} from "@/lib/security/rate-limiter.server";
 
-/** Test hook: vymaže in-memory rate limit okná (používa len test suite). */
+export const MAX_BODY_BYTES = 8 * 1024;
+
+/** 20 reportov / IP / minúta — zdieľané naprieč inštanciami (P0-09). */
+export const CSP_REPORT_RATE_LIMIT: RateLimitRule = {
+  bucket: "csp-report",
+  limit: 20,
+  windowSeconds: 60,
+};
+
+/** Test hook: vymaže pamäťový limiter (používa len test suite). */
 export function resetCspReportRateLimiter(): void {
-  reportsByIp.clear();
+  resetRateLimiterForTests();
 }
 
-export function isCspReportRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const windowStart = now - 60_000;
-  const recent = (reportsByIp.get(ip) ?? []).filter((t) => t > windowStart);
-  if (recent.length >= MAX_REPORTS_PER_MINUTE) {
-    reportsByIp.set(ip, recent);
-    return true;
-  }
-  recent.push(now);
-  reportsByIp.set(ip, recent);
-  return false;
+export function checkCspReportRateLimit(ip: string): Promise<RateLimitDecision> {
+  return getRateLimiter().hit(CSP_REPORT_RATE_LIMIT, ip);
 }
