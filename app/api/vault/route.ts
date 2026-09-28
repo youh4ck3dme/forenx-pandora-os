@@ -5,6 +5,8 @@ import {
   ledgerConfigured,
   ledgerRowToItem,
   listLedgerEvidence,
+  registerEvidence,
+  supabaseLedgerDeps,
 } from "@/lib/storage/evidence-ledger";
 import { z } from "zod";
 import {
@@ -27,6 +29,7 @@ import {
   isUuidCaseId,
   logVaultAccess,
   verifyCaseOwnership,
+  type OwnershipResult,
 } from "@/lib/storage/vault-auth";
 
 export const maxDuration = 300; // 300 s limit pre veľké súbory
@@ -222,12 +225,46 @@ async function handleGet(request: NextRequest): Promise<NextResponse> {
   });
 }
 
+function ownershipError(ownership: OwnershipResult): NextResponse | undefined {
+  if (ownership === "not_found") {
+    return NextResponse.json({ error: "Spis nebol nájdený." }, { status: 404 });
+  }
+  if (ownership === "forbidden") {
+    return NextResponse.json(
+      { error: "Prístup zamietnutý: Nemáte oprávnenie nahrávať dôkazy do tohto spisu." },
+      { status: 403 },
+    );
+  }
+  if (ownership === "unavailable") {
+    return NextResponse.json(
+      { error: "Overenie oprávnenia k spisu zlyhalo; nahratie nebolo povolené." },
+      { status: 503 },
+    );
+  }
+}
+
 /**
- * POST /api/vault -> Prijme súbor, nezávisle overí SHA-256 hash, uloží do Hetzner S3 a vráti evidenciu
+ * POST /api/vault -> Prijme súbor, nezávisle overí SHA-256 hash, uloží do Hetzner S3,
+ * zapíše dôkaz do ledgera a vráti evidenciu.
+ *
+ * P0-07 (N-01): rovnaká fail-closed ochrana ako GET a presign — autentifikácia pred
+ * čítaním tela, kontrola vlastníctva spisu, audit `upload` a v produkcii žiadna cesta,
+ * kde by dôkaz skončil v S3 bez zápisu do ledgera `evidence_items`.
  */
 async function handlePost(request: NextRequest): Promise<NextResponse> {
   const unavailable = rejectUnconfiguredProductionVault();
   if (unavailable) return unavailable;
+
+  // Autentifikácia ešte pred čítaním až 250 MB tela požiadavky.
+  const auth = await authenticateVaultRequest(request);
+  if (auth.userId === null) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+  const isDev = process.env.NODE_ENV !== "production";
+  if (!isDev && (!auth.token || !ledgerConfigured())) {
+    // Bez tokenu nie je audit ani zápis do ledgera s RLS — dôkaz by nebol nikde evidovaný.
+    return NextResponse.json({ error: "Ledger dôkazov nie je dostupný." }, { status: 503 });
+  }
 
   try {
     let formData: FormData;
@@ -265,6 +302,29 @@ async function handlePost(request: NextRequest): Promise<NextResponse> {
       );
     }
 
+    // ─── 0. VLASTNÍCTVO SPISU A AUDIT (IDOR ochrana, fail-closed) ─────────
+    if (!isDev) {
+      if (!isUuidCaseId(caseId)) {
+        return NextResponse.json({ error: "Neplatný identifikátor spisu." }, { status: 400 });
+      }
+      const denied = ownershipError(await verifyCaseOwnership(caseId, auth.userId));
+      if (denied) return denied;
+      const audited = auth.token
+        ? await logVaultAccess({
+            token: auth.token,
+            caseId,
+            action: "upload",
+            ...accessContext(request),
+          })
+        : false;
+      if (!audited) {
+        return NextResponse.json(
+          { error: "Záznam nahratia dôkazu sa nepodarilo zapísať; nahratie nebolo povolené." },
+          { status: 500 },
+        );
+      }
+    }
+
     // ─── 1. NEZÁVISLÝ SERVEROVÝ VÝPOČET SHA-256 HASHU (Anti-Tampering) ─────────────
     const arrayBuffer = await file.arrayBuffer();
     const fileBuffer = Buffer.from(arrayBuffer);
@@ -284,14 +344,15 @@ async function handlePost(request: NextRequest): Promise<NextResponse> {
     }
 
     // ─── 3. STREAMOVANÝ UPLOAD DO HETZNER S3 VAULTU ─────────────────────
-    const storageKeyRaw = await uploadCaseDocument(caseId, {
-      name: fileName,
-      buffer: fileBuffer,
-      mimeType: file.type || "application/octet-stream",
-      sha256: serverHash,
-    });
+    const mimeType = file.type || "application/octet-stream";
+    const bucket = process.env.S3_BUCKET || "forenx-vault-sk";
+    // Kľúč pod `evidence/` = rovnaký, aký vydáva presign, aby ho ledger prijal.
+    const storageKeyRaw = await uploadCaseDocument(
+      caseId,
+      { name: fileName, buffer: fileBuffer, mimeType, sha256: serverHash },
+      { folder: "evidence" },
+    );
 
-    const evidenceId = EvidenceIdSchema.parse(randomUUID());
     const storageKeyValidation = S3StorageKeySchema.safeParse(storageKeyRaw);
     if (!storageKeyValidation.success) {
       return NextResponse.json(
@@ -301,18 +362,47 @@ async function handlePost(request: NextRequest): Promise<NextResponse> {
     }
     const storageKey = storageKeyValidation.data;
 
-    // ─── 4. ZOSTAVENIE A VALIDÁCIA ZÁZNAMU ────────────────────────
+    // ─── 4. ZÁPIS DO LEDGERA DÔKAZOV (evidence_items, RLS + WORM) ─────────
+    // V produkcii povinný (overené vyššie); v dev len keď je ledger dostupný.
+    if (auth.token && ledgerConfigured()) {
+      const committed = await registerEvidence(
+        {
+          caseId,
+          storageKey,
+          fileName,
+          fileSizeBytes: file.size,
+          mimeType,
+          sha256Hash: serverHash,
+        },
+        auth.userId,
+        await supabaseLedgerDeps(auth.token),
+      );
+      if (!committed.ok) {
+        return NextResponse.json({ error: committed.error }, { status: committed.status });
+      }
+      return NextResponse.json(
+        {
+          success: true,
+          persisted: true,
+          item: ledgerRowToItem(committed.row, caseId, bucket, auth.userId),
+          sha256: serverHash,
+        },
+        { status: committed.created ? 201 : 200 },
+      );
+    }
+
+    // ─── 5. DEV BEZ LEDGERA: len pamäťový register procesu ────────────────
     const evidenceItemRaw: unknown = {
-      id: evidenceId,
+      id: EvidenceIdSchema.parse(randomUUID()),
       caseId,
       fileName,
       fileSizeBytes: file.size,
-      mimeType: file.type || "application/octet-stream",
+      mimeType,
       sha256Hash: serverHash,
       s3StorageKey: storageKey,
-      s3Bucket: process.env.S3_BUCKET || "forenx-vault-sk",
+      s3Bucket: bucket,
       uploadedAt: new Date().toISOString(),
-      uploadedBy: "investigator-session-user",
+      uploadedBy: auth.userId,
       integrityStatus: "verified",
       aiAnalyzed: false,
       tags: [fileName.endsWith(".csv") ? "vypis" : fileName.endsWith(".pdf") ? "zmluva" : "ine"],
@@ -332,11 +422,14 @@ async function handlePost(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({
       success: true,
+      persisted: false,
       item: parsedItem.data,
       sha256: serverHash,
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Neznáma chyba spracovania trezoru.";
+    // V produkcii sa detail chyby (S3, DB) klientovi nevracia.
+    const message =
+      isDev && error instanceof Error ? error.message : "Spracovanie dôkazu v trezore zlyhalo.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

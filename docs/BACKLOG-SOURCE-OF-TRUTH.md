@@ -37,7 +37,7 @@ alebo podpisovanie desktopu je nakonfigurované.
 
 | #  | Položka                                                        | Stav                | Kde           |
 | -- | -------------------------------------------------------------- | ------------------- | ------------- |
-| 1  | `POST /api/vault` bez autentifikácie, ownership a auditu (N-01) | `RED`               | P0-07         |
+| 1  | `POST /api/vault` bez autentifikácie, ownership a auditu (N-01) | `IN PROGRESS`       | P0-07         |
 | 2  | Dev auth bypass cez hlavičku mimo loopbacku (N-03)             | `RED`               | P0-08         |
 | 3  | Server funkcie sa vykonávajú aj v prehliadači (PR #18)         | `IN PROGRESS`       | P0-10         |
 | 4  | Rotácia tajomstiev                                             | `ROTATION REQUIRED` | P0-02         |
@@ -147,18 +147,19 @@ alebo podpisovanie desktopu je nakonfigurované.
 
 ### P0-07 — `POST /api/vault` bez autentifikácie (N-01) — **NOVÉ**
 
-**Stav:** `RED` (CRITICAL)
-**Dôkaz (overené na `801129b`):** `handlePost` (`app/api/vault/route.ts:228`) nevolá
+**Stav:** `IN PROGRESS` — oprava v kóde hotová (vetva `fix/vault-post-auth`), chýba overenie na nasadení.
+**Pôvodný dôkaz (overené na `801129b`):** `handlePost` (`app/api/vault/route.ts:228`) nevolá
 `authenticateVaultRequest`, `verifyCaseOwnership` ani `logVaultAccess`. GET ich volá (`:70`, `:105`, `:163`, `:123`, `:180`).
 `uploadedBy` je napevno `"investigator-session-user"` (`:315`); upload končí v `inMemoryEvidenceStore` (`:330–331`).
 **Dopad:** kto pozná URL, zapíše do trezoru ľubovoľný súbor do 250 MB pod ľubovoľný `caseId`. Kontaminácia reťazca dôkazov, DoS a neobhájiteľný audit.
 
-- [ ] Auth na začiatku `handlePost` (401), v produkcii UUID `caseId` (400).
-- [ ] Ownership: `not_found` → 404, `forbidden` → 403, `unavailable` → 503.
-- [ ] Audit `action: "upload"` fail-closed (500 pri zlyhaní zápisu; bez tokenu v produkcii odmietnuť).
-- [ ] `uploadedBy` = reálne `auth.userId`.
-- [ ] V produkcii žiadna cesta, kde dôkaz skončí v S3 bez zápisu do ledgera (commit cez `evidence-ledger` alebo 503).
-- [ ] Testy na 401 / 403 / 404 / 503 a happy path s auditným riadkom.
+- [x] Auth na začiatku `handlePost` ešte pred čítaním tela (401), v produkcii UUID `caseId` (400).
+- [x] Ownership: `not_found` → 404, `forbidden` → 403, `unavailable` → 503.
+- [x] Audit `action: "upload"` fail-closed (500 pri zlyhaní zápisu; bez tokenu v produkcii 503).
+- [x] `uploadedBy` = reálne `auth.userId`.
+- [x] V produkcii žiadna cesta, kde dôkaz skončí v S3 bez zápisu do ledgera: bez ledgera 503 ešte pred uploadom; objekt ide pod kľúč `evidence/` (rovnaký ako presign) a zapíše sa cez `registerEvidence` (stav `pending`, `verified` nastaví worker `/api/vault/verify`).
+- [x] Testy: `lib/__tests__/vault-route-auth.test.ts` (401 ×2, 403, 404, 503 ×2, 400, audit 500, happy path s auditom a ledgerom, nesúlad hashu); 9 z nich na pôvodnom kóde zlyhá.
+- [ ] Na nasadení: `curl -X POST /api/vault` bez `Authorization` → 401; s tokenom a cudzím prípadom → 403; vlastný prípad → 201 a riadok v audite s `action = 'upload'`.
 
 ### P0-08 — Dev auth bypass cez hlavičku (N-03) — **NOVÉ**
 
