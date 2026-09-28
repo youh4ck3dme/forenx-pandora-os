@@ -168,10 +168,10 @@ alebo podpisovanie desktopu je nakonfigurované.
 z `x-dev-user-id` / `x-user-id` (default `dev-investigator-001`) bez tokenu; v GET sa zároveň vypína ownership aj audit.
 Na preview/staging nasadení s iným `NODE_ENV` sa dá vydávať za ľubovoľného vyšetrovateľa.
 
-- [x] Obchvat (`devAuthBypassAllowed`) len pri `NODE_ENV=test`, alebo pri `next dev` s výslovným `PANDORA_DEV_AUTH_BYPASS=1`, mimo Vercelu a pre loopback požiadavku; inak 401. `Host` aj `x-forwarded-for` sa dajú podvrhnúť (Next nastaví XFF zo socketu len keď chýba), preto je hlavnou bránou flag a loopback len doplnková kontrola.
+- [x] Obchvat (`devAuthBypassAllowed`) len pri `NODE_ENV=test`, alebo pri `next dev` s výslovným `PANDORA_DEV_AUTH_BYPASS=1`, mimo Vercelu, pre loopback požiadavku a **bez prístupu k reálnym dôkazom** (bez S3 kľúčov a service role); inak 401. Loopback sa v route nedá spoľahlivo overiť (`Host` aj `x-forwarded-for` sú podvrhnuteľné, adresa socketu nie je dostupná), preto podvrhnutý obchvat nemá čo získať. V `next dev` je identita obchvatu pevná (`x-dev-user-id` len v unit testoch).
 - [x] Kontrolu vlastníctva a audit preskakuje iba skutočný obchvat (`auth.devBypass`), nie `NODE_ENV`: skutočný token má plné kontroly v každom prostredí (GET zoznam aj presign na stiahnutie, POST, presign na upload, commit).
 - [x] Presign na upload bez service role už vlastníctvo nepreskočí, ale vráti 503.
-- [x] Testy: `lib/__tests__/vault-dev-bypass.test.ts` (16, z toho 13 na pôvodnom kóde zlyhá) vrátane „vzdialený host + `x-dev-user-id` → 401 pri `NODE_ENV=development`“.
+- [x] Testy: `lib/__tests__/vault-dev-bypass.test.ts` (18, z toho 13 na pôvodnom kóde zlyhá) vrátane „vzdialený host + `x-dev-user-id` → 401 pri `NODE_ENV=development`“.
 - [ ] Dev-only modul, ktorý produkčný build vynechá; test, že `.next` neobsahuje `x-dev-user-id`, `investigator-session-user`, `dev-investigator-001`.
 
 ### P0-09 — Rate limity a stav v pamäti na serverless (N-04) — **NOVÉ**

@@ -66,6 +66,9 @@ beforeEach(() => {
   vi.stubEnv("PANDORA_DEV_AUTH_BYPASS", "");
   vi.stubEnv("VERCEL", "");
   vi.stubEnv("VERCEL_ENV", "");
+  for (const key of ["S3_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY", "SUPABASE_SERVICE_ROLE_KEY"]) {
+    vi.stubEnv(key, "");
+  }
 });
 
 afterEach(() => {
@@ -117,6 +120,16 @@ describe("devAuthBypassAllowed", () => {
     ).toBe(false);
   });
 
+  it("development + flag + loopback, ale s prístupom k reálnym dôkazom nie (S3 alebo service rola)", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("PANDORA_DEV_AUTH_BYPASS", "1");
+    vi.stubEnv("S3_ACCESS_KEY_ID", "AKIA-test");
+    expect(devAuthBypassAllowed(req())).toBe(false);
+    vi.stubEnv("S3_ACCESS_KEY_ID", "");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-role");
+    expect(devAuthBypassAllowed(req())).toBe(false);
+  });
+
   it("development + flag na Verceli (preview) nie", () => {
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("PANDORA_DEV_AUTH_BYPASS", "1");
@@ -151,6 +164,13 @@ describe("authenticateVaultRequest", () => {
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("PANDORA_DEV_AUTH_BYPASS", "1");
     const auth = await authenticateVaultRequest(req());
+    expect(auth).toMatchObject({ userId: "dev-investigator-001", devBypass: true });
+  });
+
+  it("v next dev obchvat ignoruje x-dev-user-id — identita je pevná", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("PANDORA_DEV_AUTH_BYPASS", "1");
+    const auth = await authenticateVaultRequest(req(undefined, { "x-dev-user-id": STRANGER_ID }));
     expect(auth).toMatchObject({ userId: "dev-investigator-001", devBypass: true });
   });
 

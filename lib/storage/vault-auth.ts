@@ -35,8 +35,9 @@ const LOOPBACK_IPS = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 /**
  * Požiadavka smeruje na loopback a neprešla cez proxy zo vzdialenej adresy.
  * Pozor: `Host` aj `x-forwarded-for` vie klient podvrhnúť (Next nastaví XFF
- * zo socketu len keď chýba), preto je to iba doplnková kontrola — hlavnou
- * bránou je výslovné zapnutie `PANDORA_DEV_AUTH_BYPASS=1`.
+ * zo socketu len keď chýba) a adresa socketu v route handleri nie je
+ * dostupná — preto je to iba doplnková kontrola. Skutočnú ochranu dáva
+ * `devAuthBypassAllowed`: obchvat v `next dev` funguje len bez reálnych dát.
  */
 function isLoopbackRequest(request: NextRequest): boolean {
   let hostname: string;
@@ -56,12 +57,25 @@ function isLoopbackRequest(request: NextRequest): boolean {
   return true;
 }
 
+/** Proces má prístup k reálnym dôkazom (S3 trezor alebo service rola Supabase). */
+function hasRealEvidenceAccess(): boolean {
+  return Boolean(
+    process.env.S3_ACCESS_KEY_ID ||
+      process.env.AWS_ACCESS_KEY_ID ||
+      process.env.S3_SECRET_ACCESS_KEY ||
+      process.env.AWS_SECRET_ACCESS_KEY ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+  );
+}
+
 /**
- * P0-08 (N-03): vývojársky obchvat autentifikácie (x-dev-user-id alebo
- * predvolený `dev-investigator-001`) je povolený iba:
+ * P0-08 (N-03): vývojársky obchvat autentifikácie je povolený iba:
  * - v unit testoch (`NODE_ENV=test`), alebo
- * - pri `next dev` s výslovným `PANDORA_DEV_AUTH_BYPASS=1`, mimo Vercelu,
- *   na loopback požiadavku.
+ * - pri `next dev` s výslovným `PANDORA_DEV_AUTH_BYPASS=1`, mimo Vercelu, na
+ *   loopback požiadavku a **bez prístupu k reálnym dôkazom** (bez S3 kľúčov a
+ *   bez service role). Loopback sa v route nedá spoľahlivo overiť (hlavičky sú
+ *   podvrhnuteľné), preto podvrhnutý obchvat nesmie mať čo získať: s reálnym
+ *   úložiskom je povinné skutočné prihlásenie.
  * Samotné `NODE_ENV !== "production"` (staging, preview) už nestačí.
  */
 export function devAuthBypassAllowed(request: NextRequest): boolean {
@@ -70,6 +84,7 @@ export function devAuthBypassAllowed(request: NextRequest): boolean {
   if (env === "test") return true;
   if (process.env.PANDORA_DEV_AUTH_BYPASS !== "1") return false;
   if (process.env.VERCEL || process.env.VERCEL_ENV) return false;
+  if (hasRealEvidenceAccess()) return false;
   return isLoopbackRequest(request);
 }
 
@@ -112,9 +127,11 @@ export async function authenticateVaultRequest(
   }
 
   if (bypass) {
+    // Voľbu identity hlavičkou majú len unit testy; v `next dev` je identita
+    // obchvatu pevná, takže sa nedá vydávať za konkrétneho vyšetrovateľa.
     const devUserId =
-      request.headers.get("x-dev-user-id") ||
-      request.headers.get("x-user-id") ||
+      (process.env.NODE_ENV === "test" &&
+        (request.headers.get("x-dev-user-id") || request.headers.get("x-user-id"))) ||
       "dev-investigator-001";
     return { userId: devUserId, token, devBypass: true };
   }
