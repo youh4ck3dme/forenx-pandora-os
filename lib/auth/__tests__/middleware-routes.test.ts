@@ -1,6 +1,6 @@
 /**
  * PANDORA / ForenX - Middleware Route Classification Tests
- * 
+ *
  * Tests for route classification logic and path pattern matching.
  */
 
@@ -46,12 +46,15 @@ describe('Route Classification Logic', () => {
       '/auth/register',
       '/blog',
       '/blog/[...slug]',
+      // PUBLIC API routes
+      '/api/csp-report',
+      '/api/healthz',
     ];
 
     publicRoutes.forEach(route => {
       // All public routes should be internal paths
       expect(isInternalPath(route)).toBe(true);
-      
+
       const result = getRouteCategory(route);
       expect(result.category).toBe('PUBLIC');
     });
@@ -66,8 +69,12 @@ describe('Route Classification Logic', () => {
       '/offline',
       '/api/vault',
       '/api/vault/upload',
+      '/api/vault/commit',
+      '/api/vault/presign',
       '/api/audit',
       '/api/audit/access',
+      '/api/health/observe',
+      '/api/fn/test',
     ];
 
     authenticatedRoutes.forEach(route => {
@@ -79,8 +86,7 @@ describe('Route Classification Logic', () => {
   it('identifies SYSTEM routes correctly', () => {
     const systemRoutes = [
       '/healthz',
-      '/api/healthz',
-      '/api/health/observe',
+      '/api/vault/verify',
       '/.well-known/security.txt',
     ];
 
@@ -98,8 +104,6 @@ describe('Route Classification Logic', () => {
       '/api/audit/*',
       '/api/fn',
       '/api/fn/*',
-      '/api/csp-report',
-      '/api/csp-report/*',
     ];
 
     protectedApiRoutes.forEach(route => {
