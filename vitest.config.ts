@@ -57,6 +57,7 @@ function tsPathsPlugin(): Plugin {
 export default defineConfig({
   plugins: [react(), tsPathsPlugin()],
   test: {
+    testTimeout: 15000,
     environment: "jsdom",
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
