@@ -43,14 +43,14 @@ function matchPathPattern(pathname: string, pattern: string): boolean {
   // Prefix match (pattern ends with /*)
   if (pattern.endsWith('/*')) {
     const prefix = pattern.slice(0, -2);
-    return pathname === prefix || pathname.startsWith(`${prefix}/`);
+    // Only match if pathname starts with prefix/ (not exact match to prefix)
+    return pathname.startsWith(`${prefix}/`);
   }
   
   // Wildcard segment match (pattern contains /[...])
   if (pattern.includes('/[...')) {
-    const regexPattern = pattern
-      .replace(/\/\[\.\.\.\]/g, '/.*')
-      .replace(/\*\[/g, '*[');
+    // Replace [...slug] with .* to match any path segment
+    const regexPattern = pattern.replace(/\[\.\.\.\w*\]/g, '.*');
     const regex = new RegExp(`^${regexPattern}$`);
     return regex.test(pathname);
   }
@@ -144,11 +144,15 @@ const HOME_ROUTE = '/';
  * These are the only paths that can be used as redirect targets.
  */
 const INTERNAL_PATH_PREFIXES = [
+  '/',
   '/forza',
   '/browser',
   '/forge',
   '/offline',
-  '/',
+  '/auth',
+  '/blog',
+  '/healthz',
+  '/api',
 ];
 
 /**
@@ -161,9 +165,14 @@ function isInternalPath(path: string): boolean {
     return false;
   }
   
-  // Check if path starts with any internal prefix
+  // Remove query string and hash for prefix matching
+  const cleanPath = path.split('?')[0].split('#')[0];
+  
+  // Check if path starts with any internal prefix (case-insensitive)
+  const lowerCleanPath = cleanPath.toLowerCase();
   for (const prefix of INTERNAL_PATH_PREFIXES) {
-    if (path === prefix || path.startsWith(`${prefix}/`)) {
+    const lowerPrefix = prefix.toLowerCase();
+    if (lowerCleanPath === lowerPrefix || lowerCleanPath.startsWith(`${lowerPrefix}/`)) {
       return true;
     }
   }
@@ -178,9 +187,23 @@ function isInternalPath(path: string): boolean {
 function validateRedirectTarget(next: string | null): string | null {
   if (!next) return null;
   
+  // Trim whitespace
+  const trimmed = next.trim();
+  if (!trimmed) return null;
+  
+  // Check for encoded slashes or other dangerous characters in the raw input
+  if (trimmed.includes('%2F') || trimmed.includes('%5C') || trimmed.includes('%00')) {
+    return null;
+  }
+  
+  // Reject paths that are only query strings or fragments
+  if (trimmed.startsWith('?') || trimmed.startsWith('#')) {
+    return null;
+  }
+  
   // Remove any query parameters or fragments
   try {
-    const url = new URL(next, 'http://dummy');
+    const url = new URL(trimmed, 'http://dummy');
     const path = url.pathname + (url.search ? url.search : '');
     
     // Must be internal path
@@ -196,8 +219,8 @@ function validateRedirectTarget(next: string | null): string | null {
     return path;
   } catch {
     // If URL parsing fails, try simple path validation
-    if (isInternalPath(next)) {
-      return next;
+    if (isInternalPath(trimmed)) {
+      return trimmed;
     }
     return null;
   }

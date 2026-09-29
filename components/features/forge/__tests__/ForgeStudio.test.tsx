@@ -4,17 +4,28 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ForgeStudio from '../ForgeStudio';
 import '@testing-library/jest-dom';
 import { describe, test, expect, vi } from 'vitest';
+
+// Mock editor store with state that can be toggled
+let storeState = {
+  viewMode: 'desktop',
+  showCode: false,
+  blocks: [],
+  isPublishing: false,
+  lastPublishedUrl: null,
+};
+
 vi.mock('../../../lib/store/editor-store', () => ({
   useEditorStore: () => ({
-    viewMode: 'desktop',
-    setViewMode: vi.fn(),
-    blocks: [],
-    addBlock: vi.fn(),
-    setShowCode: vi.fn(),
-    isPublishing: false,
-    setIsPublishing: vi.fn(),
-    lastPublishedUrl: null,
-    setLastPublishedUrl: vi.fn(),
+    viewMode: storeState.viewMode,
+    setViewMode: vi.fn((mode) => { storeState.viewMode = mode; }),
+    blocks: storeState.blocks,
+    addBlock: vi.fn((block) => { storeState.blocks.push(block); }),
+    showCode: storeState.showCode,
+    setShowCode: vi.fn((value: boolean) => { storeState.showCode = value; }),
+    isPublishing: storeState.isPublishing,
+    setIsPublishing: vi.fn((value: boolean) => { storeState.isPublishing = value; }),
+    lastPublishedUrl: storeState.lastPublishedUrl,
+    setLastPublishedUrl: vi.fn((url: string | null) => { storeState.lastPublishedUrl = url; }),
   }),
 }));
 
@@ -24,16 +35,29 @@ global.fetch = vi.fn(() =>
 ) as any;
 
 describe('ForgeStudio component', () => {
+  beforeEach(() => {
+    // Reset store state before each test
+    storeState = {
+      viewMode: 'desktop',
+      showCode: false,
+      blocks: [],
+      isPublishing: false,
+      lastPublishedUrl: null,
+    };
+  });
+
   test('renders header with title', () => {
     render(<ForgeStudio />);
     expect(screen.getByText('FORGE')).toBeInTheDocument();
   });
 
-  test('toggles code view', () => {
+  test('toggles code view', async () => {
     render(<ForgeStudio />);
     const button = screen.getByRole('button', { name: /Code/i });
-fireEvent.click(button);
-expect(button).toHaveTextContent(/Canvas/i);
+    fireEvent.click(button);
+    await waitFor(() => {
+      expect(button).toHaveTextContent(/Canvas/i);
+    });
   });
 
   test('publish button triggers API call and logging', async () => {

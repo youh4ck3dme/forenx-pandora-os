@@ -40,10 +40,10 @@ function ProfileScreen() {
   const [currentUser, setCurrentUser] = useState<{ id: string; email?: string } | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data }: { data: { session: any } }) => {
       setCurrentUser(data.session?.user ? { id: data.session.user.id, email: data.session.user.email } : null);
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((_event: unknown, session: any) => {
       setCurrentUser(session?.user ? { id: session.user.id, email: session.user.email } : null);
     });
     return () => {
