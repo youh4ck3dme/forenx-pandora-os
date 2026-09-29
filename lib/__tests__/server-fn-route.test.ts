@@ -26,7 +26,7 @@ function post(body: unknown, headers: Record<string, string> = {}) {
 describe("server function registry", () => {
   it("registers every exported server function under its module/export id", () => {
     const registry = buildServerFnRegistry();
-    expect(registry.size).toBe(39);
+    expect(registry.size).toBe(40);
     for (const [id, fn] of registry) {
       expect(fn.id).toBe(id);
       expect(id).toMatch(/^[a-z0-9-]+\/[A-Za-z0-9_]+$/);

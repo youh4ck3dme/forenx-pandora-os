@@ -18,14 +18,21 @@ export { PROMPT_VERSION };
 const HEURISTIC_NOTE =
   "registryAnalysis / crossBorderAnalysis sú AI odhady z textu spisu — nie live ORSR, RPVS ani Dimitri API.";
 
-/** Stabilný kľúč: rovnaký spis + prompt → rovnaká analýza (prepíše predchádzajúcu). */
+/** Stabilný kľúč: rovnaký spis + prompt → rovnaká analýza.
+ *  Partial retries get a distinct key so they create a new run record rather than
+ *  colliding with the original full-run idempotency slot. */
 export async function buildAutopilotIdempotencyKey(input: {
   caseId: string;
   documentText: string;
   promptVersion?: string;
+  retryChunkIndexes?: number[];
 }): Promise<string> {
   const version = input.promptVersion ?? PROMPT_VERSION;
-  const payload = `${input.caseId}|${version}|${input.documentText.length}|${fnv1a(input.documentText)}`;
+  const chunkSuffix =
+    input.retryChunkIndexes && input.retryChunkIndexes.length > 0
+      ? `|retry:${[...input.retryChunkIndexes].sort((a, b) => a - b).join(",")}`
+      : "";
+  const payload = `${input.caseId}|${version}|${input.documentText.length}|${fnv1a(input.documentText)}${chunkSuffix}`;
   return `ap:${payload}`;
 }
 

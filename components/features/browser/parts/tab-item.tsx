@@ -57,7 +57,14 @@ export function TabItem({
     zIndex: isDragging ? 50 : "auto",
   };
 
-  const faviconUrl = tab.favicon || FaviconService.getFaviconUrl(tab.url);
+  const [faviconFailed, setFaviconFailed] = React.useState(false);
+  const rawFaviconUrl = tab.favicon || FaviconService.getFaviconUrl(tab.url);
+  const faviconUrl = !faviconFailed && rawFaviconUrl ? rawFaviconUrl : "";
+
+  // Reset error state if url changes
+  React.useEffect(() => {
+    setFaviconFailed(false);
+  }, [tab.url, tab.favicon]);
 
   return (
     <ContextMenu.Root>
@@ -70,7 +77,7 @@ export function TabItem({
           onClick={onActivate}
           suppressHydrationWarning
           className={cn(
-            "group relative flex items-center h-9 px-3 gap-2 text-sm font-medium transition-all duration-300 select-none cursor-default min-w-[160px] max-w-[240px] rounded-t-lg border-t border-x",
+            "group relative flex items-center h-9 px-3 gap-2 text-sm font-medium transition-all duration-300 select-none cursor-default min-w-40 max-w-60 rounded-t-lg border-t border-x",
             isActive
               ? "bg-background text-foreground border-border z-10 shadow-[0_-2px_10px_rgba(0,0,0,0.1)]"
               : "bg-black/60 text-gray-500 hover:bg-black/80 hover:text-gray-200 border-white/5 hover:border-white/20 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] border-b-border z-0",
@@ -91,6 +98,7 @@ export function TabItem({
                 height={14}
                 className="w-3.5 h-3.5 object-contain"
                 unoptimized
+                onError={() => setFaviconFailed(true)}
               />
             ) : (
               <Layers size={12} className="text-muted-foreground/40" />
@@ -98,7 +106,7 @@ export function TabItem({
           </div>
 
           {/* Title */}
-          <span className="flex-1 truncate text-[11px] leading-none mb-[1px] font-medium tracking-tight">
+          <span className="flex-1 truncate text-[11px] leading-none mb-px font-medium tracking-tight">
             {tab.title ||
               (tab.url === "pandora://newtab" ? "New Tab" : "Loading...")}
           </span>
@@ -139,9 +147,9 @@ export function TabItem({
       </ContextMenu.Trigger>
 
       <ContextMenu.Portal>
-        <ContextMenu.Content className="min-w-[200px] bg-[#0a0a0f]/90 backdrop-blur-2xl rounded-xl border border-white/10 p-1.5 shadow-2xl z-[100] animate-in fade-in zoom-in-95 duration-150">
+        <ContextMenu.Content className="min-w-50 bg-[#0a0a0f]/90 backdrop-blur-2xl rounded-xl border border-white/10 p-1.5 shadow-2xl z-100 animate-in fade-in zoom-in-95 duration-150">
           <ContextMenu.Item
-            className="flex items-center gap-2 px-2.5 py-2 text-xs text-gray-300 outline-none cursor-default select-none rounded-lg hover:bg-white/10 hover:text-white data-[highlighted]:bg-white/10 data-[highlighted]:text-white transition-all"
+            className="flex items-center gap-2 px-2.5 py-2 text-xs text-gray-300 outline-none cursor-default select-none rounded-lg hover:bg-white/10 hover:text-white data-highlighted:bg-white/10 data-highlighted:text-white transition-all"
             onSelect={onReload}
           >
             <RotateCw size={14} className="opacity-60" />
@@ -149,7 +157,7 @@ export function TabItem({
           </ContextMenu.Item>
 
           <ContextMenu.Item
-            className="flex items-center gap-2 px-2.5 py-2 text-xs text-gray-300 outline-none cursor-default select-none rounded-lg hover:bg-white/10 hover:text-white data-[highlighted]:bg-white/10 data-[highlighted]:text-white transition-all"
+            className="flex items-center gap-2 px-2.5 py-2 text-xs text-gray-300 outline-none cursor-default select-none rounded-lg hover:bg-white/10 hover:text-white data-highlighted:bg-white/10 data-highlighted:text-white transition-all"
             onSelect={onDuplicate}
           >
             <Copy size={14} className="opacity-60" />
@@ -157,7 +165,7 @@ export function TabItem({
           </ContextMenu.Item>
 
           <ContextMenu.Item
-            className="flex items-center gap-2 px-2.5 py-2 text-xs text-gray-300 outline-none cursor-default select-none rounded-lg hover:bg-white/10 hover:text-white data-[highlighted]:bg-white/10 data-[highlighted]:text-white transition-all"
+            className="flex items-center gap-2 px-2.5 py-2 text-xs text-gray-300 outline-none cursor-default select-none rounded-lg hover:bg-white/10 hover:text-white data-highlighted:bg-white/10 data-highlighted:text-white transition-all"
             onSelect={onPin}
           >
             <Pin size={14} className="opacity-60" />
@@ -167,7 +175,7 @@ export function TabItem({
           <ContextMenu.Separator className="h-px bg-white/5 my-1.5" />
 
           <ContextMenu.Item
-            className="flex items-center gap-2 px-2.5 py-2 text-xs text-gray-300 outline-none cursor-default select-none rounded-lg hover:bg-white/10 hover:text-white data-[highlighted]:bg-white/10 data-[highlighted]:text-white transition-all"
+            className="flex items-center gap-2 px-2.5 py-2 text-xs text-gray-300 outline-none cursor-default select-none rounded-lg hover:bg-white/10 hover:text-white data-highlighted:bg-white/10 data-highlighted:text-white transition-all"
             onSelect={onCloseOthers}
           >
             <Shield size={14} className="opacity-60" />
@@ -175,7 +183,7 @@ export function TabItem({
           </ContextMenu.Item>
 
           <ContextMenu.Item
-            className="flex items-center gap-2 px-2.5 py-2 text-xs text-red-400 outline-none cursor-default select-none rounded-lg hover:bg-red-500/20 data-[highlighted]:bg-red-500/20 transition-all font-medium"
+            className="flex items-center gap-2 px-2.5 py-2 text-xs text-red-400 outline-none cursor-default select-none rounded-lg hover:bg-red-500/20 data-highlighted:bg-red-500/20 transition-all font-medium"
             onSelect={() => onClose()}
           >
             <Trash2 size={14} className="opacity-80" />

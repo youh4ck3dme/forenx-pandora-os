@@ -18,3 +18,24 @@
 27daabba82b33ed15558e5f7c13a3e71260b010c:lib/forza/evidence-binding.ts:generic-api-key:206
 # The comment added with the entry above in d47bb9c quoted the flagged line verbatim:
 d47bb9ce5c1d90aeb062f2f3b231f9b403ad91fc:.gitleaksignore:generic-api-key:16
+# Historical local-Docker and redaction test fixtures. The release branch now
+# generates equivalents at runtime; these exact historical fingerprints remain
+# reachable through the immutable cleanroom baseline tag.
+05131f0eed3ab574c28281b5e4501a15de4243b0:db/cleanroom/tests/08-supabase-docker-integration.test.ts:jwt:9
+1d5a04131a07b68c5e2e1ea91b7595ab5d4cb4de:lib/quality-gate/__tests__/redaction.test.ts:jwt:21
+1d5a04131a07b68c5e2e1ea91b7595ab5d4cb4de:lib/quality-gate/__tests__/redaction.test.ts:jwt:141
+1d5a04131a07b68c5e2e1ea91b7595ab5d4cb4de:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:30
+1d5a04131a07b68c5e2e1ea91b7595ab5d4cb4de:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:54
+1d5a04131a07b68c5e2e1ea91b7595ab5d4cb4de:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:105
+1d5a04131a07b68c5e2e1ea91b7595ab5d4cb4de:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:107
+# Additional exact historical fixtures retained in full-history scans:
+dc1502f588b83ffae832547e48900b651732d807:db/cleanroom/tests/08-supabase-docker-integration.test.ts:jwt:9
+05131f0eed3ab574c28281b5e4501a15de4243b0:db/cleanroom/tests/05-trigger-and-worm-immutability.test.ts:generic-api-key:76
+05131f0eed3ab574c28281b5e4501a15de4243b0:db/cleanroom/tests/08-supabase-docker-integration.test.ts:generic-api-key:478
+05131f0eed3ab574c28281b5e4501a15de4243b0:db/cleanroom/tests/08-supabase-docker-integration.test.ts:generic-api-key:520
+3d097d91152c52d8f89079f154605c8f6c03ff3f:lib/quality-gate/__tests__/redaction.test.ts:jwt:21
+3d097d91152c52d8f89079f154605c8f6c03ff3f:lib/quality-gate/__tests__/redaction.test.ts:jwt:141
+3d097d91152c52d8f89079f154605c8f6c03ff3f:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:30
+3d097d91152c52d8f89079f154605c8f6c03ff3f:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:54
+3d097d91152c52d8f89079f154605c8f6c03ff3f:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:105
+3d097d91152c52d8f89079f154605c8f6c03ff3f:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:107

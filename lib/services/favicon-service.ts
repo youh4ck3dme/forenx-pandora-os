@@ -11,36 +11,54 @@ export class FaviconService {
      */
     public static getFaviconUrl(url: string, size: number = 32): string {
         try {
-            if (!url || url.startsWith('pandora://') || url.startsWith('about:')) {
-                return ''; // No favicon for internal pages
+            const normalized = (url || "").trim();
+            if (
+                !normalized ||
+                normalized === "newtab" ||
+                normalized.startsWith("pandora://") ||
+                normalized.startsWith("about:") ||
+                normalized.startsWith("chrome://") ||
+                normalized.startsWith("edge://")
+            ) {
+                return ""; // No favicon for internal or special pages
             }
 
-            const parsed = new URL(url);
-            const domain = parsed.hostname;
+            let parsed: URL;
+            try {
+                parsed = new URL(normalized);
+            } catch {
+                return "";
+            }
 
-            // Don't query Google S2 favicon service for local domains or IP addresses (avoids 404 from t3.gstatic.com)
+            // Only http and https protocols are eligible for external favicon resolution
+            if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+                return "";
+            }
+
+            const domain = parsed.hostname.toLowerCase();
+
+            // Don't query external favicon service for local domains or IP addresses
             const isIp =
                 /^(\d{1,3}\.){3}\d{1,3}$/.test(domain) ||
-                domain.includes(':') ||
-                domain.endsWith('.local') ||
-                domain.endsWith('.internal');
+                domain.includes(":") ||
+                domain.endsWith(".local") ||
+                domain.endsWith(".internal");
 
             if (
-                domain === 'localhost' ||
-                domain === '127.0.0.1' ||
-                domain === '0.0.0.0' ||
-                domain === '[::1]' ||
-                !domain.includes('.') ||
+                domain === "localhost" ||
+                domain === "127.0.0.1" ||
+                domain === "0.0.0.0" ||
+                domain === "[::1]" ||
+                !domain.includes(".") ||
                 isIp
             ) {
-                return '';
+                return "";
             }
 
             // Primary: Google S2 Converter
-            // format: https://www.google.com/s2/favicons?domain=${domain}&sz=${size}
-            return `https://www.google.com/s2/favicons?domain=${domain}&sz=${size}`;
-        } catch (e) {
-            return '';
+            return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=${size}`;
+        } catch {
+            return "";
         }
     }
 

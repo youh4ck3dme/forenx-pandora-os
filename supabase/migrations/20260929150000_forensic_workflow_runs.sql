@@ -1,81 +1,53 @@
--- forensic_workflow_runs: durable run records for long-running AI forensic workflows
--- Supports idempotency, retry tracking, and per-case audit trail
-
+-- Durable, case-bound metadata for Workflow SDK runs. The workflow runtime is
+-- authoritative for execution; this table is the forensic/audit projection.
 create table if not exists public.forensic_workflow_runs (
-  id                uuid primary key default gen_random_uuid(),
-  case_id           uuid not null references public.cases(id) on delete cascade,
-  workflow_type     text not null,
-  workflow_run_id   text,
-  idempotency_key   text not null,
-  status            text not null default 'pending'
-                      check (status in ('pending','running','completed','failed','cancelled')),
-  attempt_count     integer not null default 0,
-  started_at        timestamptz,
-  completed_at      timestamptz,
-  error_code        text,
-  error_message     text,
-  created_at        timestamptz not null default now(),
-  updated_at        timestamptz not null default now(),
-  -- computed duration in ms (null until completed/failed)
-  duration_ms       integer generated always as (
-    case when completed_at is not null and started_at is not null
-      then extract(epoch from (completed_at - started_at))::integer * 1000
-    end
-  ) stored
+  id uuid primary key default gen_random_uuid(),
+  case_id uuid not null references public.cases(id) on delete cascade,
+  user_id uuid not null,
+  workflow_type text not null check (workflow_type in (
+    'FORENSIC_CASE_ANALYSIS',
+    'DOCUMENT_ANALYSIS',
+    'BULK_IMPORT',
+    'EVIDENCE_VALIDATION',
+    'DOSSIER_GENERATION',
+    'REPORT_EXPORT'
+  )),
+  workflow_run_id text unique,
+  idempotency_key text not null,
+  status text not null check (status in ('queued', 'running', 'completed', 'failed', 'cancelled')),
+  attempt_count integer not null default 0 check (attempt_count >= 0),
+  error_code text,
+  error_message text,
+  created_at timestamptz not null default now(),
+  started_at timestamptz,
+  completed_at timestamptz,
+  duration_ms bigint generated always as (
+    case when completed_at is not null then greatest(0, floor(extract(epoch from (completed_at - created_at)) * 1000))::bigint end
+  ) stored,
+  unique (case_id, workflow_type, idempotency_key)
 );
+create index if not exists forensic_workflow_runs_case_created_idx on public.forensic_workflow_runs (case_id, created_at desc);
+alter table public.forensic_workflow_runs enable row level security;
+create policy "Users read own forensic workflow runs" on public.forensic_workflow_runs for select to authenticated using (auth.uid() = user_id);
+create policy "Users queue own forensic workflow runs" on public.forensic_workflow_runs for insert to authenticated with check (auth.uid() = user_id);
+revoke all on public.forensic_workflow_runs from anon, authenticated;
+grant select on public.forensic_workflow_runs to authenticated;
+grant insert on public.forensic_workflow_runs to authenticated;
+grant all on public.forensic_workflow_runs to service_role;
 
--- prevent duplicate workflow runs for the same case+type+idempotency key
-create unique index if not exists forensic_workflow_runs_idempotency
-  on public.forensic_workflow_runs (case_id, workflow_type, idempotency_key);
-
-create index if not exists forensic_workflow_runs_case_id_idx
-  on public.forensic_workflow_runs (case_id);
-
-create index if not exists forensic_workflow_runs_status_idx
-  on public.forensic_workflow_runs (status);
-
--- updated_at trigger
-create or replace function public.set_forensic_workflow_updated_at()
-returns trigger language plpgsql as $$
+create or replace function public.audit_forensic_workflow_run()
+returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  new.updated_at = now();
+  insert into public.case_audit_log (user_id, case_id, action, table_name, record_id, changes)
+  values (
+    new.user_id, new.case_id,
+    case when tg_op = 'INSERT' then 'forensic_workflow_run.created' else 'forensic_workflow_run.status_changed' end,
+    'forensic_workflow_runs', new.id,
+    jsonb_build_object('workflow_type', new.workflow_type, 'workflow_run_id', new.workflow_run_id, 'status', new.status, 'attempt_count', new.attempt_count, 'error_code', new.error_code)
+  );
   return new;
 end;
 $$;
-
-drop trigger if exists forensic_workflow_runs_updated_at on public.forensic_workflow_runs;
-create trigger forensic_workflow_runs_updated_at
-  before update on public.forensic_workflow_runs
-  for each row execute function public.set_forensic_workflow_updated_at();
-
--- RLS
-alter table public.forensic_workflow_runs enable row level security;
-
--- authenticated users can read and insert their own case workflow runs
-create policy "users_read_own_forensic_runs" on public.forensic_workflow_runs
-  for select to authenticated
-  using (
-    case_id in (
-      select id from public.cases where user_id = auth.uid()
-    )
-  );
-
-create policy "users_insert_own_forensic_runs" on public.forensic_workflow_runs
-  for insert to authenticated
-  with check (
-    case_id in (
-      select id from public.cases where user_id = auth.uid()
-    )
-  );
-
-create policy "users_update_own_forensic_runs" on public.forensic_workflow_runs
-  for update to authenticated
-  using (
-    case_id in (
-      select id from public.cases where user_id = auth.uid()
-    )
-  );
-
--- service_role bypass for background workers
-create policy "service_role_full_access" on public.forensic_workflow_runs
-  to service_role using (true) with check (true);
+drop trigger if exists forensic_workflow_runs_audit on public.forensic_workflow_runs;
+create trigger forensic_workflow_runs_audit after insert or update on public.forensic_workflow_runs
+for each row execute function public.audit_forensic_workflow_run();

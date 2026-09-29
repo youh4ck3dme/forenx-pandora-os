@@ -307,6 +307,15 @@ export function QuickUploadCard() {
         },
       });
       setStage("saving");
+      if (result?.workflowRun) {
+        refresh(job.caseId);
+        toast.success(
+          "Forenzná analýza bola zaradená do trvalého spracovania. Výsledky grafu doplňte po dokončení analýzy.",
+        );
+        setStage("complete");
+        await new Promise((resolve) => window.setTimeout(resolve, 450));
+        return;
+      }
       const applied = await applyResults({
         data: {
           caseId: job.caseId,

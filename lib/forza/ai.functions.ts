@@ -23,6 +23,7 @@ import {
 } from "@/lib/ai/control-readiness";
 import { aiTaskSchemas } from "@/lib/ai/task-schemas";
 import { assertAiConsent } from "@/lib/ai-consent";
+import { mapForensicWorkflowRun } from "./forensic-workflow-state";
 import type { ExtractedCaseEntity, ParsedCaseDocument } from "./types";
 
 import {
@@ -862,20 +863,136 @@ export const runForensicAutopilot = createServerFn({ method: "POST", id: "ai/run
   )
   .handler(async ({ data, context }) => {
     assertAiConsent(data.consentVersion);
-    const { withAiLog } = await import("@/lib/ai-log.server");
-    return withAiLog(
-      {
-        feature: "forensic_autopilot",
-        userId: context.userId,
-        inputSummary: `case=${data.caseId} file=${data.fileName ?? "-"} chars=${data.documentText?.length ?? 0} retry=${data.retryChunkIndexes?.join(",") ?? "-"}`,
-      },
-      () => runForensicAutopilotInner(data, context),
-      (r) => ({
-        success: r.success,
-        outputSummary: `timeline=${r.dossier.facts?.timeline?.length ?? 0} save=${r.saveStatus}`,
-      }),
-    );
+    return startForensicCaseAnalysisRun(data, context);
   });
+
+function toWorkflowRun(row: Record<string, unknown>) {
+  return mapForensicWorkflowRun(row);
+}
+
+export async function startForensicCaseAnalysisRun(
+  data: {
+    caseId: string;
+    documentText: string;
+    fileName?: string;
+    documentIds?: string[];
+    evidenceIds?: string[];
+    consentVersion?: string;
+    idempotencyKey?: string;
+    retryChunkIndexes?: number[];
+    priorDossier?: import("./types").ForensicDossier;
+  },
+  context: { supabase: SupabaseLike; userId: string },
+): Promise<{
+  success: true;
+  workflowRun: import("./forensic-workflow.types").ForensicWorkflowRun;
+  dossier: import("./types").ForensicDossier | null;
+  warnings: string[];
+  saveStatus?: "saved" | "skipped" | "failed";
+  saveError?: string;
+}> {
+  await assertCaseOwned(context.supabase, data.caseId);
+  const { buildAutopilotIdempotencyKey } = await import("./autopilot-meta");
+  const idempotencyKey =
+    data.idempotencyKey ??
+    (await buildAutopilotIdempotencyKey({
+      caseId: data.caseId,
+      documentText: data.documentText,
+      retryChunkIndexes: data.retryChunkIndexes,
+    }));
+  const db = context.supabase as any;
+  const { data: existing, error: existingError } = await db
+    .from("forensic_workflow_runs")
+    .select("*")
+    .eq("case_id", data.caseId)
+    .eq("workflow_type", "FORENSIC_CASE_ANALYSIS")
+    .eq("idempotency_key", idempotencyKey)
+    .maybeSingle();
+  if (existingError) throw new Error(`Workflow metadata failed: ${existingError.message}`);
+  if (existing) {
+    // Completed, running, or queued: idempotency guard — return existing without re-execution.
+    if (existing.status === "completed" || existing.status === "running" || existing.status === "queued") {
+      return { success: true as const, workflowRun: toWorkflowRun(existing), dossier: null, warnings: [] };
+    }
+    // Failed or cancelled: eligible for retry — reset to queued and fall through to re-queue.
+    const { error: resetError } = await db
+      .from("forensic_workflow_runs")
+      .update({ status: "queued", error_code: null, error_message: null })
+      .eq("id", existing.id);
+    if (resetError) throw new Error(`Retry reset failed: ${resetError.message}`);
+  }
+
+  const recordId = existing?.id ?? crypto.randomUUID();
+  // For retries the record was already reset to 'queued' above; skip INSERT to avoid unique collision.
+  if (!existing) {
+    const { error: insertError } = await db
+      .from("forensic_workflow_runs")
+      .insert({
+        id: recordId,
+        case_id: data.caseId,
+        user_id: context.userId,
+        workflow_type: "FORENSIC_CASE_ANALYSIS",
+        idempotency_key: idempotencyKey,
+        status: "queued",
+      })
+      .select("*")
+      .single();
+    if (insertError) {
+      // A concurrent submission with the same natural idempotency key is safe.
+      const { data: concurrent } = await db
+        .from("forensic_workflow_runs")
+        .select("*")
+        .eq("case_id", data.caseId)
+        .eq("workflow_type", "FORENSIC_CASE_ANALYSIS")
+        .eq("idempotency_key", idempotencyKey)
+        .maybeSingle();
+      if (concurrent) {
+        return { success: true as const, workflowRun: toWorkflowRun(concurrent), dossier: null, warnings: [] };
+      }
+      throw new Error(`Workflow metadata failed: ${insertError.message}`);
+    }
+  }
+
+  try {
+    const [{ start }, { forensicCaseAnalysisWorkflow }] = await Promise.all([
+      import("workflow/api"),
+      import("./forensic-case-analysis.workflow"),
+    ]);
+    const run = await start(forensicCaseAnalysisWorkflow, [
+      {
+        ...data,
+        recordId,
+        userId: context.userId,
+        idempotencyKey,
+      },
+    ]);
+    const { data: started, error: updateError } = await db
+      .from("forensic_workflow_runs")
+      .update({ workflow_run_id: run.runId })
+      .eq("id", recordId)
+      .select("*")
+      .single();
+    if (updateError) throw new Error(updateError.message);
+    return {
+      success: true as const,
+      workflowRun: toWorkflowRun(started),
+      dossier: null,
+      warnings: [],
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await db
+      .from("forensic_workflow_runs")
+      .update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        error_code: "START_FAILED",
+        error_message: message.slice(0, 2000),
+      })
+      .eq("id", recordId);
+    throw error;
+  }
+}
 
 async function callLlmWithRetry(
   callLlm: typeof import("./ai/llm.server").callLlm,
@@ -1262,6 +1379,21 @@ export const getForensicDossier = createServerFn({ method: "GET", id: "ai/getFor
   .handler(async ({ data, context }) =>
     handleGetForensicDossier(data.caseId, context.supabase),
   );
+
+export const getForensicWorkflowRuns = createServerFn({ method: "GET", id: "ai/getForensicWorkflowRuns" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: { caseId: string }) => z.object({ caseId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertCaseOwned(context.supabase, data.caseId);
+    const { data: rows, error } = await (context.supabase as any)
+      .from("forensic_workflow_runs")
+      .select("*")
+      .eq("case_id", data.caseId)
+      .order("created_at", { ascending: false })
+      .limit(12);
+    if (error) throw new Error(`Workflow metadata failed: ${error.message}`);
+    return { runs: (rows ?? []).map(toWorkflowRun) };
+  });
 
 export const saveCaseDossier = createServerFn({ method: "POST", id: "ai/saveCaseDossier" })
   .middleware([requireSupabaseAuth])

@@ -70,6 +70,7 @@ playwright-report/
 # Scratch & Temporary
 scratch/
 .gemini/
+.qa/
 *.sqlite
 *.sqlite3
 *.db
@@ -81,8 +82,16 @@ scratch/
 *.websql
 *.dump
 
-# Deployment
+# Deployment & Staging Secrets (CRITICAL)
 .vercel
+*vps-staging-config.json
+*staging-config.json
+*.staging.json
+tmp*/
+tmp_*
+*.tar
+*.tar.gz
+*.tgz
 
 # Capacitor Mobile Builds
 /android/
@@ -91,3 +100,5 @@ scratch/
 !/ios/App/
 .mcp.json
 preflight.sql
+
+/.swc

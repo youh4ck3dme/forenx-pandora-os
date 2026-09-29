@@ -24,9 +24,12 @@ vi.mock("@tanstack/react-query", () => ({
   }),
 }));
 
+const mockRefresh = vi.fn(async () => {});
+
 vi.mock("@/lib/hooks/useActiveCase", () => ({
   useActiveCase: () => ({
     setActiveCaseId: mockSetActiveCaseId,
+    refresh: mockRefresh,
   }),
 }));
 
@@ -44,6 +47,97 @@ vi.mock("sonner", () => ({
 describe("NewCaseForm", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe("Regression: case creation flow", () => {
+    it("navigates to /forza/prehlad?start=1 after success by default", async () => {
+      mockCreateCase.mockResolvedValueOnce("new-case-id");
+
+      const { getByPlaceholderText, getByRole } = render(<NewCaseForm />);
+      fireEvent.change(getByPlaceholderText("Názov prípadu"), {
+        target: { value: "Prípad Alfa" },
+      });
+      fireEvent.click(getByRole("button", { name: "Vytvoriť prípad" }));
+
+      await waitFor(() => {
+        expect(mockToastSuccess).toHaveBeenCalledWith("Prípad vytvorený.");
+        expect(mockPush).toHaveBeenCalledWith("/forza/prehlad?start=1");
+      });
+    });
+
+    it("rejects whitespace-only name and never calls createCase", async () => {
+      const { getByPlaceholderText, getByRole } = render(<NewCaseForm />);
+      fireEvent.change(getByPlaceholderText("Názov prípadu"), {
+        target: { value: "   " },
+      });
+      fireEvent.click(getByRole("button", { name: "Vytvoriť prípad" }));
+
+      await waitFor(() => {
+        expect(mockToastError).toHaveBeenCalledWith("Zadajte názov prípadu.");
+      });
+      expect(mockCreateCase).not.toHaveBeenCalled();
+    });
+
+    it("prevents a second submit while the first is in flight", async () => {
+      let resolve!: (id: string) => void;
+      mockCreateCase.mockReturnValueOnce(
+        new Promise<string>((r) => { resolve = r; }),
+      );
+
+      const { getByPlaceholderText, getByRole } = render(<NewCaseForm goToHub={false} />);
+      fireEvent.change(getByPlaceholderText("Názov prípadu"), {
+        target: { value: "Prípad Beta" },
+      });
+
+      const btn = getByRole("button");
+      fireEvent.click(btn);
+      fireEvent.click(btn);
+      fireEvent.click(btn);
+
+      resolve("id-beta");
+      await waitFor(() => expect(mockToastSuccess).toHaveBeenCalled());
+
+      expect(mockCreateCase).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows error message with Skúsiť znova action on generic failure", async () => {
+      mockCreateCase.mockRejectedValueOnce(new Error("Databáza nedostupná."));
+
+      const { getByPlaceholderText, getByRole } = render(<NewCaseForm goToHub={false} />);
+      fireEvent.change(getByPlaceholderText("Názov prípadu"), {
+        target: { value: "Prípad Gama" },
+      });
+      fireEvent.click(getByRole("button", { name: "Vytvoriť prípad" }));
+
+      await waitFor(() => {
+        expect(mockToastError).toHaveBeenCalledWith(
+          "Databáza nedostupná.",
+          expect.objectContaining({
+            action: expect.objectContaining({ label: "Skúsiť znova" }),
+          }),
+        );
+      });
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    it("sends hardcoded subtitle when withSubtitle is false", async () => {
+      mockCreateCase.mockResolvedValueOnce("case-no-sub");
+
+      const { getByPlaceholderText, getByRole } = render(
+        <NewCaseForm withSubtitle={false} goToHub={false} />,
+      );
+      fireEvent.change(getByPlaceholderText("Názov prípadu"), {
+        target: { value: "Prípad Delta" },
+      });
+      fireEvent.click(getByRole("button", { name: "Vytvoriť prípad" }));
+
+      await waitFor(() => {
+        expect(mockCreateCase).toHaveBeenCalledWith({
+          name: "Prípad Delta",
+          subtitle: "Šifrovaný priestor prípadu",
+        });
+      });
+    });
   });
 
   describe("Dark Theme & High Contrast Font", () => {
