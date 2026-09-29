@@ -32,7 +32,19 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
+});
+
+describe("P0-09 — zdieľaný rate limit v produkcii", () => {
+  it("bez service role sa limit nedá overiť → 503 a nič sa nezapíše", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
+    resetCspReportRateLimiter();
+    const res = await POST(cspRequest({ "csp-report": { "violated-directive": "script-src" } }));
+    expect(res.status).toBe(503);
+    expect(insertSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe("P0-05 — POST /api/csp-report (collector CSP violácií)", () => {

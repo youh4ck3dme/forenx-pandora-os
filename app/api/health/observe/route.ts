@@ -17,7 +17,7 @@ export const preferredRegion = "fra1";
  * 'client'). Rate limit: 10 hlásení / používateľ / minúta.
  */
 
-import { isObserveReportRateLimited } from "./limiter";
+import { checkObserveReportRateLimit } from "./limiter";
 
 const ClientErrorSchema = z.object({
   message: z.string().min(1).max(2000),
@@ -63,11 +63,12 @@ async function handlePost(
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  if (isObserveReportRateLimited(auth.userId)) {
-    return NextResponse.json(
-      { error: "Prekročený limit hlásení (10/min)." },
-      { status: 429 },
-    );
+  // P0-09: zdieľaný limit naprieč inštanciami; nedostupný limiter = odmietnutie.
+  const rate = await checkObserveReportRateLimit(auth.userId);
+  if (!rate.allowed) {
+    return rate.unavailable
+      ? NextResponse.json({ error: "Limit hlásení sa nepodarilo overiť." }, { status: 503 })
+      : NextResponse.json({ error: "Prekročený limit hlásení (10/min)." }, { status: 429 });
   }
 
   const body: unknown = await request.json().catch(() => null);

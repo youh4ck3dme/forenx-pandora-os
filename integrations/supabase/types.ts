@@ -1143,6 +1143,15 @@ export type Database = {
         Returns: boolean;
       };
       owns_case: { Args: { _case_id: string }; Returns: boolean };
+      rate_limit_hit: {
+        Args: {
+          _bucket: string;
+          _key_hash: string;
+          _limit: number;
+          _window_seconds: number;
+        };
+        Returns: Json;
+      };
       reserve_ai_call: {
         Args: {
           _case: string;

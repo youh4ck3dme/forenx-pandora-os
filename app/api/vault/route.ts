@@ -51,7 +51,9 @@ const UploadFormSchema = z.object({
   clientSha256: Sha256HashSchema,
 });
 
-// In-memory runtime registry of uploaded evidence items (synchronized with S3 and Supabase)
+// Pamäťový register dôkazov procesu — IBA pre lokálny dev obchvat bez ledgera.
+// P0-09 (N-04): na serverless nie je zdieľaný medzi inštanciami, preto sa mimo
+// obchvatu nečíta ani nezapisuje; zoznam pochádza výhradne z ledgera.
 const inMemoryEvidenceStore = new Map<string, ForensicEvidenceItem[]>();
 
 function rejectUnconfiguredProductionVault(): NextResponse | undefined {
@@ -216,9 +218,11 @@ async function handleGet(request: NextRequest): Promise<NextResponse> {
     }
   }
   const ledgerKeys = new Set(ledgerItems.map((item) => item.s3StorageKey));
-  const memoryItems = (inMemoryEvidenceStore.get(caseId) || []).filter(
-    (item) => !ledgerKeys.has(item.s3StorageKey),
-  );
+  const memoryItems = devBypass
+    ? (inMemoryEvidenceStore.get(caseId) || []).filter(
+        (item) => !ledgerKeys.has(item.s3StorageKey),
+      )
+    : [];
   const items = [...ledgerItems, ...memoryItems];
 
   return NextResponse.json({
@@ -447,7 +451,10 @@ async function handlePost(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Uloženie do pamäťového registra pre okamžitú spätnú synchronizáciu
+    // Sem sa dostane iba dev obchvat (inak 503 vyššie alebo zápis do ledgera).
+    if (!devBypass) {
+      return NextResponse.json({ error: "Ledger dôkazov nie je dostupný." }, { status: 503 });
+    }
     const existing = inMemoryEvidenceStore.get(caseId) || [];
     inMemoryEvidenceStore.set(caseId, [parsedItem.data, ...existing]);
 
