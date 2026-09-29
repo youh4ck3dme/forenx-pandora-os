@@ -174,7 +174,7 @@ body {
   text-rendering: optimizeLegibility;
   height: 100dvh;
   width: 100vw;
-  overflow: hidden; /* Zakáže globálny scroll */
+  overflow-x: hidden; /* Zakáže horizontálny scroll, vertikálny povolený */
   overscroll-behavior: none; /* Zamedzí "pull-to-refresh" na mobiloch */
 
   /* Safe Area podpora (iOS notch) */
