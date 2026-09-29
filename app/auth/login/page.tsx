@@ -1,9 +1,8 @@
 "use client";
 
-export const dynamic = 'force-dynamic';
-
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { GL } from "@/components/gl";
 import {
   Fingerprint,
@@ -15,8 +14,14 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { PandoraLogo } from "@/components/ui/branding/pandora-logo";
-import { AccountSignInForm } from "@/components/malte/AccountSignInForm";
 import { getSafeRedirectTarget } from "@/lib/auth/redirect";
+
+// ssr: false — AccountSignInForm uses useQueryClient() which requires
+// QueryClientProvider; disabling SSR avoids prerender crash at build time.
+const AccountSignInForm = dynamic(
+  () => import("@/components/malte/AccountSignInForm").then((m) => ({ default: m.AccountSignInForm })),
+  { ssr: false, loading: () => <div className="h-32" /> },
+);
 
 export default function LoginPage() {
   const router = useRouter();
