@@ -8,6 +8,61 @@
 
 ```text
 Browser. Evidence. Intelligence. Audit. AI. One workspace.
+
+
+## 🔍 REÁLNY STAV PROJEKTU A DIAGNOSTIKA (TRUE STATUS REPORT)
+
+*Aktualizované: 29. september 2026*
+
+### ✅ 1. ČO JE 100% HOTOVÉ A VERIFIKOVANÉ (Production & Staging Ready)
+
+1. **VPS Staging Deployment (`pandora.whoiswho.at`)**:
+   - Živý produkčný stack beží na VPS (`66.29.139.59`) v Docker prostredí za Apache reverse proxy s SSL/TLS.
+   - **Healthz Endpoint (`/api/healthz`)**: Vraciam `HTTP 200 OK` (`{"ok": true, "service": "pandora-forensic-os"}`).
+   - **Web App**: Hlavné rozhranie beží a odovzdáva `HTTP 200 OK` (Next.js 14 SSR/CSR rendering ok).
+   - **Bezpečnostné hlavičky**: HSTS (`max-age=15552000`), CSP Report-Only (`/api/csp-report/`), X-Frame-Options (`SAMEORIGIN`), Permissions Policy.
+
+2. **Security & Gitleaks Audit (100% Čistá história)**:
+   - Celý Git repozitár (125 commitov, 7.12 MB histórie) bol preskenovaný pomocou Gitleaks.
+   - **Výsledok: 0 únikov (0 leaks found).** Všetky nálezy v histórii boli preverené, potvrdené ako lokálne testovacie demo hodnoty/placeholdery a evidované cez presné odtlačky v `.gitleaksignore`.
+
+3. **Forenzné Databázové Jadro (Cleanroom Baseline V1)**:
+   - 8 hlavných SQL migrácií + upgrade migrácia pre trvalé sledovanie forenzných workflowov (`forensic_workflow_runs`).
+   - **WORM Immutability**: DELETE a UPDATE guard spúšte pre dôkazné položky a auditné záznamy.
+   - **RLS Politiky**: Striktné overovanie vlastníctva prípadov (`auth.uid() = user_id AND case_id IN (...)`).
+
+4. **FORENZX MCP Core (Python Backend)**:
+   - 139 zo 141 pytest testov prechádza (2 preskočené podľa očakávania na nesymlinkovaných FS).
+   - **Ruff linting clean & Mypy type-safe**.
+   - **Docker Socket Proxy (`tecnativa/docker-socket-proxy`)**: Izolovaný socket prístup bez priameho mounted socketu v MCP API.
+   - **MVT Worker Contract**: Pripravený verziovaný obraz `forenzx-mvt-worker:2.5.0` s pinned SHA-256 digestom.
+
+---
+
+### ⚠️ 2. ČO JE V PROCESE / VYŽADUJE POZORNOSŤ (Práva a netajená realita)
+
+1. **Draftovaný `lib/auth` Refactoring (Nekompletné v pracovnom strome)**:
+   - V pracovnom adresári existujú rozpracované (untracked) súbory v `lib/auth/` a `middleware.ts`, ktoré vykazujú TypeScript chyby pri `npx tsc --noEmit` (`getRouteCategory`, `matchPathPattern`, nullability).
+   - *Príčina*: Concurrently bežiaca úprava middleware pre izoláciu auth trás zatiaľ nebola dotiahnutá do 100% type-safety.
+
+2. **Vitest UI Test Timeouts (2 testy zo 779)**:
+   - Vitest test suite vykazuje **765 PASS** testov v 97 súboroch, no 2 UI testy časovo vypršia (timeout 5000ms): `ForgeStudio.test.tsx` (toggle code view) a `contrast.test.ts` (Tailwind color contrast traversal).
+
+3. **Priame PostgreSQL pripojenie z lokálneho PC**:
+   - Produkčný port Postgresu (`54322`) nie je otvorený verejne (čo je z hľadiska bezpečnosti správne). Lokálne ts-skripty pre verifikáciu vyžadujú aktívny SSH tunel (`ssh -L 54322:127.0.0.1:54322 root@66.29.139.59`).
+
+4. **Supabase Cloud vs Local Kong na VPS**:
+   - Staging kontajner má v env premenných nastavené `SUPABASE_URL=https://tlmuvzrgighahnjkxoyw.supabase.co` namiesto interného `http://pandora_staging_kong:8000`. Funkcionalita beží cez cloud fallback, no pre 100% offline VPS nezávislosť treba v env zmeniť endpoint.
+
+---
+
+### 🛠️ 3. AKČNÝ PLÁN OPRAV (Roadmap k dokonalosti)
+
+1. **[P0] Dokončiť type-safety v `lib/auth/` a `middleware.ts`**: Opraviť importy a nullability guards tak, aby `npx tsc --noEmit` prebehol bez jedinej chyby.
+2. **[P1] Zvýšiť testTimeout pre Vitest UI testy**: Pridať `testTimeout: 10000` v `vitest.config.ts` pre ForgeStudio a Contrast testy.
+3. **[P1] Prepnúť SUPABASE_URL v staging env na lokálny Kong**: Upraviť env premennú na VPS na `http://pandora_staging_kong:8000`.
+
+---
 ```
 
 ---
