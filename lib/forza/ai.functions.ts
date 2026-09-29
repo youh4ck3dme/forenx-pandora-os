@@ -898,6 +898,7 @@ export async function startForensicCaseAnalysisRun(
     (await buildAutopilotIdempotencyKey({
       caseId: data.caseId,
       documentText: data.documentText,
+      retryChunkIndexes: data.retryChunkIndexes,
     }));
   const db = context.supabase as any;
   const { data: existing, error: existingError } = await db
@@ -909,45 +910,47 @@ export async function startForensicCaseAnalysisRun(
     .maybeSingle();
   if (existingError) throw new Error(`Workflow metadata failed: ${existingError.message}`);
   if (existing) {
-    return {
-      success: true as const,
-      workflowRun: toWorkflowRun(existing),
-      dossier: null,
-      warnings: [],
-    };
+    // Completed, running, or queued: idempotency guard — return existing without re-execution.
+    if (existing.status === "completed" || existing.status === "running" || existing.status === "queued") {
+      return { success: true as const, workflowRun: toWorkflowRun(existing), dossier: null, warnings: [] };
+    }
+    // Failed or cancelled: eligible for retry — reset to queued and fall through to re-queue.
+    const { error: resetError } = await db
+      .from("forensic_workflow_runs")
+      .update({ status: "queued", error_code: null, error_message: null })
+      .eq("id", existing.id);
+    if (resetError) throw new Error(`Retry reset failed: ${resetError.message}`);
   }
 
-  const recordId = crypto.randomUUID();
-  const { error: insertError } = await db
-    .from("forensic_workflow_runs")
-    .insert({
-      id: recordId,
-      case_id: data.caseId,
-      user_id: context.userId,
-      workflow_type: "FORENSIC_CASE_ANALYSIS",
-      idempotency_key: idempotencyKey,
-      status: "queued",
-    })
-    .select("*")
-    .single();
-  if (insertError) {
-    // A concurrent submission with the same natural idempotency key is safe.
-    const { data: concurrent } = await db
+  const recordId = existing?.id ?? crypto.randomUUID();
+  // For retries the record was already reset to 'queued' above; skip INSERT to avoid unique collision.
+  if (!existing) {
+    const { error: insertError } = await db
       .from("forensic_workflow_runs")
+      .insert({
+        id: recordId,
+        case_id: data.caseId,
+        user_id: context.userId,
+        workflow_type: "FORENSIC_CASE_ANALYSIS",
+        idempotency_key: idempotencyKey,
+        status: "queued",
+      })
       .select("*")
-      .eq("case_id", data.caseId)
-      .eq("workflow_type", "FORENSIC_CASE_ANALYSIS")
-      .eq("idempotency_key", idempotencyKey)
-      .maybeSingle();
-    if (concurrent) {
-      return {
-        success: true as const,
-        workflowRun: toWorkflowRun(concurrent),
-        dossier: null,
-        warnings: [],
-      };
+      .single();
+    if (insertError) {
+      // A concurrent submission with the same natural idempotency key is safe.
+      const { data: concurrent } = await db
+        .from("forensic_workflow_runs")
+        .select("*")
+        .eq("case_id", data.caseId)
+        .eq("workflow_type", "FORENSIC_CASE_ANALYSIS")
+        .eq("idempotency_key", idempotencyKey)
+        .maybeSingle();
+      if (concurrent) {
+        return { success: true as const, workflowRun: toWorkflowRun(concurrent), dossier: null, warnings: [] };
+      }
+      throw new Error(`Workflow metadata failed: ${insertError.message}`);
     }
-    throw new Error(`Workflow metadata failed: ${insertError.message}`);
   }
 
   try {
