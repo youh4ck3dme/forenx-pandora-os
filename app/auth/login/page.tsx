@@ -14,6 +14,7 @@ import {
 import Link from "next/link";
 import { PandoraLogo } from "@/components/ui/branding/pandora-logo";
 import { AccountSignInForm } from "@/components/malte/AccountSignInForm";
+import { getSafeRedirectTarget } from "@/lib/auth/redirect";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -76,10 +77,11 @@ export default function LoginPage() {
       }
 
       if (savedUser || webAuthnSuccess) {
-        const next =
+        const nextParam =
           typeof window !== "undefined"
-            ? new URLSearchParams(window.location.search).get("next") || "/forza/pripady"
-            : "/forza/pripady";
+            ? new URLSearchParams(window.location.search).get("next")
+            : null;
+        const next = getSafeRedirectTarget(nextParam, "/forza/pripady") ?? "/forza/pripady";
         router.push(next);
       } else {
         setError("No account found. Please register first or use Cloud Account.");
@@ -168,10 +170,11 @@ export default function LoginPage() {
                 <AccountSignInForm
                   dark={true}
                   onSignedIn={() => {
-                    const next =
+                    const nextParam =
                       typeof window !== "undefined"
-                        ? new URLSearchParams(window.location.search).get("next") || "/forza/pripady"
-                        : "/forza/pripady";
+                        ? new URLSearchParams(window.location.search).get("next")
+                        : null;
+                    const next = getSafeRedirectTarget(nextParam, "/forza/pripady") ?? "/forza/pripady";
                     router.push(next);
                   }}
                 />
