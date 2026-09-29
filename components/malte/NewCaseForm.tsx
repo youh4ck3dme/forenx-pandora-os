@@ -32,7 +32,7 @@ export function NewCaseForm({
   onCreated?: (caseId: string) => void;
 }) {
   const shouldGoToHub = goToHub ?? goToSandbox ?? true;
-  const { setActiveCaseId } = useActiveCase();
+  const { setActiveCaseId, refresh } = useActiveCase();
   const queryClient = useQueryClient();
   const router = useRouter();
   const [name, setName] = useState("");
@@ -57,9 +57,10 @@ export function NewCaseForm({
       });
       setName("");
       setSubtitle("");
-      // Najprv musí byť nový prípad v zozname, inak by ho kontext prepísal starým.
-      await queryClient.refetchQueries({ queryKey: ["cases"] });
+      // Najprv musí byť nový prípad v zozname a v kontexte
+      await refresh?.(id);
       setActiveCaseId(id);
+      await queryClient.refetchQueries({ queryKey: ["cases"] });
       await queryClient.invalidateQueries({ queryKey: ["case", id] });
       onCreated?.(id);
       toast.success("Prípad vytvorený.");

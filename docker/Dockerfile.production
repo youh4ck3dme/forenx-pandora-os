@@ -5,14 +5,14 @@
 
 # Stage 1: Base with security tools & C compatibility
 FROM node:20-alpine AS base
-RUN apk add --no-cache libc6-compat dumb-init curl
+RUN apk add --no-cache libc6-compat dumb-init curl python3 make g++
 WORKDIR /app
 
 # Stage 2: Dependencies caching
 FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json .npmrc* ./
-RUN npm ci --legacy-peer-deps --ignore-scripts
+RUN npm ci --legacy-peer-deps
 
 # Stage 3: Builder with strict typechecking and standalone bundle
 FROM base AS builder

@@ -19,12 +19,18 @@ export function reportClientError(payload: {
   void (async () => {
     try {
       const token = await getSupabaseSessionToken();
+      // Anonymous users have no session token. /api/health/observe requires
+      // an authenticated administrator session. Never send unauthenticated requests.
+      if (!token || !token.trim()) {
+        return;
+      }
+
       await fetch("/api/health/observe", {
         method: "POST",
         keepalive: true,
         headers: {
           "content-type": "application/json",
-          ...(token ? { authorization: `Bearer ${token}` } : {}),
+          authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           message: payload.message.slice(0, 2000),

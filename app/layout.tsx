@@ -18,16 +18,20 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PΛND0RΛ | Browser - Privacy Without Limits",
+  metadataBase: new URL("https://pandora.whoiswho.at"),
+  title: "FORENX PΛND0RΛ OS | Suverénny forenzný a vyšetrovací systém",
   description:
-    "Next-generation secure browser with biometric authentication and privacy-first design.",
+    "Autonómna platforma pre digitálne vyšetrovanie, analýzu finančných tokov, entitné grafy a nemenné WORM úložisko dôkazov.",
   keywords: [
-    "browser",
-    "privacy",
-    "webauthn",
-    "biometric",
-    "secure",
+    "forensics",
+    "investigation",
+    "intelligence",
+    "graph",
+    "evidence",
+    "vault",
+    "worm",
     "pandora",
+    "forenx",
   ],
   authors: [{ name: "PΛND0RΛ Team" }],
   manifest: "/manifest.json",
@@ -38,20 +42,30 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "PΛND0RΛ",
+    title: "FORENX PΛND0RΛ OS",
   },
   openGraph: {
     type: "website",
-    title: "PΛND0RΛ | Browser",
-    description: "Privacy-first browser with biometric authentication",
-    siteName: "PΛND0RΛ Browser",
+    title: "FORENX PΛND0RΛ OS | Suverénny forenzný a vyšetrovací systém",
+    description:
+      "Autonómna platforma pre digitálne vyšetrovanie, analýzu finančných tokov, entitné grafy a nemenné WORM úložisko dôkazov.",
+    siteName: "FORENX PΛND0RΛ OS",
+    images: [
+      {
+        url: "/og-share.png",
+        width: 1200,
+        height: 630,
+        alt: "FORENX PANDORA OS - Suverénny forenzný a vyšetrovací systém",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "PΛND0RΛ | Browser",
-    description: "Privacy-first browser with biometric authentication",
+    title: "FORENX PΛND0RΛ OS | Suverénny forenzný a vyšetrovací systém",
+    description:
+      "Autonómna platforma pre digitálne vyšetrovanie, analýzu finančných tokov, entitné grafy a nemenné WORM úložisko dôkazov.",
+    images: ["/og-share.png"],
   },
-  generator: "v0.app",
 };
 
 export const viewport: Viewport = {
@@ -86,8 +100,8 @@ export default function RootLayout({
           <ObservabilityReporter />
           {children}
           <Toaster richColors position="top-right" />
+          <ServiceWorkerRegistration />
         </QueryProvider>
-        <ServiceWorkerRegistration />
       </body>
     </html>
   );

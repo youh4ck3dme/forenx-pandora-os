@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { withWorkflow } from "workflow/next";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,6 +52,10 @@ const nextConfig = {
         path: emptyShim,
         crypto: emptyShim,
         async_hooks: emptyShim,
+        // Workflow API is loaded only inside authenticated server handlers.
+        // The client bundle must not resolve the local Workflow World (Node-only).
+        'workflow/api': emptyShim,
+        workflow: emptyShim,
       };
       config.resolve.fallback = {
         ...config.resolve.fallback,
@@ -98,4 +103,4 @@ const nextConfig = {
 // });
 //
 // export default withPWA(nextConfig);
-export default nextConfig;
+export default withWorkflow(nextConfig);

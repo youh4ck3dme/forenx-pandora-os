@@ -45,6 +45,7 @@ import {
   MIN_EXTRACT_CHARS,
   saveCaseDossier,
   getForensicDossier,
+  getForensicWorkflowRuns,
 } from "@/lib/ai.functions";
 import type { ForensicDossier } from "@/lib/types";
 import { isDemoDossier } from "@/lib/autopilot-meta";
@@ -71,6 +72,7 @@ import { useAssistantChat } from "./assistant/hooks/useAssistantChat";
 import { AssistantExportCard } from "./assistant/AssistantExportCard";
 import { QuickTasksSection } from "./assistant/QuickTasksSection";
 import { AutopilotTabsView } from "./assistant/AutopilotTabsView";
+import { ForensicWorkflowInspector } from "./assistant/ForensicWorkflowInspector";
 import { exportDossierToPDF } from "@/lib/export-pdf";
 
 export function Assistant() {
@@ -124,6 +126,7 @@ export function Assistant() {
   const extractBulkTextFn = useServerFn(extractBulkFilesText);
   const saveCaseDossierFn = useServerFn(saveCaseDossier);
   const getForensicDossierFn = useServerFn(getForensicDossier);
+  const getForensicWorkflowRunsFn = useServerFn(getForensicWorkflowRuns);
   const loadQuarantine = useServerFn(loadQuarantineDocuments);
 
   const [analysisWarnings, setAnalysisWarnings] = useState<string[]>([]);
@@ -211,6 +214,20 @@ export function Assistant() {
       active = false;
     };
   }, [activeCase.id, getForensicDossierFn, setLastSavedAt, setSaveError]);
+
+  const loadWorkflowRuns = useCallback(
+    (caseId: string) => getForensicWorkflowRunsFn({ data: { caseId } }),
+    [getForensicWorkflowRunsFn],
+  );
+  const loadCompletedDossier = useCallback(() => {
+    if (!activeCase.id) return;
+    void getForensicDossierFn({ data: { caseId: activeCase.id } }).then((res) => {
+      if (res.success && res.dossier && !isDemoDossier(res.dossier)) {
+        setDossier(res.dossier);
+        toast.success("Trvalá forenzná analýza je dokončená.");
+      }
+    });
+  }, [activeCase.id, getForensicDossierFn]);
 
   // Načítaj súbory z karantény cez staged sessionStorage
   useEffect(() => {
@@ -497,7 +514,11 @@ export function Assistant() {
           },
         });
 
-        if (analysisRes.success && analysisRes.dossier) {
+        if (analysisRes.success && analysisRes.workflowRun) {
+          setDemoMode(false);
+          setLastAutopilotDocumentText(aggregatedText);
+          toast.success("Forenzná analýza bola zaradená do trvalého spracovania.");
+        } else if (analysisRes.success && analysisRes.dossier) {
           setDemoMode(false);
           setDossier(analysisRes.dossier);
           setLastAutopilotDocumentText(aggregatedText);
@@ -597,7 +618,9 @@ export function Assistant() {
           priorDossier: dossier,
         },
       });
-      if (analysisRes.success && analysisRes.dossier) {
+      if (analysisRes.success && analysisRes.workflowRun) {
+        toast.success("Opakovanie bolo zaradené do trvalého spracovania.");
+      } else if (analysisRes.success && analysisRes.dossier) {
         setDossier(analysisRes.dossier);
         setAnalysisWarnings(analysisRes.warnings ?? []);
         for (const w of analysisRes.warnings ?? []) {
@@ -849,6 +872,14 @@ export function Assistant() {
                   </div>
                 )}
               </Card>
+
+              {hasCase ? (
+                <ForensicWorkflowInspector
+                  caseId={activeCase.id}
+                  loadRuns={loadWorkflowRuns}
+                  onCompleted={loadCompletedDossier}
+                />
+              ) : null}
 
               {/* DropZone / Upload Sandbox */}
               {!dossier ? (

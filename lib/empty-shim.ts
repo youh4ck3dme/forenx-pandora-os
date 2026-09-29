@@ -13,6 +13,8 @@ export const resolve = (...args: string[]) => args.join("/");
 export const relative = (from: string, to: string) => to;
 export const isAbsolute = (p: string) => p.startsWith("/") || /^[a-zA-Z]:/.test(p);
 export const sep = "/";
+export class FatalError extends Error {}
+export const getStepMetadata = () => ({ attempt: 0, stepId: "" });
 
 export default {
   readdir,
@@ -25,4 +27,6 @@ export default {
   relative,
   isAbsolute,
   sep,
+  FatalError,
+  getStepMetadata,
 };

@@ -53,6 +53,7 @@ vi.mock("@/components/ui/Globe", () => ({
 }));
 vi.mock("@/lib/ai.functions", () => ({
   getForensicDossier: mocks.load,
+  getForensicWorkflowRuns: vi.fn().mockResolvedValue({ runs: [] }),
   saveCaseDossier: mocks.save,
   runForensicAutopilot: mocks.run,
   extractBulkFilesText: mocks.extract,
