@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import "./globals.css";
 import { ServiceWorkerRegistration } from "@/components/core/providers/service-worker-registration";
 import { ObservabilityReporter } from "@/components/forza/ObservabilityReporter";
+import { QueryProvider } from "@/components/core/providers/query-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -81,9 +82,11 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased font-sans tracking-tight`}
         suppressHydrationWarning
       >
-        <ObservabilityReporter />
-        {children}
-        <Toaster richColors position="top-right" />
+        <QueryProvider>
+          <ObservabilityReporter />
+          {children}
+          <Toaster richColors position="top-right" />
+        </QueryProvider>
         <ServiceWorkerRegistration />
       </body>
     </html>

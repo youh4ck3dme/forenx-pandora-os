@@ -11,8 +11,8 @@ WORKDIR /app
 # Stage 2: Dependencies caching
 FROM base AS deps
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json package-lock.json .npmrc* ./
+RUN npm ci --legacy-peer-deps --ignore-scripts
 
 # Stage 3: Builder with strict typechecking and standalone bundle
 FROM base AS builder
@@ -54,7 +54,7 @@ USER nextjs
 
 EXPOSE 3005
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:3005/api/health/observe || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD curl -f http://localhost:3005/api/healthz || exit 1
 
 ENTRYPOINT ["dumb-init", "node", "server.js"]
