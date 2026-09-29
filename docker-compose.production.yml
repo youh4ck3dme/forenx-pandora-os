@@ -12,6 +12,9 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.production
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
     container_name: pandora-forensic-app
     restart: always
     ports:
