@@ -134,7 +134,5 @@ export async function buildForenzxStartPayload(params: {
     download_url: url,
     download_filename: filename,
     idempotency_key: params.idempotencyKey,
-    // Metadata: NOT sent to Hub, used only client-side for logging
-    _presigned_expires_at: expiresAt,
   };
 }

@@ -35,7 +35,8 @@
     "verify:vercel-env": "node scripts/vercel-preflight.mjs",
     "verify:production": "npx tsc --noEmit && npm run build && npm run verify:desktop-security && npx vitest run",
     "verify:vercel-deploy": "npm run verify:vercel-env -- --strict && npm run verify:production",
-    "quality:gemini": "tsx scripts/gemini-quality-gate.ts"
+    "quality:gemini": "tsx scripts/gemini-quality-gate.ts",
+    "test:regression:forenzx": "tsx scripts/regression/forenzx-workflow.ts"
   },
   "main": "dist-electron/main.mjs",
   "build": {

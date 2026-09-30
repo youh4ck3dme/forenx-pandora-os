@@ -169,10 +169,7 @@ export async function startForenZXAnalysis(
     idempotencyKey: params.idempotencyKey,
   });
 
-  // Remove internal metadata before sending to Hub
-  const { _presigned_expires_at: _, ...hubArgs } = payload as Record<string, unknown>;
-
-  const result = await callForenZXTool("forenzx_analysis_start", hubArgs);
+  const result = await callForenZXTool("forenzx_analysis_start", payload);
 
   const parsed = (result as StartForenZXAnalysisResult);
   if (!parsed?.job_id) {

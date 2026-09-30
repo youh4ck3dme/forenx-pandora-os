@@ -1,21 +1,7 @@
--- Migration: 20260930220000_forenzx_verified_trigger (v3 - resilient schema & header)
--- Purpose : Fires the forenzx-evidence-webhook Edge Function whenever
---           evidence_items.hash_verification_status transitions to 'verified'.
--- Safe execution: conditionally enables pg_net; checks function existence;
---                 sends x-forenzx-webhook-secret.
+-- Migration: 20260930230000_forenzx_trigger_header_fix
+-- Fix: SQL trigger sends 'x-forenzx-webhook-secret' matching Edge Function auth check.
+-- Safe execution: conditionally checks function existence before dispatch.
 
--- 1. Enable pg_net if available in the PostgreSQL environment
-do $$
-begin
-  if exists (select 1 from pg_available_extensions where name = 'pg_net') then
-    create extension if not exists pg_net with schema extensions;
-  end if;
-exception when others then
-  null;
-end;
-$$;
-
--- 2. Helper function in public schema
 create or replace function public._forenzx_notify_on_evidence_verified()
 returns trigger
 language plpgsql
@@ -27,7 +13,7 @@ declare
   _secret    text;
   _payload   jsonb;
 begin
-  -- Only fire when hash_verification_status changes TO 'verified'
+  -- Only fire when hash_verification_status transitions TO 'verified'
   if (
     (old.hash_verification_status is distinct from new.hash_verification_status)
     and new.hash_verification_status = 'verified'
@@ -50,7 +36,6 @@ begin
       'old_record', row_to_json(old)::jsonb
     );
 
-    -- Outbound HTTP dispatch via pg_net (supports extensions or net schema)
     if exists (
       select 1 from pg_proc p
       join pg_namespace n on p.pronamespace = n.oid
@@ -88,17 +73,8 @@ begin
 end;
 $$;
 
--- Restrict access: only trigger context can execute (not anon/authenticated roles)
+-- Restrict access: only trigger context can execute
 revoke all on function public._forenzx_notify_on_evidence_verified() from public, anon, authenticated;
 
--- 3. Attach trigger
-drop trigger if exists tr_evidence_verified_forenzx on public.evidence_items;
-
-create trigger tr_evidence_verified_forenzx
-  after update of hash_verification_status
-  on public.evidence_items
-  for each row
-  execute function public._forenzx_notify_on_evidence_verified();
-
-comment on trigger tr_evidence_verified_forenzx on public.evidence_items is
-  'Fires forenzx-evidence-webhook Edge Function when hash_verification_status transitions to verified.';
+comment on function public._forenzx_notify_on_evidence_verified() is
+  'v2: Fixed header name from x-webhook-secret → x-forenzx-webhook-secret to match Edge Function auth check.';

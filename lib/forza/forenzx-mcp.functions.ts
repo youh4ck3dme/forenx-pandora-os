@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { callForenZXTool, listForenZXTools } from "./forenzx-mcp.server";
+export type { ForenZXTool } from "./forenzx-mcp.server";
 
 const JobRow = z.object({
   id: z.string(),

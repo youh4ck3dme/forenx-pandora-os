@@ -1,5 +1,7 @@
 # PΛND0RΛ Forensic OS — Backlog Source of Truth
 
+Produktový a technický kontrakt celého systému je v [System Source of Truth](SOURCE-OF-TRUTH.md). Tento súbor je autoritatívny iba pre prioritu otvorených úloh a nesmie prepisovať bezpečnostné invarianty alebo runtime kontrakty.
+
 > **Status:** Authoritative — jediný plánovací a dodací backlog.
 > **Last reviewed:** 2026-09-28 (overené proti `main` @ `801129b`)
 > **Scope:** `youh4ck3dme/forenx-pandora-os` a prepojený `-forenx-core-engine`

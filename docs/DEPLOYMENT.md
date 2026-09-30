@@ -1,5 +1,7 @@
 # Produkčné nasadenie (runbook)
 
+Pred deploymentom musí byť splnený kanonický kontrakt v [System Source of Truth](SOURCE-OF-TRUTH.md). Tento runbook rieši operácie nasadenia; nenahrádza overenie dátovej integrity, MCP workflowu ani staging regresie.
+
 Poradie krokov: **1. kľúče a ENV → 2. Supabase → 3. S3 → 4. Vercel a/alebo VPS → 5. overenie.**
 Každý krok má vlastné overenie; pokračuj až keď predchádzajúci prejde.
 

@@ -1,5 +1,7 @@
 # PΛND0RΛ Browser - Systémová Architektúra (Architecture Guide)
 
+> Kanonický kontrakt celkového správania aplikácie je v [System Source of Truth](SOURCE-OF-TRUTH.md). Tento dokument rozvíja technické detaily a nesmie s ním byť v rozpore.
+
 Tento dokument detailne popisuje technickú architektúru, dátové toky, komponenty a návrhové vzory prehliadača **PΛND0RΛ Browser**.
 
 ---
