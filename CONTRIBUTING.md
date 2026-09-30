@@ -1,5 +1,9 @@
 # Príručka pre vývojárov (Development & Contributing Guidelines)
 
+## Povinný zdroj pravdy
+
+Pred úpravou si prečítajte [`docs/SOURCE-OF-TRUTH.md`](docs/SOURCE-OF-TRUTH.md) a [`AGENTS.md`](AGENTS.md). Tieto dokumenty definujú dátové toky, bezpečnostné invarianty, mobile/PWA správanie, ForenZX kontrakt a minimálne overenie. Zmena kontraktu musí aktualizovať dokumentáciu a relevantné testy.
+
 ## Štruktúra projektu (Project Structure)
 
 Projekt využíva modulárnu architektúru rozdelenú podľa domén:

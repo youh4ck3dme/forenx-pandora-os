@@ -12,6 +12,7 @@ import {
   SectionTitle,
 } from "@/components/malte/Shell";
 import { BRAND } from "@/config/brand";
+import { ForenzXAnalysisPanel } from "@/components/features/forenzx/ForenzXAnalysisPanel";
 
 export default function McpInfoPage() {
   return <McpInfo />;
@@ -98,6 +99,9 @@ function McpInfo() {
             </div>
           ))}
         </Card>
+
+        <SectionTitle>Živé prepojenie ForenZX MCP Hub</SectionTitle>
+        <ForenzXAnalysisPanel />
       </Screen>
       <BottomNav />
     </PhoneFrame>

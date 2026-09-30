@@ -35,7 +35,8 @@
     "verify:vercel-env": "node scripts/vercel-preflight.mjs",
     "verify:production": "npx tsc --noEmit && npm run build && npm run verify:desktop-security && npx vitest run",
     "verify:vercel-deploy": "npm run verify:vercel-env -- --strict && npm run verify:production",
-    "quality:gemini": "tsx scripts/gemini-quality-gate.ts"
+    "quality:gemini": "tsx scripts/gemini-quality-gate.ts",
+    "test:regression:forenzx": "tsx scripts/regression/forenzx-workflow.ts"
   },
   "main": "dist-electron/main.mjs",
   "build": {
@@ -100,6 +101,8 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1144.0",
+    "@aws-sdk/s3-request-presigner": "^3.1144.0",
     "@axe-core/playwright": "^4.13.0",
     "@capacitor/android": "^8.0.0",
     "@capacitor/cli": "^8.0.0",

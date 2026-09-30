@@ -1,3 +1,4 @@
+/// <reference path="../deno.d.ts" />
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 type EvidenceRecord = {
@@ -57,7 +58,10 @@ function requiredEnv(name: string): string {
 function isAuthorized(request: Request): boolean {
   const expected = Deno.env.get("FORENZX_WEBHOOK_SECRET")?.trim();
   if (!expected) return false;
-  return request.headers.get("x-forenzx-webhook-secret") === expected;
+  return (
+    request.headers.get("x-forenzx-webhook-secret") === expected ||
+    request.headers.get("x-webhook-secret") === expected
+  );
 }
 
 function extractInput(body: Input) {
@@ -78,6 +82,34 @@ function extractInput(body: Input) {
     claimedSha256,
     idempotencyKey,
   };
+}
+
+/**
+ * Fetch a presigned GET URL from Pandora's M2M endpoint.
+ * The Edge Function (Deno) cannot use the AWS SDK directly, so Pandora
+ * generates the URL and hands it back via /api/forenzx/presign-for-hub.
+ */
+async function fetchPresignedDownloadUrl(
+  s3ObjectKey: string,
+  pandoraBaseUrl: string,
+  webhookSecret: string,
+): Promise<{ download_url: string; filename: string; expires_at: string }> {
+  const url = `${pandoraBaseUrl.replace(/\/$/, "")}/api/forenzx/presign-for-hub`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-forenzx-webhook-secret": webhookSecret,
+    },
+    body: JSON.stringify({ s3_object_key: s3ObjectKey }),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Pandora presign-for-hub returned ${response.status}: ${text.slice(0, 500)}`);
+  }
+  const data = await response.json() as { download_url: string; filename: string; expires_at: string };
+  if (!data.download_url) throw new Error("Pandora presign-for-hub returned no download_url");
+  return data;
 }
 
 async function callHub(name: string, arguments_: Record<string, unknown>) {
@@ -101,7 +133,7 @@ async function callHub(name: string, arguments_: Record<string, unknown>) {
   return JSON.parse(text) as { job_id?: string; status?: string; deduplicated?: boolean };
 }
 
-Deno.serve(async (request) => {
+Deno.serve(async (request: Request) => {
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
   if (!isAuthorized(request)) return json({ error: "Unauthorized" }, 401);
 
@@ -147,6 +179,17 @@ Deno.serve(async (request) => {
     if (insertError || !row) throw new Error(`forenzx job persistence failed: ${insertError?.message ?? "no row"}`);
 
     try {
+      // ── NEW: Fetch presigned download URL from Pandora ─────────────────────
+      // The Edge Function (Deno) cannot use the AWS SDK, so Pandora generates
+      // a short-lived presigned GET URL via /api/forenzx/presign-for-hub.
+      const s3Key = input.record.s3_object_key;
+      if (!s3Key) throw new Error("evidence_items.s3_object_key is required to generate download URL");
+
+      const pandoraUrl = requiredEnv("PANDORA_URL");
+      const webhookSecret = requiredEnv("FORENZX_WEBHOOK_SECRET");
+      const { download_url, filename } = await fetchPresignedDownloadUrl(s3Key, pandoraUrl, webhookSecret);
+      // ──────────────────────────────────────────────────────────────────────
+
       const result = await callHub("forenzx_analysis_start", {
         case_id: input.caseId,
         evidence_id: input.evidenceId,
@@ -154,6 +197,9 @@ Deno.serve(async (request) => {
         input_type: input.inputType,
         claimed_sha256: input.claimedSha256,
         idempotency_key: input.idempotencyKey,
+        // Pass download_url so Hub can self-download the evidence file
+        download_url,
+        download_filename: filename,
       });
       if (!result.job_id) throw new Error("ForenZX did not return a job_id");
 

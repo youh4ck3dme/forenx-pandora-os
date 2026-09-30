@@ -119,3 +119,61 @@ export async function callForenZXTool(
     return text;
   }
 }
+
+// ── High-level typed helper: start ForenZX analysis with S3 presigned URL ────
+// Import presign helper (server-only — never bundled to client)
+import { buildForenzxStartPayload } from "./forenzx-evidence-presign.server";
+
+export interface StartForenZXAnalysisParams {
+  caseId: string;
+  evidenceId: string;
+  packId: string;
+  inputType: string;
+  /** Full S3 key of the evidence file, e.g. "evidence/case-123/dump.tar.gz" */
+  s3Key: string;
+  /** Expected SHA-256 from the Pandora evidence ledger (hex, 64 chars) */
+  sha256: string;
+  /** Optional S3 bucket override (defaults to FORENZX_S3_BUCKET env var) */
+  bucket?: string;
+  /** Optional idempotency key for deduplication */
+  idempotencyKey?: string;
+}
+
+export interface StartForenZXAnalysisResult {
+  job_id: string;
+  status: string;
+  deduplicated: boolean;
+}
+
+/**
+ * Starts a ForenZX analysis job.
+ *
+ * Automatically:
+ *  1. Generates a presigned S3 URL for the evidence file.
+ *  2. Calls `forenzx_analysis_start` on the Hub with the URL embedded.
+ *  3. Hub streams the file into its vault, verifies SHA-256, runs Docker pack.
+ *
+ * @returns job_id + initial status
+ */
+export async function startForenZXAnalysis(
+  params: StartForenZXAnalysisParams
+): Promise<StartForenZXAnalysisResult> {
+  const payload = await buildForenzxStartPayload({
+    caseId: params.caseId,
+    evidenceId: params.evidenceId,
+    packId: params.packId,
+    inputType: params.inputType,
+    s3Key: params.s3Key,
+    sha256: params.sha256,
+    bucket: params.bucket,
+    idempotencyKey: params.idempotencyKey,
+  });
+
+  const result = await callForenZXTool("forenzx_analysis_start", payload);
+
+  const parsed = (result as StartForenZXAnalysisResult);
+  if (!parsed?.job_id) {
+    throw new ForenZXMcpError("forenzx_analysis_start returned no job_id.", "protocol");
+  }
+  return parsed;
+}

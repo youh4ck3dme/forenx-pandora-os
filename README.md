@@ -6,15 +6,24 @@
 >
 > Spája forenzný Evidence Vault, PostgreSQL/Supabase databázové jadro, AI asistovanú analýzu, dátové grafy, browser workspace, desktop runtime a vývojárske nástroje do jedného pracovného prostredia.
 
+## Kanonická dokumentácia
+
+Celkový beh aplikácie, dátové vlastníctvo, web/PWA/mobile/Electron runtime, ForenZX MCP kontrakt, staging pravidlá a testovacie brány sú definované v [System Source of Truth](docs/SOURCE-OF-TRUTH.md). Vývojári a AI agenti musia pred zmenou prečítať aj [AGENTS.md](AGENTS.md).
+
+---
+
 ```text
 Browser. Evidence. Intelligence. Audit. AI. One workspace.
 
+```
 
-## 🔍 REÁLNY STAV PROJEKTU A DIAGNOSTIKA (TRUE STATUS REPORT)
+## 🔍 Stav projektu — dôkazmi podložený report
 
-*Aktualizované: 29. september 2026*
+*Aktualizované: 30. september 2026*
 
-### ✅ 1. ČO JE 100% HOTOVÉ A VERIFIKOVANÉ (Production & Staging Ready)
+> Tento report nie je náhradou za testový dôkaz. Stav `PASS` sa udeľuje iba po úspešnom relevantnom teste a staging overení; samotný commit, build alebo health endpoint nestačí. Kanonický kontrakt je v [System Source of Truth](docs/SOURCE-OF-TRUTH.md).
+
+### ✅ 1. Existujúce a overované časti
 
 1. **VPS Staging Deployment (`pandora.whoiswho.at`)**:
    - Živý produkčný stack beží na VPS (`66.29.139.59`) v Docker prostredí za Apache reverse proxy s SSL/TLS.
@@ -39,7 +48,9 @@ Browser. Evidence. Intelligence. Audit. AI. One workspace.
 
 ---
 
-### ⚠️ 2. ČO JE V PROCESE / VYŽADUJE POZORNOSŤ (Práva a netajená realita)
+### ⚠️ 2. Aktuálne obmedzenia a blokery
+
+ForenZX integrácia je v pracovnom strome a úplný staging E2E tok zatiaľ nemožno označiť ako `PASS`. Pred regresiou treba overiť všetky `FORENZX_*` premenné, Supabase Edge secrets, staging fixture, enabled pack a tok až po `forenzx_analysis_jobs.status=completed`. Ak niektorá z týchto podmienok chýba, stav je `BLOCKED`.
 
 1. **Draftovaný `lib/auth` Refactoring (Nekompletné v pracovnom strome)**:
    - V pracovnom adresári existujú rozpracované (untracked) súbory v `lib/auth/` a `middleware.ts`, ktoré vykazujú TypeScript chyby pri `npx tsc --noEmit` (`getRouteCategory`, `matchPathPattern`, nullability).
@@ -61,9 +72,6 @@ Browser. Evidence. Intelligence. Audit. AI. One workspace.
 1. **[P0] Dokončiť type-safety v `lib/auth/` a `middleware.ts`**: Opraviť importy a nullability guards tak, aby `npx tsc --noEmit` prebehol bez jedinej chyby.
 2. **[P1] Zvýšiť testTimeout pre Vitest UI testy**: Pridať `testTimeout: 10000` v `vitest.config.ts` pre ForgeStudio a Contrast testy.
 3. **[P1] Prepnúť SUPABASE_URL v staging env na lokálny Kong**: Upraviť env premennú na VPS na `http://pandora_staging_kong:8000`.
-
----
-```
 
 ---
 
@@ -99,6 +107,7 @@ Report
 
 # Obsah
 
+0. [System Source of Truth](docs/SOURCE-OF-TRUTH.md)
 1. [Prehľad platformy](#prehľad-platformy)
 2. [Forenzné invarianty](#forenzné-invarianty)
 3. [Architektúra](#architektúra)

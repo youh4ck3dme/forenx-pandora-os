@@ -94,6 +94,9 @@ function getRouteCategory(pathname: string): { category: RouteCategory; pattern:
     // Machine-to-machine: cron job for evidence verification
     { pattern: '/api/vault/verify', category: 'SYSTEM' },
     { pattern: '/api/vault/verify/*', category: 'SYSTEM' },
+    // Machine-to-machine: Edge Function requests presigned URL from Pandora
+    { pattern: '/api/forenzx/presign-for-hub', category: 'SYSTEM' },
+    { pattern: '/api/forenzx/presign-for-hub/*', category: 'SYSTEM' },
     // Standard system routes
     { pattern: '/.well-known/*', category: 'SYSTEM' },
 
