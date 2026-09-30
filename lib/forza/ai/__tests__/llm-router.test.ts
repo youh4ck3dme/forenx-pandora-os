@@ -187,7 +187,9 @@ describe("LLM Router & Gemini Fallback", () => {
       });
 
       expect(result.status).toBe("timeout");
-      expect(result.message).toContain("AI_EXECUTION_DEADLINE_EXCEEDED");
+      if (result.status === "timeout") {
+        expect(result.message).toContain("AI_EXECUTION_DEADLINE_EXCEEDED");
+      }
       expect(callMistral).not.toHaveBeenCalled();
       expect(callGemini).not.toHaveBeenCalled();
     });
@@ -257,7 +259,9 @@ describe("LLM Router & Gemini Fallback", () => {
       });
 
       expect(result.status).toBe("timeout");
-      expect(result.message).toContain("AI_EXECUTION_DEADLINE_EXCEEDED");
+      if (result.status === "timeout") {
+        expect(result.message).toContain("AI_EXECUTION_DEADLINE_EXCEEDED");
+      }
       // Mistral was attempted, but Gemini was NOT called because budget was exhausted
       expect(callMistral).toHaveBeenCalledTimes(1);
       expect(callGemini).not.toHaveBeenCalled();
