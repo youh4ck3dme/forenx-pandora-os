@@ -26,25 +26,43 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"],
-      "@/hooks/*": ["./lib/hooks/*"],
-      "@/forensic": ["./lib/forza/forensic"],
-      "@/forensic/*": ["./lib/forza/forensic/*"],
-      "@/lib/*": ["./lib/forza/*", "./lib/*"],
-      "@tanstack/react-start": ["./lib/tanstack-start-shim.ts"],
-      "@tanstack/react-start/server": ["./lib/tanstack-start-shim.ts"],
-      "@tanstack/react-start/*": ["./lib/tanstack-start-shim.ts"]
+      "@/*": [
+        "./*"
+      ],
+      "@/hooks/*": [
+        "./lib/hooks/*"
+      ],
+      "@/forensic": [
+        "./lib/forza/forensic"
+      ],
+      "@/forensic/*": [
+        "./lib/forza/forensic/*"
+      ],
+      "@/lib/*": [
+        "./lib/forza/*",
+        "./lib/*"
+      ],
+      "@tanstack/react-start": [
+        "./lib/tanstack-start-shim.ts"
+      ],
+      "@tanstack/react-start/server": [
+        "./lib/tanstack-start-shim.ts"
+      ],
+      "@tanstack/react-start/*": [
+        "./lib/tanstack-start-shim.ts"
+      ]
     }
   },
   "include": [
-    "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
+    "next-env.d.ts",
     ".next/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "scratch",
+    ".next",
     "**/__tests__/**",
     "**/*.test.ts",
     "**/*.test.tsx",
