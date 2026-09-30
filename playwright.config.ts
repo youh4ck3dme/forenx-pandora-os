@@ -6,12 +6,16 @@ export default defineConfig({
     timeout: 120 * 1000,
     expect: {
         timeout: 10 * 1000,
+        toHaveScreenshot: {
+            maxDiffPixelRatio: 0.05,
+            animations: 'disabled',
+        },
     },
     retries: 0,
     workers: 1,
     reporter: 'list',
     use: {
-        baseURL: process.env.PLAYWRIGHT_TEST_BASE_URL || process.env.BASE_URL || 'http://localhost:3000',
+        baseURL: process.env.PLAYWRIGHT_TEST_BASE_URL || process.env.BASE_URL || 'https://pandora.whoiswho.at',
         trace: 'on-first-retry',
         navigationTimeout: 45 * 1000,
     },
@@ -21,7 +25,7 @@ export default defineConfig({
             use: { ...devices['Desktop Chrome'] },
         },
     ],
-    webServer: process.env.PLAYWRIGHT_TEST_BASE_URL ? undefined : {
+    webServer: (process.env.PLAYWRIGHT_TEST_BASE_URL || process.env.BASE_URL) ? undefined : {
         command: 'npm run dev',
         url: 'http://localhost:3000',
         reuseExistingServer: !process.env.CI,

@@ -6,6 +6,7 @@ export function GET() {
   return NextResponse.json(
     {
       ok: true,
+      status: "ok",
       service: "pandora-forensic-os",
       timestamp: new Date().toISOString(),
     },
