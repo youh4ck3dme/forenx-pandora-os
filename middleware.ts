@@ -83,12 +83,14 @@ function getRouteCategory(pathname: string): { category: RouteCategory; pattern:
     { pattern: '/api/csp-report/*', category: 'PUBLIC' },
     // Health check: external monitoring tools need unauthenticated access
     { pattern: '/api/healthz', category: 'PUBLIC' },
+    { pattern: '/api/healthz/*', category: 'PUBLIC' },
 
     // ======================================================================
     // SYSTEM ROUTES - Internal system endpoints
     // ======================================================================
     // Page-level health check
     { pattern: '/healthz', category: 'SYSTEM' },
+    { pattern: '/healthz/*', category: 'SYSTEM' },
     // Machine-to-machine: cron job for evidence verification
     { pattern: '/api/vault/verify', category: 'SYSTEM' },
     { pattern: '/api/vault/verify/*', category: 'SYSTEM' },
