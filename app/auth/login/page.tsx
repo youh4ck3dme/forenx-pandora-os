@@ -102,14 +102,14 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative min-h-svh w-full overflow-hidden">
+    <div className="relative h-dvh max-h-dvh w-full overflow-hidden overscroll-none select-none">
       <GL hovering={false} />
 
       <div className="absolute inset-0 z-1 pointer-events-none">
         <div className="absolute inset-0 bg-linear-to-t from-black via-transparent to-black/50" />
       </div>
 
-      <div className="relative z-10 flex flex-col items-center justify-center min-h-svh px-6">
+      <div className="relative z-10 flex flex-col items-center justify-center h-dvh max-h-dvh px-6 py-safe overflow-hidden">
         <Link
           href="/"
           className="absolute top-6 left-6 flex items-center gap-2 text-foreground/60 hover:text-foreground transition-colors"
