@@ -49,6 +49,8 @@ type GeminiCallOptions = {
   purpose?: GeminiPurpose;
   traceId?: string;
   timeoutMs?: number;
+  /** Absolútny deadline celého AI jobu (timestamp v ms od epochy). */
+  deadline?: number;
   fetchImpl?: typeof fetch;
 };
 
@@ -67,13 +69,30 @@ export async function callGemini(
     };
   }
 
+  // Kontrola hard-ceiling deadline pred začatím
+  if (options.deadline && options.deadline - Date.now() <= 0) {
+    return {
+      status: "timeout",
+      message: "AI_EXECUTION_DEADLINE_EXCEEDED: Celkový časový limit 500s bol vyčerpaný pred odoslaním požiadavky na Gemini.",
+    };
+  }
+
   const model = geminiModel();
   const doFetch = options.fetchImpl ?? fetch;
   const timeoutMs =
     options.timeoutMs ?? timeoutForPurpose(options.purpose ?? "chat");
 
+  const remainingForAttempt = options.deadline ? options.deadline - Date.now() : timeoutMs;
+  if (remainingForAttempt <= 0) {
+    return {
+      status: "timeout",
+      message: "AI_EXECUTION_DEADLINE_EXCEEDED: Celkový časový limit 500s bol vyčerpaný pred pokusom Gemini.",
+    };
+  }
+  const effectiveTimeoutMs = Math.min(timeoutMs, remainingForAttempt);
+
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), effectiveTimeoutMs);
 
   // Rozdelenie na systémovú inštrukciu a používateľské správy
   const systemTexts = options.messages
@@ -178,6 +197,12 @@ export async function callGemini(
     };
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
+      if (options.deadline && Date.now() >= options.deadline) {
+        return {
+          status: "timeout",
+          message: "AI_EXECUTION_DEADLINE_EXCEEDED: Gemini požiadavka prekročila celkový deadline.",
+        };
+      }
       return {
         status: "timeout",
         message: "Volanie Gemini prekročilo časový limit.",

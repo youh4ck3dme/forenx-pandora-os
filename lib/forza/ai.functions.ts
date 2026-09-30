@@ -1002,6 +1002,12 @@ async function callLlmWithRetry(
   let last = await callLlm(args);
   for (let attempt = 0; attempt < retries; attempt += 1) {
     if (last.status === "ok" || last.status === "timeout") return last;
+    if (args.deadline && Date.now() >= args.deadline) {
+      return {
+        status: "timeout",
+        message: "AI_EXECUTION_DEADLINE_EXCEEDED: Celkový časový limit 500s bol vyčerpaný pred retry.",
+      };
+    }
     last = await callLlm(args);
   }
   return last;
@@ -1117,6 +1123,11 @@ export async function runForensicAutopilotInner(
     );
   }
 
+  const { createAiExecutionBudget, AiDeadlineExceededError } = await import(
+    "./ai/execution-budget"
+  );
+  const budget = createAiExecutionBudget();
+
   const partials = [] as ReturnType<typeof parseForensicDossier>[];
   const chunkMeta: AutopilotChunkMeta[] = [];
   const failures: string[] = [];
@@ -1124,6 +1135,13 @@ export async function runForensicAutopilotInner(
   let lastProvider: string | undefined = priorMeta?.provider;
 
   for (let i = 0; i < chunks.length; i += 1) {
+    // Kontrola 500s stropu pred každým chunkom
+    if (budget.getRemainingMs() <= 0) {
+      throw new AiDeadlineExceededError(
+        "AI_EXECUTION_DEADLINE_EXCEEDED: Autopilot prekročil maximálny pracovný limit 500 sekúnd.",
+      );
+    }
+
     const chunk = chunks[i]!;
     const index = i + 1;
     const priorChunk = priorChunks.find((c) => c.index === index);
@@ -1160,6 +1178,8 @@ export async function runForensicAutopilotInner(
       ],
       maxTokens: AUTOPILOT_MAX_TOKENS,
       purpose: "analysis",
+      deadline: budget.deadline,
+      budget,
     });
 
     if (result.status !== "ok") {
@@ -1177,6 +1197,11 @@ export async function runForensicAutopilotInner(
     lastModel = result.model ?? lastModel;
     lastProvider = result.provider ?? lastProvider;
     try {
+      if (budget.getRemainingMs() <= 0) {
+        throw new AiDeadlineExceededError(
+          "AI_EXECUTION_DEADLINE_EXCEEDED: Parsing a validácia odpovede prekročili maximálny limit 500 sekúnd.",
+        );
+      }
       partials.push(parseForensicDossier(result.content));
       chunkMeta.push({
         index,
@@ -1185,6 +1210,7 @@ export async function runForensicAutopilotInner(
         status: retrySet ? "repaired" : "ok",
       });
     } catch (error) {
+      if (error instanceof AiDeadlineExceededError) throw error;
       const err =
         error instanceof Error ? error.message : "Odpoveď AI bola chybná.";
       failures.push(err);
@@ -1196,6 +1222,12 @@ export async function runForensicAutopilotInner(
         error: err,
       });
     }
+  }
+
+  if (budget.getRemainingMs() <= 0) {
+    throw new AiDeadlineExceededError(
+      "AI_EXECUTION_DEADLINE_EXCEEDED: Post-processing a syntéza spisu prekročili maximálny limit 500 sekúnd.",
+    );
   }
 
   if (partials.length === 0 && !data.priorDossier) {

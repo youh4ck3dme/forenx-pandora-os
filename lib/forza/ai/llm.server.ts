@@ -21,8 +21,25 @@ import {
   geminiConfigured,
   geminiModel,
 } from "./gemini.server";
+import {
+  AI_EXECUTION_DEADLINE_EXCEEDED,
+  createAiExecutionBudget,
+  AiDeadlineExceededError,
+  MAX_AI_EXECUTION_SECONDS,
+  AI_JOB_DEADLINE_MS,
+  type AiExecutionBudget,
+} from "./execution-budget";
 import { applyPrivacyGateway } from "./privacy-gateway";
 import { newTraceId } from "@/lib/forza/trace";
+
+export {
+  MAX_AI_EXECUTION_SECONDS,
+  AI_JOB_DEADLINE_MS,
+  AI_EXECUTION_DEADLINE_EXCEEDED,
+  AiDeadlineExceededError,
+  createAiExecutionBudget,
+  type AiExecutionBudget,
+};
 
 export type LlmProvider = "mistral" | "gemini";
 export type LlmResult = MistralResult & { provider?: LlmProvider };
@@ -90,21 +107,51 @@ export async function callLlm(options: {
   fetchImpl?: typeof fetch;
   /** P0-04: korelačné trace id; ak chýba, vygeneruje sa nové (UUIDv4). */
   traceId?: string;
+  /** Absolútny deadline celého AI jobu (timestamp v ms od epochy). */
+  deadline?: number;
+  /** Alternatívny celkový budget v ms (predvolený: AI_JOB_DEADLINE_MS = 500 000 ms). */
+  budgetMs?: number;
+  /** Už existujúci budget kontext. */
+  budget?: AiExecutionBudget;
 }): Promise<LlmResult> {
   const purpose = options.purpose ?? "chat";
   const traceId = options.traceId ?? newTraceId();
+
+  // Inicializácia budgetu: 500s hard ceiling pre celý job
+  const budget =
+    options.budget ??
+    createAiExecutionBudget(
+      options.deadline ? { deadline: options.deadline } : options.budgetMs,
+    );
+
+  // Kontrola hard-ceiling pred začatím
+  const remainingAtStart = budget.getRemainingMs();
+  if (remainingAtStart <= 0) {
+    return {
+      status: "timeout",
+      message: `${AI_EXECUTION_DEADLINE_EXCEEDED}: Celkový pracovný limit 500s bol vyčerpaný pred začatím požiadavky.`,
+      provider: "mistral",
+    };
+  }
+
   // Centrálna brána: žiadna nesystémová správa neodíde bez redakcie PII.
   const { messages } = applyPrivacyGateway(options.messages);
+
+  // Bežný limit účelu (napr. chat 35s, analýza 300s) ohraničený zostávajúcim budgetom.
+  // Krátke úlohy nesmú byť spomaľované týmto limitom — ostáva ich bežný timeoutMs.
+  const requestedTimeout = options.timeoutMs ?? timeoutForPurpose(purpose);
+  const effectiveTimeout = Math.min(requestedTimeout, remainingAtStart);
 
   const callParams = {
     ...options,
     messages,
     purpose,
     traceId,
-    timeoutMs: options.timeoutMs ?? timeoutForPurpose(purpose),
+    timeoutMs: effectiveTimeout,
+    deadline: budget.deadline,
   };
 
-  // 1. Ak je nakonfigurovaný Mistral, je vždy primárnou voľbou.
+  // 1. Ak je nakonfigurovaný Mistral, je vždy primárnou voľbou (PRIMARY_PROVIDER).
   if (mistralConfigured(purpose)) {
     const mistralResult = await callMistral(callParams);
 
@@ -112,18 +159,42 @@ export async function callLlm(options: {
       return { ...mistralResult, provider: "mistral" };
     }
 
-    // 2. Kontrola, či je chyba prechodná a či je dostupný Gemini fallback
+    // Ak Mistral skončil prekročením celkového deadline
+    if (mistralResult.message?.includes(AI_EXECUTION_DEADLINE_EXCEEDED)) {
+      return { ...mistralResult, provider: "mistral" };
+    }
+
+    // 2. Kontrola, či je chyba prechodná a či je dostupný Gemini fallback (SECONDARY_PROVIDER / FALLBACK)
     if (isRetryableProviderFailure(mistralResult) && geminiConfigured()) {
+      const remainingForGemini = budget.getRemainingMs();
+      if (remainingForGemini <= 0) {
+        return {
+          status: "timeout",
+          message: `${AI_EXECUTION_DEADLINE_EXCEEDED}: Po pokuse s Mistral nezostal žiadny čas na záložného poskytovateľa Gemini.`,
+          provider: "mistral",
+        };
+      }
+
       console.warn(
-        `[AI Router] Primárny poskytovateľ Mistral zlyhal prechodne (${mistralResult.status}), aktivujem Gemini fallback...`,
+        `[AI Router] Primárny poskytovateľ Mistral zlyhal prechodne (${mistralResult.status}), aktivujem Gemini fallback (zostáva ${Math.round(remainingForGemini / 1000)}s z budgetu 500s)...`,
       );
-      const geminiResult = await callGemini(callParams);
+
+      const geminiTimeout = Math.min(requestedTimeout, remainingForGemini);
+      const geminiResult = await callGemini({
+        ...callParams,
+        timeoutMs: geminiTimeout,
+        deadline: budget.deadline,
+      });
+
       if (geminiResult.status === "ok") {
         return { ...geminiResult, provider: "gemini" };
       }
       console.error(
         `[AI Router] Záložný poskytovateľ Gemini taktiež zlyhal (${geminiResult.status}): ${geminiResult.message}`,
       );
+      if (geminiResult.message?.includes(AI_EXECUTION_DEADLINE_EXCEEDED)) {
+        return { ...geminiResult, provider: "gemini" };
+      }
     }
 
     // Vráti výsledok primárneho poskytovateľa (alebo ne-retryovateľnú chybu)
@@ -132,7 +203,21 @@ export async function callLlm(options: {
 
   // 3. Ak Mistral nie je nakonfigurovaný, ale Gemini je
   if (geminiConfigured()) {
-    const geminiResult = await callGemini(callParams);
+    const remainingForGemini = budget.getRemainingMs();
+    if (remainingForGemini <= 0) {
+      return {
+        status: "timeout",
+        message: `${AI_EXECUTION_DEADLINE_EXCEEDED}: Časový limit bol vyčerpaný pred volaním Gemini.`,
+        provider: "gemini",
+      };
+    }
+
+    const geminiTimeout = Math.min(requestedTimeout, remainingForGemini);
+    const geminiResult = await callGemini({
+      ...callParams,
+      timeoutMs: geminiTimeout,
+      deadline: budget.deadline,
+    });
     return { ...geminiResult, provider: "gemini" };
   }
 
@@ -146,7 +231,14 @@ export async function callLlm(options: {
 export async function extractWithOcrFallback(
   fileBuffer: Buffer,
   fileName: string,
+  options?: { deadline?: number; budget?: AiExecutionBudget },
 ): Promise<string> {
+  if (
+    options?.budget?.isExpired() ||
+    (options?.deadline && options.deadline - Date.now() <= 0)
+  ) {
+    throw new AiDeadlineExceededError();
+  }
   if (!mistralConfigured("analysis")) {
     throw new Error(
       "OCR nie je nakonfigurované (chýba MISTRAL_API_KEY alebo MISTRAL_API_KEY_ANALYSIS).",
@@ -154,3 +246,4 @@ export async function extractWithOcrFallback(
   }
   return callMistralOcr(fileBuffer, fileName);
 }
+

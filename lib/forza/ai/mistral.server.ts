@@ -69,6 +69,8 @@ type CallOptions = {
   traceId?: string;
   /** Prepíše časový limit odvodený z účelu volania. */
   timeoutMs?: number;
+  /** Absolútny deadline celého AI jobu (timestamp v ms od epochy). */
+  deadline?: number;
   /** Injektovateľné len v testoch. */
   fetchImpl?: typeof fetch;
 };
@@ -87,6 +89,15 @@ export async function callMistral(
   if (!apiKey) {
     return { status: "not_configured", message: "AI nie je nakonfigurovaná." };
   }
+
+  // Kontrola hard-ceiling deadline pred začatím
+  if (options.deadline && options.deadline - Date.now() <= 0) {
+    return {
+      status: "timeout",
+      message: "AI_EXECUTION_DEADLINE_EXCEEDED: Celkový časový limit 500s bol vyčerpaný pred odoslaním požiadavky na Mistral.",
+    };
+  }
+
   const model = mistralModel();
   const doFetch = options.fetchImpl ?? fetch;
   const timeoutMs =
@@ -97,8 +108,16 @@ export async function callMistral(
     | { kind: "retry"; after: number }
     | MistralResult
   > => {
+    const remainingForAttempt = options.deadline ? options.deadline - Date.now() : timeoutMs;
+    if (remainingForAttempt <= 0) {
+      return {
+        status: "timeout",
+        message: "AI_EXECUTION_DEADLINE_EXCEEDED: Celkový časový limit bol vyčerpaný pred pokusom Mistral.",
+      };
+    }
+    const effectiveTimeoutMs = Math.min(timeoutMs, remainingForAttempt);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), effectiveTimeoutMs);
     const payload = JSON.stringify({
       model,
       temperature: 0.2,
@@ -209,6 +228,12 @@ export async function callMistral(
       return { kind: "ok", body: await response.json() };
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
+        if (options.deadline && Date.now() >= options.deadline) {
+          return {
+            status: "timeout",
+            message: "AI_EXECUTION_DEADLINE_EXCEEDED: Mistral požiadavka prekročila celkový deadline.",
+          };
+        }
         return {
           status: "timeout",
           message:
@@ -228,11 +253,32 @@ export async function callMistral(
 
   // Najviac 3 pokusy a len pri jednoznačne prechodnej chybe (429/503).
   // Čakanie rešpektuje Retry-After, inak exponenciálne 1 s → 2 s.
+  // Provider retry nesmie resetovať deadline.
   let result = await attempt();
   for (let retry = 0; retry < 2; retry++) {
     if (!("kind" in result) || result.kind !== "retry") break;
     const backoff = Math.max(result.after, 2 ** retry);
-    await new Promise((r) => setTimeout(r, Math.min(backoff, 8) * 1000));
+    const backoffMs = Math.min(backoff, 8) * 1000;
+
+    if (options.deadline) {
+      const remainingBeforeBackoff = options.deadline - Date.now();
+      if (remainingBeforeBackoff <= 0 || backoffMs >= remainingBeforeBackoff) {
+        return {
+          status: "timeout",
+          message: "AI_EXECUTION_DEADLINE_EXCEEDED: Celkový časový limit 500s neumožňuje ďalší retry pokus na Mistral.",
+        };
+      }
+    }
+
+    await new Promise((r) => setTimeout(r, backoffMs));
+
+    if (options.deadline && options.deadline - Date.now() <= 0) {
+      return {
+        status: "timeout",
+        message: "AI_EXECUTION_DEADLINE_EXCEEDED: Celkový časový limit 500s bol vyčerpaný počas retry.",
+      };
+    }
+
     const next = await attempt();
     if ("kind" in next && next.kind === "retry" && retry === 1) {
       return {

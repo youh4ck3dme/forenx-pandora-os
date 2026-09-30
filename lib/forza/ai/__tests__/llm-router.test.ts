@@ -174,4 +174,121 @@ describe("LLM Router & Gemini Fallback", () => {
       }),
     ).toBe(false);
   });
+
+  describe("500s Execution Budget & Deadline-Based Execution", () => {
+    it("should abort immediately with AI_EXECUTION_DEADLINE_EXCEEDED if initial deadline is already expired", async () => {
+      vi.mocked(mistralConfigured).mockReturnValue(true);
+      vi.mocked(geminiConfigured).mockReturnValue(true);
+
+      const pastDeadline = Date.now() - 1000;
+      const result = await callLlm({
+        messages: testMessages,
+        deadline: pastDeadline,
+      });
+
+      expect(result.status).toBe("timeout");
+      expect(result.message).toContain("AI_EXECUTION_DEADLINE_EXCEEDED");
+      expect(callMistral).not.toHaveBeenCalled();
+      expect(callGemini).not.toHaveBeenCalled();
+    });
+
+    it("should clamp Gemini fallback timeout to the remaining deadline budget", async () => {
+      vi.mocked(mistralConfigured).mockReturnValue(true);
+      vi.mocked(geminiConfigured).mockReturnValue(true);
+
+      // Assume job deadline is 500s from now
+      const startTime = Date.now();
+      const deadline = startTime + 500_000;
+
+      // Mistral fails after simulated elapsed time (e.g. 260s)
+      vi.mocked(callMistral).mockImplementation(async (opts) => {
+        // Verify deadline is passed to Mistral
+        expect(opts.deadline).toBe(deadline);
+        return {
+          status: "timeout",
+          message: "Mistral požiadavka prekročila limit.",
+        };
+      });
+
+      // Gemini is called as fallback
+      vi.mocked(callGemini).mockImplementation(async (opts) => {
+        // The timeout allocated to Gemini must not exceed the remaining time
+        expect(opts.deadline).toBe(deadline);
+        expect(opts.timeoutMs).toBeLessThanOrEqual(500_000);
+        return {
+          status: "ok",
+          content: "FORENX_GEMINI_FALLBACK_OK",
+          usage: { prompt: 20, completion: 10 },
+          model: "gemini-flash-lite-latest",
+        };
+      });
+
+      const result = await callLlm({
+        messages: testMessages,
+        purpose: "analysis",
+        deadline,
+      });
+
+      expect(result.status).toBe("ok");
+      expect(result.provider).toBe("gemini");
+      expect(callMistral).toHaveBeenCalledTimes(1);
+      expect(callGemini).toHaveBeenCalledTimes(1);
+    });
+
+    it("should NOT call Gemini fallback if Mistral exhausted the entire 500s budget", async () => {
+      vi.mocked(mistralConfigured).mockReturnValue(true);
+      vi.mocked(geminiConfigured).mockReturnValue(true);
+
+      // Budget initialized with a very small remaining time that expires during Mistral
+      const deadline = Date.now() + 50;
+
+      vi.mocked(callMistral).mockImplementation(async () => {
+        // Wait until deadline has passed
+        await new Promise((r) => setTimeout(r, 60));
+        return {
+          status: "timeout",
+          message: "AI_EXECUTION_DEADLINE_EXCEEDED: Celkový časový limit bol vyčerpaný.",
+        };
+      });
+
+      const result = await callLlm({
+        messages: testMessages,
+        deadline,
+      });
+
+      expect(result.status).toBe("timeout");
+      expect(result.message).toContain("AI_EXECUTION_DEADLINE_EXCEEDED");
+      // Mistral was attempted, but Gemini was NOT called because budget was exhausted
+      expect(callMistral).toHaveBeenCalledTimes(1);
+      expect(callGemini).not.toHaveBeenCalled();
+    });
+
+    it("should allow short tasks to complete immediately without artificial delays", async () => {
+      vi.mocked(mistralConfigured).mockReturnValue(true);
+      vi.mocked(geminiConfigured).mockReturnValue(true);
+
+      const quickResult: MistralResult = {
+        status: "ok",
+        content: "QUICK_CLASSIFICATION_RESULT",
+        usage: { prompt: 5, completion: 2 },
+        model: "mistral-large-latest",
+      };
+      vi.mocked(callMistral).mockResolvedValue(quickResult);
+
+      const before = Date.now();
+      const result = await callLlm({
+        messages: testMessages,
+        purpose: "chat",
+      });
+      const elapsed = Date.now() - before;
+
+      expect(result.status).toBe("ok");
+      expect(result.provider).toBe("mistral");
+      // Must finish in milliseconds, NOT waiting for 500s
+      expect(elapsed).toBeLessThan(1000);
+      expect(callMistral).toHaveBeenCalledTimes(1);
+      expect(callGemini).not.toHaveBeenCalled();
+    });
+  });
 });
+
