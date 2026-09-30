@@ -62,7 +62,6 @@
   "exclude": [
     "node_modules",
     "scratch",
-    ".next",
     "**/__tests__/**",
     "**/*.test.ts",
     "**/*.test.tsx",
