@@ -2,10 +2,13 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock3, Loader2 } from "lucide-react";
 import { Card } from "@/components/malte/Shell";
 import type { ForensicWorkflowRun } from "@/lib/forza/forensic-workflow.types";
+import type { ForenZXJob } from "@/lib/forza/forenzx-mcp.functions";
+import { ForenzxJobProgress } from "@/components/malte/ForenzxJobProgress";
 
 type Props = {
   caseId: string;
   loadRuns: (caseId: string) => Promise<{ runs: ForensicWorkflowRun[] }>;
+  loadForenZXJobs?: (caseId: string) => Promise<{ jobs: ForenZXJob[] }>;
   onCompleted?: () => void;
 };
 
@@ -17,8 +20,9 @@ function duration(run: ForensicWorkflowRun) {
   return `${Math.max(0, Math.round(milliseconds / 1000))} s`;
 }
 
-export function ForensicWorkflowInspector({ caseId, loadRuns, onCompleted }: Props) {
+export function ForensicWorkflowInspector({ caseId, loadRuns, loadForenZXJobs, onCompleted }: Props) {
   const [runs, setRuns] = useState<ForensicWorkflowRun[]>([]);
+  const [forenzxJobs, setForenzxJobs] = useState<ForenZXJob[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -29,6 +33,10 @@ export function ForensicWorkflowInspector({ caseId, loadRuns, onCompleted }: Pro
         const result = await loadRuns(caseId);
         if (!mounted) return;
         setRuns(result.runs);
+        if (loadForenZXJobs) {
+          const forenzxResult = await loadForenZXJobs(caseId);
+          if (mounted) setForenzxJobs(forenzxResult.jobs);
+        }
         setError(null);
         if (!completed && result.runs.some((run) => run.status === "completed")) {
           completed = true;
@@ -44,9 +52,9 @@ export function ForensicWorkflowInspector({ caseId, loadRuns, onCompleted }: Pro
       mounted = false;
       window.clearInterval(timer);
     };
-  }, [caseId, loadRuns, onCompleted]);
+  }, [caseId, loadRuns, loadForenZXJobs, onCompleted]);
 
-  if (runs.length === 0 && !error) return null;
+  if (runs.length === 0 && forenzxJobs.length === 0 && !error) return null;
   return (
     <Card className="border-primary/30 bg-black/75 p-3 space-y-2" aria-label="Forenzný priebeh">
       <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -71,6 +79,9 @@ export function ForensicWorkflowInspector({ caseId, loadRuns, onCompleted }: Pro
           );
         })}
       </div>
+      {forenzxJobs
+        .filter((job) => job.hub_job_id)
+        .map((job) => <ForenzxJobProgress key={job.id} jobId={job.hub_job_id!} />)}
     </Card>
   );
 }

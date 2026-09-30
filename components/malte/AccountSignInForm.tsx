@@ -108,30 +108,44 @@ export function AccountSignInForm({
 
   return (
     <form className="space-y-3" onSubmit={handleSubmit}>
-      <input
-        aria-label="E-mail účtu"
-        type="email"
-        required
-        autoComplete="username"
-        className={fieldClass}
-        placeholder="E-mail účtu"
-        value={email}
-        onChange={(event) => setEmail(event.target.value)}
-      />
-      {mode === "reset" ? null : (
+      <div>
+        <label htmlFor="account-email" className="sr-only">
+          E-mail účtu
+        </label>
         <input
-          aria-label="Heslo účtu"
-          type="password"
+          id="account-email"
+          name="email"
+          aria-label="E-mail účtu"
+          type="email"
           required
-          minLength={mode === "signup" ? 8 : 1}
-          autoComplete={mode === "signup" ? "new-password" : "current-password"}
+          autoComplete="username"
           className={fieldClass}
-          placeholder={
-            mode === "signup" ? "Nové heslo (min. 8 znakov)" : "Heslo účtu"
-          }
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
+          placeholder="E-mail účtu"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
         />
+      </div>
+      {mode === "reset" ? null : (
+        <div>
+          <label htmlFor="account-password" className="sr-only">
+            Heslo účtu
+          </label>
+          <input
+            id="account-password"
+            name="password"
+            aria-label="Heslo účtu"
+            type="password"
+            required
+            minLength={mode === "signup" ? 8 : 1}
+            autoComplete={mode === "signup" ? "new-password" : "current-password"}
+            className={fieldClass}
+            placeholder={
+              mode === "signup" ? "Nové heslo (min. 8 znakov)" : "Heslo účtu"
+            }
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </div>
       )}
       <Button
         type="submit"
