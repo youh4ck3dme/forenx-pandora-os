@@ -187,10 +187,22 @@ ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS public_rate_limits_all ON public.rate_limits;
 
-CREATE POLICY no_direct_select ON public.rate_limits FOR SELECT USING (false);
-CREATE POLICY no_direct_insert ON public.rate_limits FOR INSERT WITH CHECK (false);
-CREATE POLICY no_direct_update ON public.rate_limits FOR UPDATE USING (false);
-CREATE POLICY no_direct_delete ON public.rate_limits FOR DELETE USING (false);
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'rate_limits' AND schemaname = 'public' AND policyname = 'no_direct_select') THEN
+        CREATE POLICY no_direct_select ON public.rate_limits FOR SELECT USING (false);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'rate_limits' AND schemaname = 'public' AND policyname = 'no_direct_insert') THEN
+        CREATE POLICY no_direct_insert ON public.rate_limits FOR INSERT WITH CHECK (false);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'rate_limits' AND schemaname = 'public' AND policyname = 'no_direct_update') THEN
+        CREATE POLICY no_direct_update ON public.rate_limits FOR UPDATE USING (false);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'rate_limits' AND schemaname = 'public' AND policyname = 'no_direct_delete') THEN
+        CREATE POLICY no_direct_delete ON public.rate_limits FOR DELETE USING (false);
+    END IF;
+END
+$$;
 
 REVOKE ALL ON TABLE public.rate_limits FROM anon;
 REVOKE ALL ON TABLE public.rate_limits FROM authenticated;
