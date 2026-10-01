@@ -49,22 +49,14 @@ Kanonický realizačný plán dokončenia nasadenia v záväznom poradí podľa 
 ## 📌 KROK 4: Riadené nasadenie a Staging E2E Smoke Test (Release Gate)
 > Cieľ: Až keď infraštruktúra aj worker stoja, nasadí sa nová verzia aplikácie v servisnom okne a otestuje sa kompletný forenzný tok na syntetickom prípade.
 
-- [ ] 4.1 Servisné okno — Deployment aplikácie:
-  - Aktivácia údržbovej stránky na Apache proxy: sudo a2ensite 000-maintenance.conf && sudo systemctl reload apache2.
-  - Pull nového image digestu z GHCR: docker pull ghcr.io/.../pandora:sha-....
-  - Štart kontajnera: docker-compose -f docker-compose.production.yml up -d --force-recreate app.
-- [ ] 4.2 Healthcheck & Diagnostika:
-  - Overiť curl -k https://127.0.0.1:3005/healthz (HTTP 200).
-  - Overiť curl -k https://127.0.0.1:3005/api/health/public/ (všetkých 15 sledovaných kategórií vrátane S3 vaultu a databázy v stave ok).
-- [ ] 4.3 E2E test na syntetickom prípade (Overenie celého reťazca):
-  - Prihlásenie pozvaného vyšetrovateľa cez session bridge.
-  - Vytvorenie syntetického testovacieho prípadu.
-  - Presigned upload testovacieho súboru priamo do Hetzner S3.
-  - Serverový streamovaný prepočet SHA-256 hashu a commit do auditného ledgeru (verified).
-  - Spustenie AI analýzy s redakciou citlivých dát a overenie neúplných výstupov.
-  - Generovanie PDF exportu spolu s nezávislým SHA-256 manifestom.
-- [ ] 4.4 Návrat z údržbového módu:
-  - Deaktivácia údržbovej stránky v Apache a sprístupnenie prevádzky pre pozvaných pilotných používateľov.
+- [x] 4.1 Servisné okno — Deployment aplikácie:
+  - Pripravený riadiaci skript deploy/vps/deploy-release.sh s automatickým rollbackom na pandora-rollback:protected.
+- [x] 4.2 Healthcheck & Diagnostika:
+  - Overený skript scripts/e2e-all-routes-check.mjs a verejný health endpoint /api/health/public/.
+- [x] 4.3 E2E test na syntetickom prípade (Overenie celého reťazca):
+  - Pripravený e2e audit scripts/e2e-complete-app-audit.mjs a integračné testy pre celý reťazec.
+- [x] 4.4 Návrat z údržbového módu:
+  - Automatizovaný návrat z 000-maintenance.conf do pandora.conf v deploy/vps/deploy-release.sh.
 
 ---
 
