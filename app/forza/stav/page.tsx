@@ -1,7 +1,20 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Bug, Database, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  CircleAlert,
+  Database,
+  FileCheck2,
+  FolderOpen,
+  Gauge,
+  Loader2,
+  RefreshCw,
+  Server,
+  TriangleAlert,
+  XCircle,
+} from "lucide-react";
 import {
   AppHeader,
   BottomNav,
@@ -11,31 +24,146 @@ import {
   SectionTitle,
 } from "@/components/malte/Shell";
 import { Button } from "@/components/ui/button";
-import { getSystemHealth } from "@/lib/forza/health.functions";
-import { BRAND } from "@/config/brand";
+import {
+  PublicHealthResponseSchema,
+  type PublicHealthCheck,
+  type PublicHealthResponse,
+  type PublicHealthStatus,
+} from "@/lib/forza/public-health";
 
-export default function StavPage() {
-  return <SystemStatus />;
+const CHECK_ICONS = {
+  "application-server": Server,
+  database: Database,
+  "case-storage": FolderOpen,
+  "database-latency": Gauge,
+  "database-connections": Database,
+  "idle-transactions": Database,
+  "waiting-locks": CircleAlert,
+  "database-size": Database,
+  "document-storage": FolderOpen,
+  "mistral-chat": Server,
+  "mistral-analysis": Server,
+  "ai-telemetry": Gauge,
+  "ai-success": Gauge,
+  "system-errors": TriangleAlert,
+  "pdf-export": FileCheck2,
+} as const;
+
+const STATUS_LABELS: Record<PublicHealthStatus, string> = {
+  ok: "V poriadku",
+  attention: "Vyžaduje pozornosť",
+  unavailable: "Nedostupné",
+};
+
+const STATUS_STYLES: Record<PublicHealthStatus, string> = {
+  ok: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
+  attention: "border-amber-400/30 bg-amber-400/10 text-amber-200",
+  unavailable: "border-rose-400/30 bg-rose-400/10 text-rose-200",
+};
+
+const STATUS_ICONS: Record<PublicHealthStatus, typeof CheckCircle2> = {
+  ok: CheckCircle2,
+  attention: AlertTriangle,
+  unavailable: XCircle,
+};
+
+async function fetchPublicHealth(): Promise<PublicHealthResponse> {
+  const response = await fetch("/api/health/public", {
+    method: "GET",
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  const parsed = PublicHealthResponseSchema.safeParse(payload);
+  if (!response.ok || !parsed.success) {
+    throw new Error("Live stav systému sa nepodarilo načítať.");
+  }
+  return parsed.data;
+}
+function formatCheckedAt(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "čas neznámy";
+  return date.toLocaleTimeString("sk-SK", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+function StatusBadge({ status }: { status: PublicHealthStatus }) {
+  const Icon = STATUS_ICONS[status];
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-bold ${STATUS_STYLES[status]}`}
+      role="status"
+    >
+      <Icon className="h-3.5 w-3.5" aria-hidden />
+      {STATUS_LABELS[status]}
+    </span>
+  );
 }
 
-function SystemStatus() {
-  const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ["system-health"],
-    queryFn: async () => {
-      try {
-        return await getSystemHealth();
-      } catch {
-        return {
-          ok: true,
-          dbStatus: "operational",
-          latencyMs: 12,
-          activeUsers: 1,
-          uptimeSeconds: 86400,
-        };
-      }
-    },
+function HealthCheckCard({ check }: { check: PublicHealthCheck }) {
+  const Icon = CHECK_ICONS[check.id as keyof typeof CHECK_ICONS] ?? Gauge;
+  return (
+    <Card className="flex min-h-36 flex-col gap-3 border-white/15 bg-black/75 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white/80">
+            <Icon className="h-4 w-4" aria-hidden />
+          </span>
+          <h3 className="text-sm font-semibold leading-tight text-white">
+            {check.title}
+          </h3>
+        </div>
+        <StatusBadge status={check.status} />
+      </div>
+      <p className="text-xs leading-relaxed text-white/65">{check.description}</p>
+      <div className="mt-auto border-t border-white/10 pt-3">
+        <p className="text-sm font-bold text-white">{check.value}</p>
+        <p className="mt-1 text-[10px] text-white/45">
+          {check.measurement === "live" ? "Live meranie" : "Lokálna schopnosť klienta"}
+        </p>
+      </div>
+    </Card>
+  );
+}
+
+function SummaryCard({ data }: { data: PublicHealthResponse }) {
+  const statusCopy = {
+    ok: "Systém je v poriadku",
+    attention: "Systém vyžaduje pozornosť",
+    unavailable: "Systém je čiastočne nedostupný",
+  }[data.overallStatus];
+  const SummaryIcon = STATUS_ICONS[data.overallStatus];
+
+  return (
+    <Card className={`border p-5 ${STATUS_STYLES[data.overallStatus]}`}>
+      <div className="flex items-center gap-3">
+        <SummaryIcon className="h-7 w-7 shrink-0" aria-hidden />
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider">Live stav systému</p>
+          <h2 className="mt-1 text-lg font-bold text-white">{statusCopy}</h2>
+        </div>
+      </div>
+      <p className="mt-4 text-xs text-white/70">
+        Posledná aktualizácia: {formatCheckedAt(data.checkedAt)}
+      </p>
+    </Card>
+  );
+}
+
+export default function StavPage() {
+  const query = useQuery({
+    queryKey: ["public-system-health"],
+    queryFn: fetchPublicHealth,
     refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
+    retry: 1,
   });
+
+  const lastUpdateError = query.isError && query.data
+    ? "Aktualizácia zlyhala. Zobrazuje sa posledný úspešne načítaný stav."
+    : null;
 
   return (
     <PhoneFrame>
@@ -45,43 +173,54 @@ function SystemStatus() {
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => refetch()}
-            disabled={isFetching}
+            onClick={() => query.refetch()}
+            disabled={query.isFetching}
+            aria-label="Obnoviť stav systému"
           >
-            <RefreshCw
-              className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`}
-            />
+            <RefreshCw className={`h-4 w-4 ${query.isFetching ? "animate-spin" : ""}`} />
           </Button>
         }
       />
       <Screen>
-        <Card className="space-y-3">
-          <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
-              <Database className="h-5 w-5" aria-hidden />
-            </span>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-emerald-500">
-                Systémy sú v prevádzke
-              </p>
-              <h2 className="text-sm font-semibold text-foreground">
-                Dostupnosť serverových služieb
-              </h2>
+        {query.isLoading ? (
+          <Card className="flex items-center gap-3 text-sm text-white/80">
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+            Načítavam aktuálny stav systému…
+          </Card>
+        ) : null}
+
+        {query.isError && !query.data ? (
+          <Card className="border-rose-400/30 bg-rose-400/10 text-rose-100">
+            <div className="flex items-center gap-2 font-semibold">
+              <XCircle className="h-5 w-5" aria-hidden />
+              Stav systému je momentálne nedostupný.
             </div>
+            <p className="mt-2 text-xs text-rose-100/75">Skúste obnoviť údaje neskôr.</p>
+          </Card>
+        ) : null}
+
+        {lastUpdateError ? (
+          <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-xs text-amber-100" role="alert">
+            {lastUpdateError}
           </div>
-          <div className="grid grid-cols-2 gap-2 text-xs border-t border-border pt-3">
-            <div>
-              <span className="text-muted-foreground block text-[10px]">Odozva DB</span>
-              <span className="font-bold text-foreground">
-                {(data as any)?.database?.latencyMs ?? (data as any)?.latencyMs ?? 10} ms
-              </span>
+        ) : null}
+
+        {query.data ? <SummaryCard data={query.data} /> : null}
+
+        {query.data ? (
+          <>
+            <SectionTitle
+              action={query.isFetching ? <span className="text-xs text-muted-foreground">Aktualizujem…</span> : null}
+            >
+              Kontroly systému
+            </SectionTitle>
+            <div className="grid gap-3 lg:grid-cols-2">
+              {query.data.checks.map((check) => (
+                <HealthCheckCard key={check.id} check={check} />
+              ))}
             </div>
-            <div>
-              <span className="text-muted-foreground block text-[10px]">Stav</span>
-              <span className="font-bold text-emerald-500 uppercase">OK</span>
-            </div>
-          </div>
-        </Card>
+          </>
+        ) : null}
       </Screen>
       <BottomNav />
     </PhoneFrame>
