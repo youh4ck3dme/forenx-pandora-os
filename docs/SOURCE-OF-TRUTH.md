@@ -260,7 +260,10 @@ Negatívne testy musia overiť minimálne:
 - `main` je zdrojový branch iba po úspešných relevantných kontrolách.
 - Východiskový verifikovaný commit je `86597c4cefbb71c6da29d53fe67a93b9f120dd34`.
 - Produkčný projekt Supabase je `tlmuvzrgighahnjkxoyw`. Staging a produkcia musia mať oddelené databázy, buckety, secrets, URL a testovacie UUID.
-- Produkčný VPS runtime: Porty 80/443 obsluhuje Apache/httpd ako reverzná proxy smerujúca na loopback `:3005`. Dôvera proxy hlavičkám (`x-forwarded-for`, `x-forwarded-proto`) patrí výhradne lokálnemu Apache proxy (`127.0.0.1`).
+- Produkčný VPS runtime: Porty 80/443 obsluhuje Apache/httpd ako reverzná proxy smerujúca na loopback `:3005`. Dôvera proxy hlavičkám (`x-forwarded-for`, `x-forwarded-proto`, `x-real-ip`) patrí výhradne lokálnemu Apache proxy (`127.0.0.1`). Získavanie klientskej IP adresy (`getTrustedClientIp` v `lib/security/client-ip.ts`) používa overenú hlavičku `x-real-ip` alebo poslednú pridanú hodnotu z `x-forwarded-for`, čím sa bráni podvrhnutiu klientskej identity v auditnom ledgeri a rate limiteri (N-06).
+- Bezpečnostné hlavičky a CSP: Next.js vynucuje striktnú `Content-Security-Policy` (`frame-ancestors 'self'`, `object-src 'none'`, `base-uri 'self'`) s reportingom na `/api/csp-report/`. Interné forenzné aplikácie sú vkladané výhradne same-origin v rámci jedného Pandora browser shellu.
+- Zálohy a obnova (Disaster Recovery): RPO je stanovené na najviac 15 minút (PostgreSQL PITR), RTO na najviac 4 hodiny. Databázová záloha Supabase neobsahuje S3 Storage objekty — Hetzner S3 Evidence Vault (`hel1.your-objectstorage.com`) je zálohovaný a zrkadlený nezávisle s Object Lock (WORM) ochranou (viď `docs/DISASTER_RECOVERY_RUNBOOK.md`).
+- Koordinovaná rotácia kľúčov: Pri podozrení na kompromitáciu secrets sa vykonáva postupná rotácia bez výpadku bežiacich uploadov (S3 kľúče s 15-minútovým prechodným oknom, následne Supabase service role, AI kľúče a webhook tokeny).
 - Kontajnerový runtime je zjednotený na **Node.js 22 LTS** (`docker/Dockerfile.production`).
 - Build prebieha deterministicky v Linux GitHub Actions, nie na produkčnom VPS. Runtime image sa publikuje do privátneho GHCR a nasadzuje striktne podľa digestu (`sha256:...`).
 - Žiadny regresný fixture nesmie používať produkčné dáta.

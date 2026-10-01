@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { tracedWarn, withTraceRoute, sanitizeForLog } from "@/lib/forza/trace";
+import { getTrustedClientIp } from "@/lib/security/client-ip";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -100,10 +101,7 @@ async function handlePost(
   request: NextRequest,
   traceId: string,
 ): Promise<NextResponse> {
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
-    "unknown";
+  const ip = getTrustedClientIp(request, "unknown");
 
   // P0-09: zdieľaný limit naprieč inštanciami; nedostupný limiter = odmietnutie.
   const rate = await checkCspReportRateLimit(ip);

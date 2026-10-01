@@ -9,6 +9,7 @@
  */
 import type { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getTrustedClientIp } from "@/lib/security/client-ip";
 
 /** Právny základ prístupu vyšetrovateľa k spisu (§ 119 TP / GDPR). */
 export const VAULT_LEGAL_BASIS =
@@ -212,10 +213,7 @@ export function accessContext(request: NextRequest): {
   userAgent: string;
 } {
   return {
-    sourceIp:
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      request.headers.get("x-real-ip") ||
-      "",
+    sourceIp: getTrustedClientIp(request, ""),
     userAgent: request.headers.get("user-agent") || "",
   };
 }

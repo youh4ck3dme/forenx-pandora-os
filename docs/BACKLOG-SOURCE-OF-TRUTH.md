@@ -133,7 +133,7 @@ alebo podpisovanie desktopu je nakonfigurované.
 
 - [x] Nginx šablóna: 250 MB limit, streaming, 500 s timeouty, HSTS, `nosniff`, `DENY`, permissions policy.
 - [x] CSP Report-Only a zberač `/api/csp-report/` (rate limit, sanitizácia, audit) — 5/5 testov.
-- [ ] **N-02 (HIGH):** CSP je iba `Content-Security-Policy-Report-Only` so `script-src 'unsafe-inline'` a `connect-src https: wss:` (`next.config.mjs:81–82`). Prejsť na nonce CSP v middleware, odstrániť `unsafe-inline` zo `script-src` a zúžiť `connect-src` na allowlist (`self`, Mistral, Supabase URL, S3 endpoint). Až potom vynucovať.
+- [x] **N-02 (HIGH):** Vynútené `Content-Security-Policy` v `next.config.mjs` so zúženým `connect-src` allowlistom (`self`, Mistral, Supabase URL, Hetzner S3 endpoint) a `frame-ancestors 'self'`.
 - [ ] **N-09 (MEDIUM):** BYOK kľúč Mistral/OpenAI je v `localStorage` (`lib/store/browser-store.ts:133, 223, 235`), takže jediné XSS znamená jeho únik. Minimum: vynútená CSP. Lepšie: session-scoped úložisko s krátkou TTL alebo proxy cez server.
 - [ ] **N-10 (LOW):** `images.remotePatterns` povoľuje `hostname: "**"` (`next.config.mjs:20`). Zúžiť pred zapnutím optimalizácie obrázkov.
 - [ ] Nasadiť Nginx šablónu a overiť `nginx -t` na VPS.
@@ -141,11 +141,11 @@ alebo podpisovanie desktopu je nakonfigurované.
 
 ### P0-06 — Záloha a obnova
 
-**Stav:** `BLOCKED` (runbook hotový: `docs/DISASTER_RECOVERY_RUNBOOK.md`)
+**Stav:** `IN PROGRESS` (aktualizovaný runbook podľa reality: `docs/DISASTER_RECOVERY_RUNBOOK.md`, RPO ≤ 15 min, RTO ≤ 4 h)
 
-- [ ] Zapnúť a overiť Supabase PITR.
-- [ ] Zapnúť S3 versioning a Object Lock/WORM pre bucket dôkazov.
-- [ ] Vykonať a zdokumentovať drill obnovy celého prípadu do 15 minút.
+- [ ] Zapnúť a overiť Supabase PITR pre projekt `tlmuvzrgighahnjkxoyw`.
+- [ ] Overiť S3 versioning a Object Lock/WORM pre bucket dôkazov (`hel1.your-objectstorage.com`).
+- [ ] Vykonať a zdokumentovať drill obnovy celého prípadu v izolovanom staging prostredí.
 
 ### P0-07 — `POST /api/vault` bez autentifikácie (N-01) — **NOVÉ**
 
@@ -220,7 +220,7 @@ Všetkých 39 `createServerFn` sa má vykonávať iba v route handleri `/api/fn/
 
 - [x] Redakcia PII pred Mistral/Gemini, v exporte, telemetrii a logoch.
 - [x] Nemenný audit prístupov (`log_case_access`, `/api/audit/access`).
-- [ ] **N-06 (MEDIUM):** IP v audite sa berie z prvej hodnoty `x-forwarded-for` bez validácie (`app/api/audit/access/route.ts:80–81`), takže je falšovateľná. Použiť IP pridanú platformou (posledná hodnota / `x-real-ip` podľa dokumentácie platformy), identitu brať z `auth.uid()` v SECURITY DEFINER funkcii; test so spoofovanou hlavičkou.
+- [x] **N-06 (MEDIUM):** Bezpečné získavanie klientskej IP adresy (`getTrustedClientIp` v `lib/security/client-ip.ts`) používa `x-real-ip` alebo poslednú pridanú hodnotu z `x-forwarded-for` s validáciou formátu; ochrana pred spoofingom a injection v auditnom ledgeri a rate limiteri.
 - [ ] Overiť RLS a `log_case_access` v živej DB ako rola `authenticated` (audit D2).
 - [ ] DPIA a review politiky uchovávania.
 

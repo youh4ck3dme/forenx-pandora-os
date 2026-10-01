@@ -1,138 +1,203 @@
-# P0-06 — Plán obnovy po havárii (Disaster Recovery Runbook)
+# P0-06 / P6 — Plán obnovy po havárii a bezpečná prevádzka (Disaster Recovery Runbook)
 
-> **Cieľ:** Obnova kritických operácií PΛND0RΛ Forensic OS s RTO < 15 minút a RPO < 1 minúta.  
-> **Klasifikácia:** Dôverné / Prísne operačné (Forensic Evidence Integrity & Court Readiness).  
-> **Platnosť pre:** Vercel, Supabase PostgreSQL, Hetzner S3 Evidence Vault, VPS Docker Stack.
+> **Ciele obnovy (SLA/DR):**  
+> - **RPO (Recovery Point Objective):** najviac **15 minút** (maximálna strata posledných zmien).  
+> - **RTO (Recovery Time Objective):** najviac **4 hodiny** (obnova plnej funkčnosti a overenie integrity).  
+> **Klasifikácia:** Dôverné / Forenzná prevádzka (Forensic Evidence Integrity & Court Readiness).  
+> **Platnosť pre:** Produkčný VPS Docker Stack (`:3005`), Apache reverzná proxy (`80/443`), Supabase PostgreSQL (`tlmuvzrgighahnjkxoyw`), Hetzner S3 Evidence Vault (`hel1.your-objectstorage.com`).
 
 ---
 
-## 1. Postup PITR (Point-in-Time Recovery) pre Supabase PostgreSQL
+## 1. Architektonické oddelenie záloh
 
-V prípade poškodenia integrity databázy, neoprávneného zásahu alebo zlyhania disku sa vykoná okamžitá obnova stavu k presnému časovému bodu (pred incidentom).
+V súlade s forenzným invariantom repozitára platí:
+> **Supabase databázová záloha NEOBSAHUJE S3 Storage objekty.**  
+> Databáza eviduje metadata, SHA-256 hashe, ledger a prístupový audit. Samotné binárne dáta dôkazov žijú v Hetzner S3 trezore (`hel1.your-objectstorage.com`). Zálohovanie a obnova DB a S3 preto prebiehajú ako dva koordinované, no nezávislé procesy.
 
-### Krok 1.1 — Identifikácia bodu zlyhania
-Určite presný UTC timestamp incidentu zo záznamov v `public.case_audit_log` alebo `public.error_logs`:
+| Komponent | Metóda zálohovania | Frekvencia / RPO | Cieľ zálohy |
+|---|---|---|---|
+| **Supabase PostgreSQL** | Fyzický WAL archiving (PITR) + denný šifrovaný logický dump | RPO ≤ 15 min (PITR) | Supabase Cloud PITR infraštruktúra + off-site S3 cold storage |
+| **Hetzner S3 Evidence Vault** | Object Lock (WORM) + rclone šifrované zrkadlenie | Priebežná replikácia | Sekundárny geograficky oddelený bucket s oddelenými credentials |
+| **Aplikačná konfigurácia** | Git SHA release manifest + šifrovaný `.env.production` trezor | Pri každom release | Bezpečný správca tajomstiev (mimo VPS disku) |
+
+---
+
+## 2. Postup PITR (Point-in-Time Recovery) pre Supabase PostgreSQL
+
+V prípade poškodenia integrity dát, neoprávneného zásahu alebo zlyhania databázového uzla sa vykoná obnova k presnému časovému bodu (pred incidentom).
+
+### Krok 2.1 — Zastavenie prevádzky a údržbový mód
+Aby sa predišlo zápisom nových operácií počas incidentu:
 ```bash
-# Zistenie posledného dôveryhodného záznamu pred incidentom (nahraďte $DB_URL)
+# 1. Pripojenie na produkčný VPS
+ssh user@forenzx-vps
+
+# 2. Aktivácia údržbového módu na Apache proxy (porty 80/443)
+# Presmerovanie požiadaviek na statickú stránku /var/www/html/maintenance.html
+sudo a2ensite 000-maintenance.conf && sudo a2dissite pandora.conf && sudo systemctl reload apache2
+
+# 3. Zastavenie aplikačného kontajnera (port 3005)
+cd /opt/pandora-os
+docker-compose -f docker-compose.production.yml stop app
+```
+
+### Krok 2.2 — Identifikácia bezpečného bodu obnovy (UTC)
+Určite presný UTC timestamp incidentu zo záznamov v auditnom ledgeri alebo error logoch:
+```bash
+# Zistenie posledného overeného stavu pred incidentom
 psql "$DB_URL" -c "
   SELECT created_at, action, table_name, record_id 
   FROM public.case_audit_log 
   ORDER BY created_at DESC 
-  LIMIT 5;"
+  LIMIT 10;"
 ```
 
-### Krok 1.2 — Spustenie PITR cez Supabase CLI / Management API
+### Krok 2.3 — Spustenie PITR obnovy
+Obnova k bodu v čase sa spúšťa cez Supabase Management API alebo Supabase Dashboard:
+
+**Možnosť A: Supabase Management API (Automatizovaná)**
 ```bash
-# 1. Zastavenie produkčných prístupov (aktivácia údržbového módu na reverznom proxy)
-# Na VPS / Nginx:
-sudo systemctl stop nginx-pandora || docker-compose -f docker-compose.production.yml stop app
-
-# 2. Spustenie PITR obnovy projektu cez Supabase CLI (nahraďte $PROJECT_REF a $RECOVERY_TIMESTAMP)
-# Formát timestampu: YYYY-MM-DDTHH:MM:SSZ (napr. 2026-09-27T21:45:00Z)
-npx supabase backup restore \
-  --project-ref "$SUPABASE_PROJECT_REF" \
-  --timestamp "2026-09-27T21:45:00Z"
-
-# 3. Overenie stavu obnovenej databázy
-npx supabase status --project-ref "$SUPABASE_PROJECT_REF"
+# Nahraďte $SUPABASE_ACCESS_TOKEN, $PROJECT_REF a $RECOVERY_TIMESTAMP (ISO 8601 UTC)
+curl -X POST "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/restore" \
+  -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recovery_time": "2026-10-01T14:30:00Z"
+  }'
 ```
 
-### Krok 1.3 — Verifikácia integrity schémy po PITR
-Po dokončení obnovy okamžite spustite overenie databázy:
+**Možnosť B: Supabase Dashboard (Manuálna)**
+1. Prihláste sa do [Supabase Dashboard](https://supabase.com/dashboard/project/tlmuvzrgighahnjkxoyw).
+2. Prejdite na **Database** → **Backups** → **Point in Time (PITR)**.
+3. Zadajte zvolený čas v UTC a potvrďte akciu **Restore to point in time**.
+4. Počkajte na dokončenie obnovy (stav projektu prejde z `RESTORING` do `ACTIVE`).
+
+### Krok 2.4 — Kontrola schémy a spustenie integračných testov
+Po obnove okamžite overte funkčnosť databázových funkcií a ledgeru:
 ```bash
-# Spustenie automatizovaného testovacieho balíka PGlite / Supabase testov
+# Spustenie testov integrity schémy a rate limiteru
 npx vitest run supabase/tests/
 ```
 
 ---
 
-## 2. Obnova S3 Evidence Vault a verifikácia WORM integrity
+## 3. Obnova S3 Evidence Vault a verifikácia WORM integrity
 
-Trezor dôkazov (`evidence_items`) funguje v režime **WORM** (Write Once, Read Many). Ak dôjde k výpadku alebo zlyhaniu objektového úložiska:
+Trezor dôkazov (`evidence_items`) funguje v režime **WORM** (Write Once, Read Many). 
 
-### Krok 2.1 — Audit zhody hashu SHA-256
-Spustite server-side audit hashu proti fyzickému S3 úložisku:
+### Krok 3.1 — Server-side audit zhody SHA-256 hashu
+Overte integritu všetkých binárnych objektov voči ledgery:
 ```bash
-# Hromadná verifikácia SHA-256 pre všetky aktívne dôkazy daného prípadu
-curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+# Hromadná serverová verifikácia pre vybraný prípad
+curl -X POST \
+  -H "Authorization: Bearer ${ADMIN_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"caseId": "UUID_PRIPADU"}' \
   https://pandora.whoiswho.at/api/vault/verify
 ```
 
-### Krok 2.2 — Detekcia integrity
-- Ak je `hash_verification_status = 'verified'`: Reťazec dôkazov je neporušený.
-- Ak je `hash_verification_status = 'mismatch'`:
-  1. Okamžite nastavte prípad do stavu **Legal Hold**:
+### Krok 3.2 — Riešenie detekovaných nezrovnalostí
+- **`hash_verification_status = 'verified'`**: Reťazec dôkazov je neporušený, súbory na S3 zodpovedajú pôvodnému uploadu.
+- **`hash_verification_status = 'mismatch'`**:
+  1. Okamžite aktivujte **Legal Hold** pre dotknutý prípad:
      ```sql
      SELECT set_case_status('UUID_PRIPADU', 'legal_hold', 'Zistená nezhoda SHA-256 hashu dôkazu');
      ```
-  2. Objekt bol v S3 zmenený alebo poškodený. Obnovte verziu objektu zo zrkadleného S3 bucketu s Object Lock ochranou.
-  3. Spustite opätovnú verifikáciu. Priamy `UPDATE` alebo `DELETE` je blokovaný triggerom `evidence_items_worm_guard()`.
+  2. Objekt bol v S3 poškodený alebo pozmenený. Obnovte verziu objektu zo zrkadleného sekundárneho bucketu s Object Lock ochranou:
+     ```bash
+     # Obnova konkrétneho objektu z off-site zrkadla
+     rclone copy secondary-backup:vault-backup/cases/UUID_PRIPADU/ hetzner-s3:evidence-vault/cases/UUID_PRIPADU/
+     ```
+  3. Znova spustite verifikáciu. Priamy `UPDATE` alebo `DELETE` v databáze je blokovaný triggerom `evidence_items_worm_guard()`.
 
 ---
 
-## 3. Scenár núdzovej rotácie uniknutých kľúčov (Secret Rotation)
+## 4. Scenár koordinovanej rotácie secrets (Secret Rotation)
 
-Ak dôjde k podozreniu na kompromitáciu prístupových údajov, vykonajte okamžitú rotáciu v tomto presnom poradí:
+Ak dôjde k podozreniu na kompromitáciu prístupových údajov, vykonajte koordinovanú rotáciu tak, aby **nedošlo k výpadku bežiacich uploadov**.
 
-### Krok 3.1 — Supabase Service Role Key & Database Password
-1. Otvorte **Supabase Dashboard -> Project Settings -> API**.
-2. Kliknite na **Rotate `service_role` secret**. (Vygeneruje nový kľúč, starý kľúč ihneď zneplatní).
-3. Prejdite na **Database -> Reset database password**.
+### Krok 4.1 — Hetzner S3 prístupové kľúče
+1. V Hetzner Console vytvorte nový kľúčový pár (`S3_ACCESS_KEY_ID` a `S3_SECRET_ACCESS_KEY`).
+2. **Ponechajte starý kľúč aktívny minimálne 15 minút** — bežiace multipart uploady a presigned URL musia dobehnúť.
+3. Vložte nové kľúče do `.env.production` na VPS.
+4. Po uplynutí 15 minút a overení nových uploadov starý kľúč v Hetzner Console zmažte.
 
-### Krok 3.2 — S3 Access Keys (Hetzner / AWS)
-1. V administračnej konzole S3 (Hetzner Cloud Console / AWS IAM) vytvorte nový `S3_ACCESS_KEY_ID` a `S3_SECRET_ACCESS_KEY`.
-2. Starý kľúč zatiaľ nedeaktivujte (ponechajte 5-minútové okno na dokončenie bežiacich multipart uploadov).
+### Krok 4.2 — Supabase Service Role Key & JWT Secret
+1. V Supabase Dashboard (`Project Settings` → `API` / `JWT Settings`) vygenerujte nový `service_role` kľúč.
+2. Aktualizujte konfiguráciu koordinovane pre:
+   - PΛND0RΛ OS (`.env.production` na VPS)
+   - EvidenceCore
+   - Asynchrónny worker / MCP hub
+3. Reštartujte aplikačné služby.
 
-### Krok 3.3 — AI API kľúče (Mistral / Gemini)
+### Krok 4.3 — AI API kľúče (Mistral / Gemini)
 1. Vygenerujte nový kľúč v Mistral Console (`MISTRAL_API_KEY`).
 2. Vygenerujte nový kľúč v Google AI Studio (`GEMINI_API_KEY`).
+3. Aktualizujte `.env.production` na VPS a overte spojenie cez `/api/health/public/`.
+4. Zmažte staré kľúče v príslušných konzolách.
 
-### Krok 3.4 — Aplikácia do produkčného prostredia
+### Krok 4.4 — Aplikácia a overenie na VPS
 ```bash
-# A) Aktualizácia Vercel produkčného prostredia (ak je nasadené na Vercel):
-vercel env add SUPABASE_SERVICE_ROLE_KEY production
-vercel env add S3_ACCESS_KEY_ID production
-vercel env add S3_SECRET_ACCESS_KEY production
-vercel env add MISTRAL_API_KEY production
-vercel redeploy --prod
+# Na VPS:
+chmod 600 /opt/pandora-os/.env.production
 
-# B) Aktualizácia VPS prostredia:
-# Upravte súbor .env.production na VPS
-chmod 600 .env.production
-# Reštartujte Docker stack s novými premennými
+# Znovunačítanie kontajnera s novými premennými
 docker-compose -f docker-compose.production.yml up -d --force-recreate app
 
-# C) Validácia konfigurácie novým preflightom:
-npm run verify:vercel-env -- --strict
-```
+# Overenie dostupnosti
+curl -k https://127.0.0.1:3005/healthz
+curl -k https://127.0.0.1:3005/api/health/public/
 
-### Krok 3.5 — Deaktivácia starých kľúčov
-Po úspešnom preflight overení zmažte staré S3 kľúče a staré Mistral tokeny.
+# Návrat Apache z údržbového módu
+sudo a2dissite 000-maintenance.conf && sudo a2ensite pandora.conf && sudo systemctl reload apache2
+```
 
 ---
 
-## 4. Kontrolný checklist obnovy a protokol reťazca dôkazov (Chain of Custody)
+## 5. Prevádzkové predpisy: retencia, prístup a incidenty
+
+1. **Retencia dôkazov počas pilota:**
+   - Počas pilota platí zákaz automatického alebo manuálneho mazania dôkazov z trezoru.
+   - S3 bucket má aktívny versioning a Object Lock.
+   - Skutočné vymazanie dát (napr. súdny príkaz na likvidáciu spisu) vyžaduje dvojitú autorizáciu (Lead Forensic Auditor + Incident Commander) a zápis do auditného ledgeru s právnym dôvodom.
+2. **Pravidlá pre cloudovú AI:**
+   - Pred odoslaním textov do modelu Mistral prebieha automatická redakcia PII a citlivých dát.
+   - Používateľovi sa zobrazí rozsah odosielaných dát s povinným potvrdením.
+   - Žiadne surové binárne dôkazy (napr. disk images, multimédiá) sa do cloudovej AI neposielajú.
+   - Modely majú zmluvne garantované nezapracovávanie dát do trénovacích datasetov.
+3. **Fail-Closed zásada pri incidente:**
+   - Pri zlyhaní rate limiteru, výpadku databázy alebo nesúlade SHA-256 hashu systém operáciu zamietne (HTTP 503/429/403). Nikdy sa nepoužije neoverený bypass.
+
+---
+
+## 6. Kontrolný protokol obnovy (Chain of Custody Protocol)
 
 | Krok | Úkon | Zodpovedná osoba | Stav |
 |---|---|---|---|
-| 1. | Zastavenie prevádzky / aktivácia maintenance okna | Incident Commander | [ ] HOTOVO |
-| 2. | Záloha poškodeného stavu (forenzný snapshot disku & DB dump) | DevOps Lead | [ ] HOTOVO |
-| 3. | PITR obnova databázy k bezpečnému timestampu | Database Admin | [ ] HOTOVO |
-| 4. | Validácia WORM hashu SHA-256 pre všetky dotknuté súbory | Forensic Lead | [ ] HOTOVO |
-| 5. | Rotácia všetkých produkčných kľúčov a hesiel | Security Officer | [ ] HOTOVO |
-| 6. | Spustenie automatizovaného overenia `scripts/ci/run-performance-budget.mjs` | QA Engineer | [ ] HOTOVO |
-| 7. | Spustenie integrity testov `npx vitest run supabase/tests/` | QA Engineer | [ ] HOTOVO |
-| 8. | Uvoľnenie údržbového módu a obnova prevádzky | Incident Commander | [ ] HOTOVO |
-
-### Protokol o obnovení integrity (Chain of Custody Certificate)
+| 1. | Aktivácia údržbového módu na Apache proxy | Incident Commander | [ ] HOTOVO |
+| 2. | Zastavenie aplikačného kontajnera (`docker-compose stop app`) | DevOps Lead | [ ] HOTOVO |
+| 3. | Forenzný snapshot VPS disku pred zásahom | DevOps Lead | [ ] HOTOVO |
+| 4. | PITR obnova PostgreSQL databázy k bezpečnému timestampu | Database Admin | [ ] HOTOVO |
+| 5. | Spustenie automatizovaných testov schémy (`vitest run supabase/tests/`) | QA Lead | [ ] HOTOVO |
+| 6. | Audit a prepočet SHA-256 hashov S3 trezoru | Forensic Lead | [ ] HOTOVO |
+| 7. | Koordinovaná rotácia kľúčov v `.env.production` | Security Officer | [ ] HOTOVO |
+| 8. | Spustenie kontajnera a preflight overenie endpointov | DevOps Lead | [ ] HOTOVO |
+| 9. | Deaktivácia údržbového módu a obnova prevádzky | Incident Commander | [ ] HOTOVO |
 
 ```text
-Dátum a čas incidentu (UTC): __________________________________________________
-Obnovený bod v čase (PITR UTC): _____________________________________________
-Počet auditovaných dôkazových položiek: _______________________________________
-Výsledok verifikácie SHA-256 hashu: [ ] 100% ZHODA  [ ] ZISTENÉ ANOMÁLIE
-Podpis veliteľa incidentu (Incident Commander): _______________________________
-Forenzný overovateľ (Lead Forensic Auditor): __________________________________
+================================================================================
+          PΛND0RΛ FORENSIC OS — PROTOKOL O OBNOVENÍ INTEGRITY SPISOV
+================================================================================
+Dátum a čas incidentu (UTC):           _________________________________________
+Požadovaný bod obnovy PITR (UTC):     _________________________________________
+Doba obnovy (RTO dosiahnuté):          _____ hodín _____ minút (limit: 4 hodiny)
+Strata dát (RPO dosiahnuté):           _____ minút (limit: 15 minút)
+Počet auditovaných dôkazov:           _________________________________________
+Výsledok overenia SHA-256 hashov:     [ ] 100% ZHODA   [ ] DETEKOVANÁ NEZHODA
+Právny stav dotknutých prípadov:       [ ] AKTÍVNE      [ ] LEGAL HOLD
+
+Podpis Incident Commander:             _________________________________________
+Podpis Lead Forensic Auditor:          _________________________________________
+Dátum podpisu:                         _________________________________________
+================================================================================
 ```

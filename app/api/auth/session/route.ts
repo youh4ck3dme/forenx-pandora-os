@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getRateLimiter, type RateLimitRule } from "@/lib/security/rate-limiter.server";
+import { getTrustedClientIp } from "@/lib/security/client-ip";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,11 +13,7 @@ const AUTH_SESSION_RATE_LIMIT: RateLimitRule = {
 };
 
 function getClientIp(request: NextRequest): string {
-  return (
-    request.headers.get("x-real-ip")?.trim() ||
-    request.headers.get("x-forwarded-for")?.split(",", 1)[0]?.trim() ||
-    "127.0.0.1"
-  );
+  return getTrustedClientIp(request, "127.0.0.1");
 }
 
 function validateOrigin(request: NextRequest): boolean {

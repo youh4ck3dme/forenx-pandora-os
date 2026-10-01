@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { tracedError, withTraceRoute } from "@/lib/forza/trace";
+import { getTrustedClientIp } from "@/lib/security/client-ip";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -76,10 +77,7 @@ async function handlePost(request: NextRequest, traceId: string): Promise<NextRe
       );
     }
 
-    const sourceIp =
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      request.headers.get("x-real-ip") ||
-      "";
+    const sourceIp = getTrustedClientIp(request, "");
     const userAgent = request.headers.get("user-agent") || "";
 
     const { error } = await supabase.rpc("log_case_access", {

@@ -17,6 +17,7 @@ import {
   getRateLimiter,
   type RateLimitRule,
 } from "@/lib/security/rate-limiter.server";
+import { getTrustedClientIp } from "@/lib/security/client-ip";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -30,11 +31,7 @@ const PUBLIC_HEALTH_RATE_LIMIT: RateLimitRule = {
 function requestRateLimitKey(request: NextRequest): string {
   // The deployment proxy supplies these headers. They are hashed by the
   // shared limiter and never returned to the client or persisted in cleartext.
-  return (
-    request.headers.get("x-real-ip")?.trim() ||
-    request.headers.get("x-forwarded-for")?.split(",", 1)[0]?.trim() ||
-    "anonymous"
-  );
+  return getTrustedClientIp(request, "anonymous");
 }
 
 function getPublicSupabaseClient() {
