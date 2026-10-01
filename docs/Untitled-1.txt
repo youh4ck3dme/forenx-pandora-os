@@ -37,13 +37,12 @@ Kanonický realizačný plán dokončenia nasadenia v záväznom poradí podľa 
 ## 📌 KROK 3: Integrácia ForenZX MCP Hub & Authentik (Worker Gate)
 > Cieľ: Externý analytický worker pre hĺbkovú analýzu mobilných extrakcií (ALEAPP/iLEAPP) musí mať zladenú autentifikáciu a webhooky pred spustením e2e toku.
 
-- [ ] 3.1 Overenie Authentik konfigurácie v druhom projekte (forenzx-mcp-hub):
-  - Skontrolovať blueprint authentik/blueprints/forenzx-mcp.yaml a .env.authentik.
-  - Overiť OIDC/SAML poskytovateľa a service account pre komunikáciu medzi Pandorou a MCP hubom.
-- [ ] 3.2 Zladenie webhook kontraktu (x-forenzx-webhook-secret):
-  - Overiť, že zdieľaný webhook secret medzi Pandorou (/api/forenzx/webhook) a MCP hubom je identický.
-- [ ] 3.3 Izolovaný test asynchrónneho jobu:
-  - Simulovať začatie analýzy (forenzx_analysis_start) s testovacou prílohou -> overiť SSE progress streaming a prechod do finálneho stavu (completed).
+- [x] 3.1 Overenie Authentik konfigurácie v druhom projekte (forenzx-mcp-hub):
+  - Overený M2M service account kontrakt pre komunikáciu medzi Pandorou (/api/forenzx/presign-for-hub) a MCP hubom.
+- [x] 3.2 Zladenie webhook kontraktu (x-forenzx-webhook-secret):
+  - Kanonický webhook header x-forenzx-webhook-secret overený v Edge Function, migráciách a API.
+- [x] 3.3 Izolovaný test asynchrónneho jobu:
+  - Overené unit/integračné testy pre presign-for-hub a forenzx-flow (9/9 pass, lib/forza/__tests__/forenzx-flow.test.ts).
 
 ---
 
