@@ -91,10 +91,12 @@ function ProfileScreen() {
 
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
+              <label htmlFor="profil-fullname" className="block text-xs font-medium text-muted-foreground mb-1">
                 Meno a priezvisko
               </label>
               <input
+                id="profil-fullname"
+                name="fullName"
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
@@ -103,10 +105,12 @@ function ProfileScreen() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
+              <label htmlFor="profil-role" className="block text-xs font-medium text-muted-foreground mb-1">
                 Funkcia / Pozícia
               </label>
               <input
+                id="profil-role"
+                name="role"
                 type="text"
                 value={role}
                 onChange={(e) => setRole(e.target.value)}

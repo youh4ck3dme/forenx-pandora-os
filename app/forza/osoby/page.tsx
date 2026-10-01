@@ -237,6 +237,8 @@ function People() {
               <option value="CZ">🇨🇿 CZ (ARES / VR)</option>
             </select>
             <input
+              id="osoby-ico-input"
+              name="icoQuery"
               type="text"
               value={icoInput}
               onChange={(e) => setIcoInput(e.target.value)}
