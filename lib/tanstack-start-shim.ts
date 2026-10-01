@@ -82,12 +82,16 @@ export function createMiddleware(_options?: { type?: string }): Middleware {
   return mw;
 }
 
-export function getRequest(): { headers: Headers } | undefined {
+export function getRequest(): { headers: Headers; url?: string } | undefined {
   if (typeof window !== "undefined") return undefined;
   // Request aktuálneho volania /api/fn/<id> (AsyncLocalStorage nastavené v
   // lib/server-fn/request-context.server.ts — shim nesmie importovať node:*).
   const current = (
-    globalThis as { __pandoraServerFnRequest?: { getStore(): { headers: Headers } | undefined } }
+    globalThis as {
+      __pandoraServerFnRequest?: {
+        getStore(): { headers: Headers; url?: string } | undefined;
+      };
+    }
   ).__pandoraServerFnRequest?.getStore();
   if (current) return current;
   if (typeof Headers !== "undefined") {

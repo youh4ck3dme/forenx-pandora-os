@@ -12,8 +12,8 @@ function validEnv(): Map<string, string> {
   const env = new Map<string, string>();
   for (const key of REQUIRED) env.set(key, `value-for-${key.toLowerCase()}`);
   env.set("NEXT_PUBLIC_BASE_URL", "https://pandora.whoiswho.at");
-  env.set("NEXT_PUBLIC_SUPABASE_URL", "https://abc.supabase.co");
-  env.set("SUPABASE_URL", "https://abc.supabase.co");
+  env.set("NEXT_PUBLIC_SUPABASE_URL", "https://tlmuvzrgighahnjkxoyw.supabase.co");
+  env.set("SUPABASE_URL", "https://tlmuvzrgighahnjkxoyw.supabase.co");
   env.set("MISTRAL_API_KEY", "k1");
   return env;
 }
@@ -47,6 +47,42 @@ describe("deploy env helper", () => {
 
   it("accepts a complete production file", () => {
     expect(checkEnv(validEnv(), exampleKeys()).filter((p) => p.level === "error")).toEqual([]);
+  });
+
+  it("rejects app-domain hostname as Supabase URL (frontend/server mismatch guard)", () => {
+    // Both vars pointing at the app domain — looks like misconfigured reverse-proxy or copy-paste error
+    const env = validEnv();
+    env.set("NEXT_PUBLIC_SUPABASE_URL", "https://pandora.whoiswho.at/supabase");
+    env.set("SUPABASE_URL", "https://pandora.whoiswho.at/supabase");
+    const errors = checkEnv(env, exampleKeys()).filter((p) => p.level === "error");
+    const errorKeys = errors.map((p) => p.key);
+    expect(errorKeys).toContain("NEXT_PUBLIC_SUPABASE_URL");
+    expect(errorKeys).toContain("SUPABASE_URL");
+    // Issue text must name the real problem without echoing the value
+    const issueTexts = errors.map((p) => p.issue).join(" ");
+    // Issue must explain that *.supabase.co is required — hostname (not a secret) may appear in the message
+    expect(issueTexts).toMatch(/supabase\.co/);
+  });
+
+  it("rejects a valid supabase.co URL for the wrong project ref", () => {
+    const env = validEnv();
+    env.set("NEXT_PUBLIC_SUPABASE_URL", "https://other-project-id.supabase.co");
+    env.set("SUPABASE_URL", "https://other-project-id.supabase.co");
+    const errors = checkEnv(env, exampleKeys()).filter((p) => p.level === "error");
+    const errorKeys = errors.map((p) => p.key);
+    expect(errorKeys).toContain("NEXT_PUBLIC_SUPABASE_URL");
+    expect(errorKeys).toContain("SUPABASE_URL");
+    const issueTexts = errors.map((p) => p.issue).join(" ");
+    expect(issueTexts).toMatch(/tlmuvzrgighahnjkxoyw/);
+  });
+
+  it("rejects frontend/server Supabase URL mismatch even when both are valid supabase.co", () => {
+    const env = validEnv();
+    env.set("NEXT_PUBLIC_SUPABASE_URL", "https://tlmuvzrgighahnjkxoyw.supabase.co");
+    env.set("SUPABASE_URL", "https://other-project-id.supabase.co");
+    const errors = checkEnv(env, exampleKeys()).filter((p) => p.level === "error");
+    // SUPABASE_URL must be flagged: mismatch + wrong ref
+    expect(errors.map((p) => p.key)).toContain("SUPABASE_URL");
   });
 
   it("accepts Hetzner's documented object-storage endpoint", () => {

@@ -106,8 +106,10 @@ export async function handleServerFnRequest(
   }
 
   try {
-    const result = await runWithRequestHeaders(request.headers, () =>
-      fn({ data: data === null ? undefined : data }),
+    const result = await runWithRequestHeaders(
+      request.headers,
+      () => fn({ data: data === null ? undefined : data }),
+      request.url,
     );
     return { status: 200, body: { ok: true, result: result ?? null } };
   } catch (error) {

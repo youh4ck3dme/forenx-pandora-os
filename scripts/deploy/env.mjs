@@ -134,6 +134,26 @@ export function checkEnv(env, keys) {
   if (pub && srv && pub !== srv) {
     problems.push({ level: "error", key: "SUPABASE_URL", issue: "nezhoduje sa s NEXT_PUBLIC_SUPABASE_URL" });
   }
+  const CANONICAL_PROJECT_REF = "tlmuvzrgighahnjkxoyw";
+  const EXPECTED_SUPABASE_URL = `https://${CANONICAL_PROJECT_REF}.supabase.co`;
+  for (const [urlKey, urlVal] of [["NEXT_PUBLIC_SUPABASE_URL", pub], ["SUPABASE_URL", srv]]) {
+    if (!urlVal) continue;
+    let parsed;
+    try { parsed = new URL(urlVal); } catch { continue; }
+    if (!parsed.hostname.endsWith(".supabase.co")) {
+      problems.push({
+        level: "error",
+        key: urlKey,
+        issue: `hostname '${parsed.hostname}' nie je *.supabase.co — pravdepodobne smeruje na doménu aplikácie namiesto Supabase API`,
+      });
+    } else if (!parsed.hostname.startsWith(`${CANONICAL_PROJECT_REF}.`)) {
+      problems.push({
+        level: "error",
+        key: urlKey,
+        issue: `project ref nezodpovedá ${CANONICAL_PROJECT_REF} (očakávaná URL: ${EXPECTED_SUPABASE_URL})`,
+      });
+    }
+  }
   const cron = env.get("CRON_SECRET");
   if (cron && cron.length < 32) {
     problems.push({ level: "error", key: "CRON_SECRET", issue: "musí mať aspoň 32 znakov (kratší endpoint odmietne)" });

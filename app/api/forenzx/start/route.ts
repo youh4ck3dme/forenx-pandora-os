@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { authenticateVaultRequest } from "@/lib/storage/vault-auth";
 import { startForenZXAnalysis } from "@/lib/forza/forenzx-mcp.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { authorizeForenzxStart, ForenzxStartRequestSchema } from "@/lib/forza/forenzx-authorization.server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -22,15 +22,6 @@ export const runtime = "nodejs";
  *  6. Return { jobId } to browser for SSE subscription
  */
 
-const RequestSchema = z.object({
-  caseId: z.string().uuid(),
-  evidenceId: z.string().uuid(),
-  s3ObjectKey: z.string().min(1).max(2048),
-  sha256: z.string().regex(/^[a-f0-9]{64}$/i, "sha256 must be 64 hex chars"),
-  inputType: z.string().min(1).max(64),
-  packId: z.string().min(1).max(128).default("mobile_compromise"),
-});
-
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await authenticateVaultRequest(request);
   if (auth.userId === null) {
@@ -44,7 +35,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const parsed = RequestSchema.safeParse(body);
+  const parsed = ForenzxStartRequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Validation failed.", details: parsed.error.issues },
@@ -52,31 +43,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const { caseId, evidenceId, s3ObjectKey, sha256, inputType, packId } = parsed.data;
+  const { caseId, evidenceId, inputType, packId } = parsed.data;
 
   // ── IDOR protection: verify evidence ownership ─────────────────────────────
-  const { data: evidenceRow, error: lookupError } = await (supabaseAdmin as any)
-    .from("evidence_items")
-    .select("id, investigator_id, hash_verification_status")
-    .eq("id", evidenceId)
-    .eq("investigator_id", auth.userId)
-    .maybeSingle();
-
-  if (lookupError) {
-    return NextResponse.json({ error: "Overenie vlastníctva dôkazu zlyhalo." }, { status: 503 });
-  }
-  if (!evidenceRow) {
-    return NextResponse.json({ error: "Dôkaz nebol nájdený alebo nemáte k nemu prístup." }, { status: 404 });
-  }
-  if (evidenceRow.hash_verification_status !== "verified") {
-    return NextResponse.json(
-      { error: "Analýzu možno spustiť iba na overených dôkazoch (hash_verification_status = verified)." },
-      { status: 422 },
-    );
-  }
+  let trusted;
+  try { trusted = await authorizeForenzxStart(supabaseAdmin, auth.userId, parsed.data); }
+  catch { return NextResponse.json({ error: "Dôkaz nebol nájdený, nie je overený alebo k nemu nemáte prístup." }, { status: 404 }); }
 
   // ── Idempotency check ──────────────────────────────────────────────────────
-  const idempotencyKey = `pandora:evidence:${evidenceId}:${sha256.toLowerCase()}`;
+  const idempotencyKey = `pandora:evidence:${evidenceId}:${trusted.sha256}`;
   const { data: existing } = await (supabaseAdmin as any)
     .from("forenzx_analysis_jobs")
     .select("id, hub_job_id, status")
@@ -106,7 +81,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (insertError || !row) {
     return NextResponse.json(
-      { error: `Uloženie úlohy zlyhalo: ${insertError?.message ?? "no row"}` },
+      { error: "Uloženie úlohy zlyhalo." },
       { status: 500 },
     );
   }
@@ -118,8 +93,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       evidenceId,
       packId,
       inputType,
-      s3Key: s3ObjectKey,
-      sha256: sha256.toLowerCase(),
+      s3Key: trusted.s3Key,
+      sha256: trusted.sha256,
       idempotencyKey,
     });
 
@@ -137,12 +112,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .from("forenzx_analysis_jobs")
       .update({
         status: "failed",
-        error_message: error instanceof Error ? error.message.slice(0, 2000) : "start failed",
+        error_message: "ForenZX analýzu sa nepodarilo spustiť.",
       })
       .eq("id", row.id);
 
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "ForenZX start failed." },
+      { error: "ForenZX analýzu sa nepodarilo spustiť." },
       { status: 502 },
     );
   }

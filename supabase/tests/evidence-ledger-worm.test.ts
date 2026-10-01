@@ -114,6 +114,28 @@ describe("evidence ledger: WORM identity columns", () => {
     expect((await evidence(id))?.sha256_hash).toBe(HASH_A);
   });
 
+  it.each([
+    ["id", "gen_random_uuid()"],
+    ["investigator_id", "gen_random_uuid()"],
+    ["case_name", "'OTHER'"],
+    ["file_name", "'other.pdf'"],
+    ["file_size", "1"],
+    ["mime_type", "'text/plain'"],
+    ["s3_object_key", "'cases/other/object'"],
+    ["sha256_hash", `'${HASH_B}'`],
+    ["created_at", "now() - interval '1 day'"],
+  ])("service_role cannot change identity column %s", async (column, value) => {
+    const user = await createUser(db, `worm-service-${column}@test.local`);
+    const id = await insertEvidence(user);
+    await expect(
+      db.transaction(async (tx) => {
+        await tx.exec("set local role service_role");
+        await tx.query(`update public.evidence_items set ${column} = ${value} where id = $1`, [id]);
+      }),
+    ).rejects.toThrow(/write-once/);
+    expect((await evidence(id))?.sha256_hash).toBe(HASH_A);
+  });
+
   it("clients cannot set verification state or legal hold", async () => {
     const user = await createUser(db, "worm-verify@test.local");
     const id = await insertEvidence(user);
@@ -214,6 +236,11 @@ describe("evidence ledger: server-side hash verification", () => {
     await expect(
       asService((tx) =>
         tx.query("select public.record_evidence_verification($1, 'verified', $2, 1234)", [bad, HASH_B]),
+      ),
+    ).rejects.toThrow(/requires matching/);
+    await expect(
+      asService((tx) =>
+        tx.query("select public.record_evidence_verification($1, 'verified', $2, 9999)", [good, HASH_A]),
       ),
     ).rejects.toThrow(/requires matching/);
     await asService((tx) =>

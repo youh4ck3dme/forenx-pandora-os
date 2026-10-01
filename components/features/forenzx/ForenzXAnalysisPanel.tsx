@@ -2,17 +2,15 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { getForenZXTools, getForenZXJobs } from "@/lib/forza/forenzx-mcp.functions";
+import { getForenZXJobs } from "@/lib/forza/forenzx-mcp.functions";
 import { useForenzxJobEvents } from "@/lib/hooks/useForenzxJobEvents";
-import type { ForenZXTool, ForenZXJob } from "@/lib/forza/forenzx-mcp.functions";
+import type { ForenZXJob } from "@/lib/forza/forenzx-mcp.functions";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface StartAnalysisPayload {
   caseId: string;
   evidenceId: string;
-  s3ObjectKey: string;
-  sha256: string;
   inputType: string;
   packId?: string;
 }
@@ -23,9 +21,6 @@ export interface ForenzXAnalysisPanelProps {
   /** UUID of the evidence item */
   evidenceId?: string;
   /** S3 object key for the evidence file */
-  s3ObjectKey?: string;
-  /** SHA-256 from the Pandora evidence ledger */
-  sha256?: string;
   /** Evidence input type (e.g. "ios_backup") */
   inputType?: string;
   /** Pack to run — defaults to "mobile_compromise" */
@@ -70,32 +65,15 @@ function StatusBadge({ status }: { status: string }) {
 
 // ── Tool card (tools/list) ────────────────────────────────────────────────────
 
-function ToolCard({ tool }: { tool: ForenZXTool }) {
-  return (
-    <div className="flex flex-col gap-0.5 px-3 py-2 rounded-lg bg-white/5 border border-white/10 hover:border-cyan-500/30 transition-colors">
-      <span className="text-xs font-mono text-cyan-300 truncate">{tool.name}</span>
-      {tool.description && (
-        <span className="text-xs text-zinc-400 line-clamp-2">{tool.description}</span>
-      )}
-    </div>
-  );
-}
-
 // ── Main panel ────────────────────────────────────────────────────────────────
 
 export function ForenzXAnalysisPanel({
   caseId = "",
   evidenceId = "",
-  s3ObjectKey = "",
-  sha256 = "",
   inputType = "mobile_generic_archive",
   packId = "mobile_compromise",
   className = "",
 }: ForenzXAnalysisPanelProps) {
-  const [tools, setTools] = useState<ForenZXTool[] | null>(null);
-  const [toolsLoading, setToolsLoading] = useState(false);
-  const [toolsError, setToolsError] = useState<string | null>(null);
-
   const [jobs, setJobs] = useState<ForenZXJob[]>([]);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [startLoading, setStartLoading] = useState(false);
@@ -104,19 +82,6 @@ export function ForenzXAnalysisPanel({
   const { status: jobStatus, connected, error: sseError } = useForenzxJobEvents(activeJobId);
 
   // ── Load tools/list ────────────────────────────────────────────────────────
-
-  const loadTools = useCallback(async () => {
-    setToolsLoading(true);
-    setToolsError(null);
-    try {
-      const result = await getForenZXTools();
-      setTools(result);
-    } catch (error) {
-      setToolsError(error instanceof Error ? error.message : "tools/list failed");
-    } finally {
-      setToolsLoading(false);
-    }
-  }, []);
 
   // ── Load jobs ──────────────────────────────────────────────────────────────
 
@@ -135,18 +100,14 @@ export function ForenzXAnalysisPanel({
 
   // Auto-load on mount
   useEffect(() => {
-    void loadTools();
-  }, [loadTools]);
-
-  useEffect(() => {
     if (caseId) void loadJobs();
   }, [caseId, loadJobs]);
 
   // ── Start analysis ─────────────────────────────────────────────────────────
 
   const startAnalysis = useCallback(async () => {
-    if (!caseId || !evidenceId || !s3ObjectKey || !sha256) {
-      setStartError("Pre spustenie analýzy je potrebné vybrať dôkaz (chýbajú caseId/evidenceId/s3Key/hash).");
+    if (!caseId || !evidenceId) {
+      setStartError("Pre spustenie analýzy je potrebné vybrať dôkaz.");
       return;
     }
     setStartLoading(true);
@@ -155,8 +116,6 @@ export function ForenzXAnalysisPanel({
       const payload: StartAnalysisPayload = {
         caseId,
         evidenceId,
-        s3ObjectKey,
-        sha256,
         inputType,
         packId,
       };
@@ -187,7 +146,7 @@ export function ForenzXAnalysisPanel({
     } finally {
       setStartLoading(false);
     }
-  }, [caseId, evidenceId, s3ObjectKey, sha256, inputType, packId]);
+  }, [caseId, evidenceId, inputType, packId]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -209,43 +168,6 @@ export function ForenzXAnalysisPanel({
           </span>
         )}
       </div>
-
-      {/* Tools/list section */}
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-zinc-400 font-medium uppercase tracking-wider">Dostupné nástroje</span>
-          <button
-            id="forenzx-load-tools"
-            onClick={loadTools}
-            disabled={toolsLoading}
-            className="text-xs text-cyan-400 hover:text-cyan-300 disabled:opacity-40 transition-colors"
-            aria-label="Načítať zoznam ForenZX nástrojov"
-          >
-            {toolsLoading ? "Načítavam…" : tools ? "Obnoviť" : "Načítať tools/list"}
-          </button>
-        </div>
-
-        {toolsError && (
-          <p className="text-xs text-red-400 bg-red-400/10 rounded-lg px-3 py-2" role="alert">
-            {toolsError}
-          </p>
-        )}
-
-        {tools && tools.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-40 overflow-y-auto pr-1">
-            {tools.map((tool) => (
-              <ToolCard key={tool.name} tool={tool} />
-            ))}
-          </div>
-        )}
-
-        {tools && tools.length === 0 && (
-          <p className="text-xs text-zinc-500 italic">Hub nevrátil žiadne nástroje.</p>
-        )}
-      </div>
-
-      {/* Divider */}
-      <div className="border-t border-white/5" />
 
       {/* Start analysis */}
       <div className="flex flex-col gap-3">

@@ -1129,6 +1129,7 @@ export type Database = {
         Returns: string;
       };
       erase_user_audit_log: { Args: { _user: string }; Returns: number };
+      erase_user_source_snapshots: { Args: { _user: string }; Returns: number };
       verify_audit_chain: {
         Args: { _user: string };
         Returns: { chain_seq: number; event_id: string; problem: string }[];

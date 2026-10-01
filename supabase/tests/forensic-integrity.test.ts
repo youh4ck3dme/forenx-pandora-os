@@ -375,6 +375,66 @@ describe("source snapshots and money (Postgres)", () => {
     ).rejects.toThrow(/immutable/);
   });
 
+  it("rejects direct and arbitrary snapshot deletes", async () => {
+    const user = await createUser(db, "snap-delete@test.local");
+    const caseId = await createCase(db, user);
+    const inserted = await db.query<{ id: string }>(
+      `insert into public.source_snapshots
+         (case_id, user_id, source, source_url, http_status, retrieved_at, parser_version, raw_sha256, byte_size)
+       values ($1, $2, 'orsr', 'https://example.test/delete', 200, now(), 'p1', $3, 10)
+       returning id`,
+      [caseId, user, "c".repeat(64)],
+    );
+    const snapshotId = inserted.rows[0]?.id;
+    await expect(
+      db.query("delete from public.source_snapshots where id = $1", [snapshotId]),
+    ).rejects.toThrow(/permission denied|complete user erasure/);
+    await expect(
+      db.transaction(async (tx) => {
+        await tx.exec("set local role service_role");
+        await tx.query("delete from public.source_snapshots where id = $1", [snapshotId]);
+      }),
+    ).rejects.toThrow(/permission denied|complete user erasure/);
+    expect(
+      (await db.query("select id from public.source_snapshots where id = $1", [snapshotId])).rows,
+    ).toHaveLength(1);
+  });
+
+  it("erases a complete user chain through the controlled function and audits it", async () => {
+    const owner = await createUser(db, "snap-erase-owner@test.local");
+    const stranger = await createUser(db, "snap-erase-stranger@test.local");
+    const ownerCase = await createCase(db, owner);
+    const strangerCase = await createCase(db, stranger);
+    const insert = (caseId: string, userId: string, hash: string) =>
+      db.query<{ id: string }>(
+        `insert into public.source_snapshots
+           (case_id, user_id, source, source_url, http_status, retrieved_at, parser_version, raw_sha256, byte_size)
+         values ($1, $2, 'orsr', 'https://example.test/erase', 200, now(), 'p1', $3, 10)
+         returning id`,
+        [caseId, userId, hash],
+      );
+    const ownerSnapshot = (await insert(ownerCase, owner, "d".repeat(64))).rows[0]?.id;
+    const strangerSnapshot = (await insert(strangerCase, stranger, "e".repeat(64))).rows[0]?.id;
+
+    const erased = await db.transaction(async (tx) => {
+      await tx.exec("set local role service_role");
+      const result = await tx.query<{ erase_user_source_snapshots: number }>(
+        "select public.erase_user_source_snapshots($1)",
+        [owner],
+      );
+      return result.rows[0]?.erase_user_source_snapshots;
+    });
+    expect(erased).toBe(1);
+    expect((await db.query("select id from public.source_snapshots where id = $1", [ownerSnapshot])).rows).toHaveLength(0);
+    expect((await db.query("select id from public.source_snapshots where id = $1", [strangerSnapshot])).rows).toHaveLength(1);
+
+    const audit = await db.query<{ action: string; record_id: string }>(
+      "select action, record_id from public.case_audit_log where user_id = $1 and record_id = $2",
+      [owner, ownerSnapshot],
+    );
+    expect(audit.rows).toEqual([{ action: "source_snapshots_erased", record_id: ownerSnapshot }]);
+  });
+
   it("stores amounts as exact minor units and rejects sub-cent values", async () => {
     const user = await createUser(db, "money@test.local");
     const caseId = await createCase(db, user);

@@ -1,15 +1,52 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
+  PublicHealthResponseSchema,
   SnapshotSchema,
   buildPublicHealthResponse,
   type PublicHealthResponse,
 } from "@/lib/forza/public-health";
+import {
+  cachePublicHealth,
+  getCachedPublicHealth,
+} from "@/lib/forza/public-health-cache.server";
 import { mistralConfigured } from "@/lib/forza/ai/llm.server";
+import {
+  getRateLimiter,
+  type RateLimitRule,
+} from "@/lib/security/rate-limiter.server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 const HEALTH_QUERY_TIMEOUT_MS = 8_000;
+const PUBLIC_HEALTH_RATE_LIMIT: RateLimitRule = {
+  bucket: "public-health",
+  limit: 60,
+  windowSeconds: 60,
+};
+
+function requestRateLimitKey(request: NextRequest): string {
+  // The deployment proxy supplies these headers. They are hashed by the
+  // shared limiter and never returned to the client or persisted in cleartext.
+  return (
+    request.headers.get("x-real-ip")?.trim() ||
+    request.headers.get("x-forwarded-for")?.split(",", 1)[0]?.trim() ||
+    "anonymous"
+  );
+}
+
+function getPublicSupabaseClient() {
+  const url = process.env["SUPABASE_URL"] || process.env["NEXT_PUBLIC_SUPABASE_URL"];
+  const key =
+    process.env["SUPABASE_PUBLISHABLE_KEY"] ||
+    process.env["NEXT_PUBLIC_SUPABASE_ANON_KEY"];
+  if (!url || !key) return null;
+
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
 
 async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -28,13 +65,39 @@ async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number): Promi
   }
 }
 
-export async function GET(): Promise<NextResponse<PublicHealthResponse>> {
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const rate = await getRateLimiter().hit(
+    PUBLIC_HEALTH_RATE_LIMIT,
+    requestRateLimitKey(request),
+  );
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: rate.unavailable ? "Stav systému nie je možné overiť." : "Príliš veľa požiadaviek." },
+      {
+        status: rate.unavailable ? 503 : 429,
+        headers: { "Cache-Control": "no-store" },
+      },
+    );
+  }
+
+  const now = Date.now();
+  const cachedHealth = getCachedPublicHealth(now);
+  if (cachedHealth) {
+    return NextResponse.json(cachedHealth, {
+      status: 200,
+      headers: {
+        "Cache-Control": "public, max-age=15, stale-while-revalidate=30",
+        "X-Health-Cache": "HIT",
+      },
+    });
+  }
+
   try {
+    const publicSupabase = getPublicSupabaseClient();
     const [snapshotResult, bucketsResult] = await Promise.allSettled([
-      withTimeout(
-        supabaseAdmin.rpc("public_health_snapshot").single(),
-        HEALTH_QUERY_TIMEOUT_MS,
-      ),
+      publicSupabase
+        ? withTimeout(publicSupabase.rpc("public_health_snapshot"), HEALTH_QUERY_TIMEOUT_MS)
+        : Promise.resolve({ data: null, error: new Error("public health is not configured") }),
       withTimeout(
         Promise.resolve().then(() => supabaseAdmin.storage.listBuckets()),
         HEALTH_QUERY_TIMEOUT_MS,
@@ -49,7 +112,7 @@ export async function GET(): Promise<NextResponse<PublicHealthResponse>> {
       : null;
     const parsedSnapshot = SnapshotSchema.safeParse(snapshotData);
     const storageAvailable = Boolean(bucketsData && !bucketsData.error);
-    const response = buildPublicHealthResponse(
+    const candidateResponse = buildPublicHealthResponse(
       parsedSnapshot.success ? parsedSnapshot.data : null,
       storageAvailable && bucketsData ? (bucketsData.data?.length ?? 0) : null,
       storageAvailable,
@@ -58,10 +121,32 @@ export async function GET(): Promise<NextResponse<PublicHealthResponse>> {
         aiAnalysisConfigured: mistralConfigured("analysis"),
       },
     );
+    const parsedResponse = PublicHealthResponseSchema.safeParse(candidateResponse);
+    if (!parsedResponse.success) {
+      return NextResponse.json(
+        {
+          checkedAt: new Date().toISOString(),
+          overallStatus: "unavailable",
+          checks: [],
+        },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    const response = parsedResponse.data;
+
+    // Never cache an unavailable measurement as if it were a healthy result.
+    // The client can retain its last successful React Query value and display
+    // the refresh warning while this response exposes the current safe status.
+    if (response.overallStatus !== "unavailable") {
+      cachePublicHealth(response, now);
+    }
 
     return NextResponse.json(response, {
       status: 200,
-      headers: { "Cache-Control": "no-store" },
+      headers: {
+        "Cache-Control": "public, max-age=15, stale-while-revalidate=30",
+        "X-Health-Cache": "MISS",
+      },
     });
   } catch {
     return NextResponse.json(

@@ -144,6 +144,11 @@ export const deleteMyAccount = createServerFn({ method: "POST", id: "account/del
     }
 
     try {
+      // source_snapshots is immutable; complete account erasure is the only
+      // permitted delete path and must run before cases (FK cascade).
+      await run("source_snapshots", () =>
+        supabaseAdmin.rpc("erase_user_source_snapshots", { _user: userId }),
+      );
       for (const table of CASE_TABLES) {
         await run(table, () =>
           supabaseAdmin.from(table).delete().eq("user_id", userId),
@@ -154,9 +159,6 @@ export const deleteMyAccount = createServerFn({ method: "POST", id: "account/del
       );
       await run("ai_usage", () =>
         supabaseAdmin.from("ai_usage").delete().eq("user_id", userId),
-      );
-      await run("source_snapshots", () =>
-        supabaseAdmin.from("source_snapshots").delete().eq("user_id", userId),
       );
       // Auditný log je append-only; vymazať sa dá len celá reťaz používateľa.
       await run("case_audit_log", () =>

@@ -10,7 +10,11 @@
  */
 
 import { NextRequest, NextResponse, NextMiddleware } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type Session, type User } from '@supabase/supabase-js';
+import {
+  PUBLIC_ROUTES,
+  matchRoutePattern,
+} from '@/lib/auth/route-policy';
 
 // ============================================================================
 // ROUTE CLASSIFICATION
@@ -36,27 +40,7 @@ export type RouteCategory = 'PUBLIC' | 'AUTHENTICATED' | 'PROJECT_REQUIRED' | 'R
  */
 
 // Helper to match path against pattern (supports exact, prefix, and wildcard)
-function matchPathPattern(pathname: string, pattern: string): boolean {
-  // Exact match
-  if (pathname === pattern) return true;
-
-  // Prefix match (pattern ends with /*)
-  if (pattern.endsWith('/*')) {
-    const prefix = pattern.slice(0, -2);
-    // Only match if pathname starts with prefix/ (not exact match to prefix)
-    return pathname.startsWith(`${prefix}/`);
-  }
-
-  // Wildcard segment match (pattern contains /[...])
-  if (pattern.includes('/[...')) {
-    // Replace [...anything] with .* to match any path segment
-    const regexPattern = pattern.replace(/\[...[^\]]*\]/g, '.*');
-    const regex = new RegExp(`^${regexPattern}$`);
-    return regex.test(pathname);
-  }
-
-  return false;
-}
+const matchPathPattern = matchRoutePattern;
 
 /**
  * Get the category for a given path.
@@ -67,30 +51,10 @@ function getRouteCategory(pathname: string): { category: RouteCategory; pattern:
     // ======================================================================
     // PUBLIC ROUTES - Accessible without authentication
     // ======================================================================
-    // Authentication entry points
-    { pattern: '/auth', category: 'PUBLIC' },
-    { pattern: '/auth/login', category: 'PUBLIC' },
-    { pattern: '/auth/register', category: 'PUBLIC' },
-
-    // Marketing/content
-    { pattern: '/', category: 'PUBLIC' },
-    { pattern: '/blog', category: 'PUBLIC' },
-    { pattern: '/blog/[...slug]', category: 'PUBLIC' },
-
-    // Read-only system status page: intentionally available without a session.
-    // More specific routes must remain protected by the Forza catch-all below.
-    { pattern: '/forza/stav', category: 'PUBLIC' },
-    { pattern: '/forza/stav/', category: 'PUBLIC' },
-
-    // PUBLIC API ROUTES - No authentication required
-    // CSP reports: browsers send without credentials, write-only, rate-limited
-    { pattern: '/api/csp-report', category: 'PUBLIC' },
-    { pattern: '/api/csp-report/*', category: 'PUBLIC' },
-    // Health check: external monitoring tools need unauthenticated access
-    { pattern: '/api/healthz', category: 'PUBLIC' },
-    { pattern: '/api/healthz/*', category: 'PUBLIC' },
-    { pattern: '/api/health/public', category: 'PUBLIC' },
-    { pattern: '/api/health/public/', category: 'PUBLIC' },
+    ...PUBLIC_ROUTES.map((pattern) => ({
+      pattern,
+      category: 'PUBLIC' as const,
+    })),
 
     // ======================================================================
     // SYSTEM ROUTES - Internal system endpoints
@@ -293,9 +257,9 @@ function getSupabaseClient() {
  * 4. Automatic token refresh if access token expired but `sb-refresh-token` is present
  */
 async function getSessionFromRequest(request: NextRequest): Promise<{
-  user: any;
+  user: User;
   token: string;
-  refreshedSession?: any;
+  refreshedSession?: Session;
 } | null> {
   const supabase = getSupabaseClient();
   if (!supabase) return null;
@@ -372,7 +336,7 @@ async function getSessionFromRequest(request: NextRequest): Promise<{
  * In development, we allow more permissive behavior for local testing.
  */
 function isDevelopment(): boolean {
-  return process.env.NODE_ENV !== 'production';
+  return process.env.NODE_ENV === 'development';
 }
 
 /**
@@ -380,8 +344,8 @@ function isDevelopment(): boolean {
  * Only in development, without real evidence access, on loopback.
  */
 function devAuthBypassAllowed(request: NextRequest): boolean {
-  if (process.env.NODE_ENV === 'production') return false;
-  if (process.env.PANDORA_DEV_AUTH_BYPASS !== '1') return false;
+  if (process.env.NODE_ENV !== 'development') return false;
+  if (process.env.ALLOW_DEV_AUTH_BYPASS !== 'true') return false;
   if (process.env.VERCEL || process.env.VERCEL_ENV) return false;
 
   // Check for real evidence access keys
@@ -396,9 +360,26 @@ function devAuthBypassAllowed(request: NextRequest): boolean {
   if (hasRealAccess) return false;
 
   // Check if it's a loopback request
-  const hostname = request.headers.get('host') || '';
-  const loopbackHosts = ['localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0'];
-  return loopbackHosts.some(host => hostname.includes(host));
+  let hostname: string;
+  try {
+    hostname = new URL(request.url).hostname;
+  } catch {
+    return false;
+  }
+  if (!new Set(['localhost', '127.0.0.1', '::1']).has(hostname)) return false;
+
+  const forwardedHost = request.headers.get('x-forwarded-host')?.split(':')[0];
+  if (forwardedHost && !new Set(['localhost', '127.0.0.1', '::1']).has(forwardedHost)) {
+    return false;
+  }
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  if (forwardedFor) {
+    const loopbackIps = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+    if (!forwardedFor.split(',').map((hop) => hop.trim()).every((hop) => loopbackIps.has(hop))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // ============================================================================
@@ -490,17 +471,18 @@ export const middleware: NextMiddleware = async (request: NextRequest) => {
   }
 
   // If session was refreshed during validation, persist new tokens in response cookies
-  if (session.refreshedSession) {
+  const refreshedSession = session.refreshedSession;
+  if (refreshedSession) {
     const response = NextResponse.next();
     const isProd = process.env.NODE_ENV === 'production';
-    response.cookies.set('sb-access-token', session.refreshedSession.access_token, {
+    response.cookies.set('sb-access-token', refreshedSession.access_token, {
       path: '/',
-      maxAge: session.refreshedSession.expires_in || 3600,
+      maxAge: refreshedSession.expires_in || 3600,
       sameSite: 'lax',
       secure: isProd,
     });
-    if (session.refreshedSession.refresh_token) {
-      response.cookies.set('sb-refresh-token', session.refreshedSession.refresh_token, {
+    if (refreshedSession.refresh_token) {
+      response.cookies.set('sb-refresh-token', refreshedSession.refresh_token, {
         path: '/',
         maxAge: 60 * 60 * 24 * 30,
         sameSite: 'lax',

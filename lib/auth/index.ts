@@ -18,6 +18,12 @@
 
 export * from './redirect';
 export * from './cookies';
+export {
+  PUBLIC_ROUTES,
+  isPublicRoutePattern,
+  matchRoutePattern,
+} from './route-policy';
+export type { PublicRoute } from './route-policy';
 
 export type { RouteCategory } from '@/middleware';
 
@@ -62,36 +68,16 @@ export const FORBIDDEN_RESPONSE = {
  * Public routes that don't require authentication.
  * These are explicitly allowed without a session.
  */
-export const PUBLIC_ROUTES = [
-  '/',
-  '/auth',
-  '/auth/login',
-  '/auth/register',
-  '/blog',
-  '/blog/[...slug]',
-  '/healthz',
-  '/api/healthz',
-  '/api/health/observe',
-] as const;
+import {
+  PUBLIC_ROUTES,
+  matchRoutePattern,
+} from './route-policy';
 
 /**
  * Check if a path is in the public routes list
  */
 export function isPublicRoute(path: string): boolean {
-  return PUBLIC_ROUTES.some(route => {
-    if (route === path) return true;
-    if (route.endsWith('/*')) {
-      const prefix = route.slice(0, -2);
-      return path === prefix || path.startsWith(`${prefix}/`);
-    }
-    if (route.includes('[...')) {
-      // Convert route pattern to regex
-      const pattern = route.replace(/\/\[\.\.\.\]/g, '/.*');
-      const regex = new RegExp(`^${pattern}$`);
-      return regex.test(path);
-    }
-    return false;
-  });
+  return PUBLIC_ROUTES.some((route) => matchRoutePattern(path, route));
 }
 
 /**

@@ -25,6 +25,7 @@ import { aiTaskSchemas } from "@/lib/ai/task-schemas";
 import { assertAiConsent } from "@/lib/ai-consent";
 import { mapForensicWorkflowRun } from "./forensic-workflow-state";
 import type { ExtractedCaseEntity, ParsedCaseDocument } from "./types";
+import { forensicDossierSchema } from "./forensic-dossier.schema";
 
 import {
   UPLOAD_MAX_BASE64_CHARS,
@@ -837,45 +838,29 @@ export const parseUploadedCaseDocument = createServerFn({ method: "POST", id: "a
     );
   });
 
-async function assertCaseOwned(supabase: SupabaseLike, caseId: string) {
-  if (
-    !caseId ||
-    caseId === "current" ||
-    caseId === "demo" ||
-    caseId === "case-autopilot"
-  ) {
-    return;
-  }
+async function assertCaseOwned(supabase: SupabaseLike, caseId: string, userId: string) {
+  if (!z.string().uuid().safeParse(caseId).success) throw new Error("Prípad nebol nájdený alebo k nemu nemáte oprávnenie.");
   const { data, error } = await supabase
     .from("cases")
     .select("id")
     .eq("id", caseId)
+    .eq("user_id", userId)
     .maybeSingle();
-  if (error) throw new Error(`Supabase: ${error.message}`);
-  if (!data) throw new Error("Prípad sa nenašiel alebo naň nemáte oprávnenie.");
+  if (error || !data) throw new Error("Prípad nebol nájdený alebo k nemu nemáte oprávnenie.");
 }
 
 export const runForensicAutopilot = createServerFn({ method: "POST", id: "ai/runForensicAutopilot" })
   .middleware([requireSupabaseAuth])
-  .validator(
-    (d: {
-      caseId: string;
-      documentText: string;
-      fileName?: string;
-      documentIds?: string[];
-      /** Task 4: dôkazy z WORM ledgera — server ich stiahne, overí hash a extrahuje text sám. */
-      evidenceIds?: string[];
-      consentVersion?: string;
-      idempotencyKey?: string;
-      /** 1-based indexes of failed chunks to re-run; omit = full analysis. */
-      retryChunkIndexes?: number[];
-      /** Existing dossier used as merge base when retrying failed chunks. */
-      priorDossier?: import("./types").ForensicDossier;
-    }) => d,
-  )
+  .validator((d: unknown) => z.object({
+    caseId: z.string().uuid(), documentText: z.string().min(1).max(2_000_000),
+    fileName: z.string().max(255).optional(), documentIds: z.array(z.string().min(1).max(255)).max(100).optional(),
+    evidenceIds: z.array(z.string().uuid()).max(10).optional(), consentVersion: z.string().max(64).optional(),
+    idempotencyKey: z.string().max(256).optional(), retryChunkIndexes: z.array(z.number().int().min(0).max(1000)).max(100).optional(),
+    priorDossier: forensicDossierSchema.optional(),
+  }).parse(d))
   .handler(async ({ data, context }) => {
     assertAiConsent(data.consentVersion);
-    return startForensicCaseAnalysisRun(data, context);
+    return startForensicCaseAnalysisRun(data as Parameters<typeof startForensicCaseAnalysisRun>[0], context);
   });
 
 function toWorkflowRun(row: Record<string, unknown>) {
@@ -903,7 +888,7 @@ export async function startForensicCaseAnalysisRun(
   saveStatus?: "saved" | "skipped" | "failed";
   saveError?: string;
 }> {
-  await assertCaseOwned(context.supabase, data.caseId);
+  await assertCaseOwned(context.supabase, data.caseId, context.userId);
   const { buildAutopilotIdempotencyKey } = await import("./autopilot-meta");
   const idempotencyKey =
     data.idempotencyKey ??
@@ -1040,7 +1025,7 @@ export async function runForensicAutopilotInner(
   context: { supabase: SupabaseLike; userId: string },
 ) {
   const { caseId } = data;
-  await assertCaseOwned(context.supabase, caseId);
+  await assertCaseOwned(context.supabase, caseId, context.userId);
 
   // Task 4: závery sa smú viazať iba na dôkazy, ktorých obsah model skutočne
   // analyzuje. Text od klienta nemá dokázateľný pôvod → prázdny register
@@ -1321,7 +1306,8 @@ export async function runForensicAutopilotInner(
             withMeta as unknown as import("@/integrations/supabase/types").Json,
           forensic_dossier_updated_at: new Date().toISOString(),
         })
-        .eq("id", caseId);
+    .eq("id", caseId)
+        .eq("user_id", context.userId);
       if (saveErrorRaw) {
         saveStatus = "failed";
         saveError = saveErrorRaw.message;
@@ -1389,6 +1375,10 @@ export async function handleSaveCaseDossier(
   },
   supabase: SupabaseLike,
 ) {
+  const validated = forensicDossierSchema.safeParse(data.dossier);
+  if (!validated.success || !validated.data.analysisMeta || typeof validated.data.analysisMeta !== "object") {
+    throw new Error("Forenzný spis nemá overiteľný serverový pôvod.");
+  }
   const { isDemoDossier } = await import("./autopilot-meta");
   if (isDemoDossier(data.dossier)) {
     throw new Error(
@@ -1428,7 +1418,7 @@ export const getForensicWorkflowRuns = createServerFn({ method: "GET", id: "ai/g
   .middleware([requireSupabaseAuth])
   .validator((d: { caseId: string }) => z.object({ caseId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    await assertCaseOwned(context.supabase, data.caseId);
+    await assertCaseOwned(context.supabase, data.caseId, context.userId);
     const { data: rows, error } = await (context.supabase as any)
       .from("forensic_workflow_runs")
       .select("*")
@@ -1441,9 +1431,11 @@ export const getForensicWorkflowRuns = createServerFn({ method: "GET", id: "ai/g
 
 export const saveCaseDossier = createServerFn({ method: "POST", id: "ai/saveCaseDossier" })
   .middleware([requireSupabaseAuth])
-  .validator(
-    (d: { caseId: string; dossier: import("./types").ForensicDossier }) => d,
-  )
-  .handler(async ({ data, context }) =>
-    handleSaveCaseDossier(data, context.supabase),
-  );
+  .validator((d: unknown) => z.object({ caseId: z.string().uuid(), dossier: forensicDossierSchema }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertCaseOwned(context.supabase, data.caseId, context.userId);
+    return handleSaveCaseDossier(
+      data as unknown as Parameters<typeof handleSaveCaseDossier>[0],
+      context.supabase,
+    );
+  });

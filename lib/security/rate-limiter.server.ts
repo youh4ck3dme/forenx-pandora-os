@@ -101,11 +101,12 @@ let memoryLimiter: (RateLimiter & { reset(): void }) | null = null;
 let sharedLimiter: RateLimiter | null = null;
 
 /**
- * Limiter pre aktuálne prostredie: produkcia → zdieľaný v Supabase (bez
- * konfigurácie fail-closed), inak pamäťový.
+ * Limiter pre aktuálne prostredie: development/test → pamäťový iba pre
+ * lokálny vývoj a testy; staging/preview/production → zdieľaný v Supabase
+ * (bez konfigurácie fail-closed).
  */
 export function getRateLimiter(): RateLimiter {
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test") {
     memoryLimiter ??= createMemoryRateLimiter();
     return memoryLimiter;
   }
