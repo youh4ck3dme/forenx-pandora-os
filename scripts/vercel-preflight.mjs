@@ -21,10 +21,11 @@ const coreConfig = [
   { name: "S3_BUCKET", desc: "S3 Bucket Name (default: forenx-vault-sk)" },
   { name: "S3_ACCESS_KEY_ID", desc: "S3 Vault Access Key ID" },
   { name: "S3_SECRET_ACCESS_KEY", desc: "S3 Vault Secret Access Key" },
+  { name: "CRON_SECRET", desc: "Evidence Verification Cron Secret (min 32 chars)" },
 ];
 
 console.log("\n=======================================================");
-console.log("  🔍 PΛND0RΛ / FORENX - VERCEL ENVIRONMENT AUDIT");
+console.log("  🔍 PΛND0RΛ / FORENX - ENVIRONMENT AUDIT & PREFLIGHT");
 console.log("=======================================================\n");
 
 let missingCount = 0;
@@ -44,15 +45,39 @@ const aiStatus = mistralConfigured ? "✅ CONFIGURED" : "⚠️  MISSING";
 if (!mistralConfigured) missingCount++;
 console.log(` ${aiStatus.padEnd(16)} | ${"MISTRAL_API_KEY".padEnd(30)} | Mistral Large AI Engine Key`);
 
+// P1-05: Validácia HTTPS-only pre externé produkčné endpointy
+const urlChecks = [
+  "NEXT_PUBLIC_BASE_URL",
+  "NEXT_PUBLIC_SUPABASE_URL",
+  "S3_ENDPOINT",
+  "ICO_ATLAS_API_URL",
+  "WHOISWHO_API_URL",
+  "FORENZX_MCP_URL",
+];
+
+let insecureUrlCount = 0;
+for (const envKey of urlChecks) {
+  const val = process.env[envKey]?.trim();
+  if (val && val.startsWith("http://")) {
+    console.error(` ❌ INSECURE URL | ${envKey.padEnd(30)} | Nepovolené nešifrované http:// v produkcii!`);
+    insecureUrlCount++;
+  }
+}
+
 console.log("\n-------------------------------------------------------");
 
-if (missingCount === 0) {
-  console.log("🎉 All production cloud environment variables are configured!\n");
+if (insecureUrlCount > 0 && isStrict) {
+  console.error(`❌ STRICT MODE: Detegovaných ${insecureUrlCount} nešifrovaných http:// URL. Produkcia vyžaduje striktne https://.`);
+  process.exit(1);
+}
+
+if (missingCount === 0 && insecureUrlCount === 0) {
+  console.log("🎉 All production cloud environment variables are configured and secured!\n");
   process.exit(0);
 } else {
   console.log(`ℹ️  ${missingCount} cloud variables are unconfigured.`);
   console.log("   The application will run with graceful local / in-memory fallbacks.");
-  console.log("   Configure these in Vercel Dashboard -> Settings -> Environment Variables for 100% production functionality.\n");
+  console.log("   Configure these in .env.production for 100% production functionality.\n");
 
   if (isStrict) {
     console.error("❌ STRICT MODE: Failing build due to unconfigured production variables.");

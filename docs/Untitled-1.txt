@@ -1,0 +1,84 @@
+# RELEASE EXECUTION PLAN — PΛND0RΛ / ForenX Pilot
+
+Kanonický realizačný plán dokončenia nasadenia v záväznom poradí podľa docs/BLUEPRINT-PILOT-RELEASE.md a docs/SOURCE-OF-TRUTH.md.
+
+---
+
+## 📌 KROK 1: Bezpečnostné a konfiguračné dočistenie repozitára (Repo Gate)
+> Cieľ: Kód na main musí byť 100 % čistý pred tým, než z neho GitHub Actions zostavia a publikujú produkčný Docker image do privátneho GHCR.
+
+- [x] 1.1 Kontrola a zjednotenie vzorových konfigurácií (Backlog P1-05):
+  - V .env.production.example a .env.example nahradené surové HTTP URL (ICO_ATLAS_API_URL) zabezpečeným HTTPS placeholderom.
+  - Skontrolovaná prítomnosť CRON_SECRET a FORENZX_WEBHOOK_SECRET v šablónach.
+  - V scripts/vercel-preflight.mjs pridaná striktná kontrola HTTPS-only a CRON_SECRET.
+- [x] 1.2 Supply-chain audit závislostí (Backlog P1-06):
+  - Spustený npm audit --omit=dev (0 zraniteľností v produkčných balíčkoch).
+  - Overené, že v docker/Dockerfile.production beží pripnutý Node.js 22 LTS (unprivileged nextjs:nodejs).
+- [x] 1.3 Overenie GitHub Actions CI pipeline:
+  - Overený workflow pre Linux build Docker image a jeho publikovanie do GHCR podľa commit hash digestu (sha256:...).
+
+---
+
+## 📌 KROK 2: Pre-deployment príprava VPS infraštruktúry (Infra Gate)
+> Cieľ: Produkčný server musí mať garantovanú diskovú kapacitu, rollback snapshot a správne Apache nastavenie pred akýmkoľvek zásahom do bežiaceho kontajnera.
+
+- [ ] 2.1 Kontrola diskového priestoru VPS a ochrana rollbacku (Blueprint P0):
+  - Overiť voľné miesto na VPS (df -h, minimálne 20 % voľného miesta).
+  - Skontrolovať prítomnosť chráneného záchranného image pandora-rollback:protected.
+- [ ] 2.2 Príprava a kontrola .env.production na VPS:
+  - Overiť práva súboru chmod 600 /opt/pandora-os/.env.production.
+  - Skontrolovať prítomnosť všetkých runtime kľúčov v stave SET (Supabase URL/Service Role, Hetzner S3 prístupy, Mistral/Gemini API, Webhook Secret) bez výpisu ich hodnôt.
+- [ ] 2.3 Kontrola konfigurácie Apache reverznej proxy:
+  - Porty 80 a 443 smerujú na loopback :3005.
+  - Správne predávanie hlavičiek (X-Real-IP, X-Forwarded-For, X-Forwarded-Proto).
+  - Pripravený údržbový VirtualHost (000-maintenance.conf smerujúci na /var/www/html/maintenance.html).
+- [ ] 2.4 Kontrola Hetzner S3 Object Lock (WORM):
+  - V Hetzner Console skontrolovať, či bucket dôkazov (hel1.your-objectstorage.com) má zapnutý versioning a Object Lock retenčné pravidlá.
+
+---
+
+## 📌 KROK 3: Integrácia ForenZX MCP Hub & Authentik (Worker Gate)
+> Cieľ: Externý analytický worker pre hĺbkovú analýzu mobilných extrakcií (ALEAPP/iLEAPP) musí mať zladenú autentifikáciu a webhooky pred spustením e2e toku.
+
+- [ ] 3.1 Overenie Authentik konfigurácie v druhom projekte (forenzx-mcp-hub):
+  - Skontrolovať blueprint authentik/blueprints/forenzx-mcp.yaml a .env.authentik.
+  - Overiť OIDC/SAML poskytovateľa a service account pre komunikáciu medzi Pandorou a MCP hubom.
+- [ ] 3.2 Zladenie webhook kontraktu (x-forenzx-webhook-secret):
+  - Overiť, že zdieľaný webhook secret medzi Pandorou (/api/forenzx/webhook) a MCP hubom je identický.
+- [ ] 3.3 Izolovaný test asynchrónneho jobu:
+  - Simulovať začatie analýzy (forenzx_analysis_start) s testovacou prílohou -> overiť SSE progress streaming a prechod do finálneho stavu (completed).
+
+---
+
+## 📌 KROK 4: Riadené nasadenie a Staging E2E Smoke Test (Release Gate)
+> Cieľ: Až keď infraštruktúra aj worker stoja, nasadí sa nová verzia aplikácie v servisnom okne a otestuje sa kompletný forenzný tok na syntetickom prípade.
+
+- [ ] 4.1 Servisné okno — Deployment aplikácie:
+  - Aktivácia údržbovej stránky na Apache proxy: sudo a2ensite 000-maintenance.conf && sudo systemctl reload apache2.
+  - Pull nového image digestu z GHCR: docker pull ghcr.io/.../pandora:sha-....
+  - Štart kontajnera: docker-compose -f docker-compose.production.yml up -d --force-recreate app.
+- [ ] 4.2 Healthcheck & Diagnostika:
+  - Overiť curl -k https://127.0.0.1:3005/healthz (HTTP 200).
+  - Overiť curl -k https://127.0.0.1:3005/api/health/public/ (všetkých 15 sledovaných kategórií vrátane S3 vaultu a databázy v stave ok).
+- [ ] 4.3 E2E test na syntetickom prípade (Overenie celého reťazca):
+  - Prihlásenie pozvaného vyšetrovateľa cez session bridge.
+  - Vytvorenie syntetického testovacieho prípadu.
+  - Presigned upload testovacieho súboru priamo do Hetzner S3.
+  - Serverový streamovaný prepočet SHA-256 hashu a commit do auditného ledgeru (verified).
+  - Spustenie AI analýzy s redakciou citlivých dát a overenie neúplných výstupov.
+  - Generovanie PDF exportu spolu s nezávislým SHA-256 manifestom.
+- [ ] 4.4 Návrat z údržbového módu:
+  - Deaktivácia údržbovej stránky v Apache a sprístupnenie prevádzky pre pozvaných pilotných používateľov.
+
+---
+
+## 📌 KROK 5: 24-hodinové pozorovanie -> Podmienka „GO pre ostrý pilot“
+> Cieľ: Podľa Blueprintu (časť 5.2) nie je zelený build dôkazom pripravenosti; vyžaduje sa 24 hodín stabilného behu.
+
+- [ ] 5.1 Monitoring telemetrie a CSP violácií:
+  - Sledovanie /api/csp-report/ a vylúčenie akýchkoľvek blokovaných legitímnych volaní.
+  - Sledovanie chybovosti API (žiadne opakované 5xx, chybovosť AI pod 10 %).
+- [ ] 5.2 Overenie doručenia testovacieho alertu:
+  - Otestovanie varovného kanála pri prekročení limitov disku alebo zlyhaní spojenia.
+- [ ] 5.3 Finálny podpis Chain of Custody protokolu:
+  - Spísanie protokolu podľa vzoru v docs/DISASTER_RECOVERY_RUNBOOK.md a udelenie statusu GO PRE PILOT.
