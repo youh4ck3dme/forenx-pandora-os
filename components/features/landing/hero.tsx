@@ -56,7 +56,7 @@ export function Hero() {
       <div className="relative z-10 w-full max-w-4xl px-8 flex flex-col items-center">
         <div className="text-center mb-8 animate-in slide-in-from-bottom-8 duration-700">
           <Pill className="mb-6">PΛND0RΛ SECURE BROWSER</Pill>
-          <h1 className="text-7xl sm:text-8xl font-black tracking-tighter mb-4 bg-clip-text text-transparent bg-gradient-to-br from-primary to-purple-500">
+          <h1 className="text-7xl sm:text-8xl font-black tracking-tighter mb-4 bg-clip-text text-transparent bg-linear-to-br from-primary to-purple-500">
             {time.toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
@@ -76,8 +76,10 @@ export function Hero() {
           onMouseEnter={() => setHovering(true)}
           onMouseLeave={() => setHovering(false)}
         >
-          <div className="absolute inset-0 rounded-full blur-xl opacity-20 group-hover:opacity-40 transition-opacity bg-gradient-to-r from-primary to-purple-500" />
+          <div className="absolute inset-0 rounded-full blur-xl opacity-20 group-hover:opacity-40 transition-opacity bg-linear-to-r from-primary to-purple-500" />
           <input
+            id="landing-search-query"
+            name="searchQuery"
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}

@@ -374,6 +374,8 @@ export function WalletPanel() {
         {error && <p className="text-xs text-red-400 px-1">{error}</p>}
         <div className="flex gap-2">
           <input
+            id="wallet-address-input"
+            name="walletAddress"
             type="text"
             value={input}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => {

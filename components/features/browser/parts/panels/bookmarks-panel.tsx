@@ -132,6 +132,8 @@ export function BookmarksPanel() {
               <img
                 src={bookmark.favicon}
                 alt=""
+                width={16}
+                height={16}
                 className="w-4 h-4"
                 onError={(e) => (e.currentTarget.style.display = "none")}
               />
@@ -329,6 +331,8 @@ export function BookmarksPanel() {
               >
                 <div className="flex items-center gap-2">
                   <input
+                    id="bookmarks-file-import"
+                    name="bookmarksFile"
                     type="file"
                     ref={fileInputRef}
                     onChange={handleFileChange}

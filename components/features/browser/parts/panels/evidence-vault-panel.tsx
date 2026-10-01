@@ -327,6 +327,8 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
         onClick={() => fileInputRef.current?.click()}
       >
         <input
+          id="evidence-vault-file-input"
+          name="evidenceFile"
           ref={fileInputRef}
           type="file"
           className="hidden"

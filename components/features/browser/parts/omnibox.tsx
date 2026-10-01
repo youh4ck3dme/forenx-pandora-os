@@ -251,6 +251,8 @@ export function Omnibox() {
           {/* Search Input */}
           <input
             ref={inputRef}
+            id="browser-omnibox-input"
+            name="omniboxQuery"
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}

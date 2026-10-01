@@ -145,6 +145,8 @@ export function SettingsPanel() {
             {settings.proxy?.type !== "none" && (
               <div className="grid grid-cols-3 gap-2 animate-in fade-in slide-in-from-top-1">
                 <input
+                  id="settings-proxy-host"
+                  name="proxyHost"
                   type="text"
                   placeholder="Host (e.g. 127.0.0.1)"
                   value={settings.proxy?.host || ""}
@@ -157,6 +159,8 @@ export function SettingsPanel() {
                   className="col-span-2 bg-black/20 border border-border rounded-md px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary/50"
                 />
                 <input
+                  id="settings-proxy-port"
+                  name="proxyPort"
                   type="text"
                   placeholder="Port"
                   value={settings.proxy?.port || ""}
@@ -180,6 +184,8 @@ export function SettingsPanel() {
           <div className="space-y-2">
             <div className="flex gap-2">
               <input
+                id="settings-extension-path"
+                name="extensionPath"
                 type="text"
                 placeholder="Path to unpacked extension..."
                 value={extPath}

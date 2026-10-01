@@ -87,6 +87,8 @@ export function Copilot() {
                         </label>
                         <div className="flex gap-2">
                             <input
+                                id="copilot-api-key"
+                                name="mistralApiKey"
                                 type="password"
                                 value={apiKeyInput}
                                 onChange={(e) => setApiKeyInput(e.target.value)}
@@ -131,7 +133,7 @@ export function Copilot() {
                             {msg.imageUrl && (
                                 <div className="mt-3 rounded-lg overflow-hidden border border-white/10 shadow-xl group cursor-pointer relative">
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img src={msg.imageUrl} alt="AI Generated" className="w-full aspect-square object-cover" />
+                                    <img src={msg.imageUrl} alt="AI Generated" width={512} height={512} className="w-full aspect-square object-cover" />
                                     <div className="absolute inset-x-0 bottom-0 bg-black/60 p-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <p className="text-[10px] text-white truncate px-1">AI Generated Image</p>
                                     </div>
@@ -188,6 +190,8 @@ export function Copilot() {
                     <div className="absolute -inset-0.5 bg-linear-to-r from-primary/50 to-blue-500/50 rounded-xl opacity-0 group-focus-within:opacity-100 transition duration-500 blur-sm whitespace-pre-wrap" />
                     <div className="relative flex items-center bg-zinc-900 border border-white/10 rounded-xl overflow-hidden px-3">
                         <input
+                            id="copilot-chat-input"
+                            name="copilotPrompt"
                             type="text"
                             placeholder={(mistralApiKey || openaiApiKey) ? "Spýtaj sa Copilota na čokoľvek v spise..." : "Zadaj Mistral API kľúč pre aktiváciu AI..."}
                             value={input}

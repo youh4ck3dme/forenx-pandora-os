@@ -75,6 +75,8 @@ export function TimelineEventItem({
               <img
                 src={currentEpisode.comicImage}
                 alt={currentEpisode.title}
+                width={1280}
+                height={720}
                 className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                 onError={() => onImageError(currentEpisode.id)}
               />

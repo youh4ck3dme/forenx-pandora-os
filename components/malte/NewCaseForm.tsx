@@ -100,6 +100,7 @@ export function NewCaseForm({
     <form className="space-y-2" onSubmit={handleSubmit}>
       <input
         id="new-case-input"
+        name="caseName"
         aria-label="Názov prípadu"
         placeholder="Názov prípadu"
         className={inputClass}
@@ -110,6 +111,8 @@ export function NewCaseForm({
       />
       {withSubtitle ? (
         <input
+          id="new-case-subtitle"
+          name="caseSubtitle"
           aria-label="Popis prípadu"
           placeholder="Krátky popis (nepovinné)"
           className={inputClass}
