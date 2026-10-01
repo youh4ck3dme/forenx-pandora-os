@@ -88,18 +88,28 @@ export function mergeForensicDossiers(
   const merged: ParsedForensicDossier = {
     ...parts[0]!,
     facts: {
-      timeline: dedupe(parts.flatMap((p) => asArray(p.facts?.timeline))),
-      traces: dedupe(parts.flatMap((p) => asArray(p.facts?.traces))),
+      // P4: dedupe pracuje s Loose[] interne; dáta sú už Zod-validované
+      // v parseForensicDossier — cast je bezpečný.
+      timeline: dedupe(
+        parts.flatMap((p) => asArray(p.facts?.timeline)),
+      ) as unknown as ParsedForensicDossier["facts"]["timeline"],
+      traces: dedupe(
+        parts.flatMap((p) => asArray(p.facts?.traces)),
+      ) as unknown as ParsedForensicDossier["facts"]["traces"],
     },
     defenseAttack: {
       ...(highestRisk(parts) ? { overallRisk: highestRisk(parts)! } : {}),
-      attacks: dedupe(parts.flatMap((p) => asArray(p.defenseAttack?.attacks))),
+      attacks: dedupe(
+        parts.flatMap((p) => asArray(p.defenseAttack?.attacks)),
+      ) as unknown as ParsedForensicDossier["defenseAttack"]["attacks"],
     },
     evidenceStrength: {
-      traces: dedupe(parts.flatMap((p) => asArray(p.evidenceStrength?.traces))),
+      traces: dedupe(
+        parts.flatMap((p) => asArray(p.evidenceStrength?.traces)),
+      ) as unknown as ParsedForensicDossier["evidenceStrength"]["traces"],
       paragraphs: dedupe(
         parts.flatMap((p) => asArray(p.evidenceStrength?.paragraphs)),
-      ),
+      ) as unknown as ParsedForensicDossier["evidenceStrength"]["paragraphs"],
     },
     judgeReadyText: mergeJudgeText(parts),
   };

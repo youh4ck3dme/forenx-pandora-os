@@ -149,6 +149,14 @@ verified evidence
   → findings + execution record
 ```
 
+### 6.1 Sprísnené AI schémy, oprava JSON, CSV a Export Manifest (Blueprint P4)
+
+- **Striktná typizácia schémy (`lib/forza/forensic-dossier.schema.ts`):** Všetky sub-schémy (`timeline`, `traces`, `attacks`, `evidence`, `paragraphs`, `analysisMeta`) sú prísne typované Zod schémami namiesto voľných `z.record(z.unknown())`. Neznáme alebo malformované štruktúry zlyhajú na validačnej bráne.
+- **Detekcia opraveného JSON (`wasRepaired`):** `parseForensicDossier` vracia `{ data, wasRepaired }`. Ak musel byť modelový JSON opravený (napr. doplnenie uzatváracích zátvoriek pre odseknutý výstup), výsledný chunk je transparentne označený ako `status: "repaired"` namiesto predstierania bezchybného pôvodného výstupu.
+- **Deduplikácia bankových CSV importov (`lib/forza/import.functions.ts`):** `commitImport` validátor pred zápisom overuje prítomnosť duplicitných riadkov s identickou päticou `(date, amount, currency, from_id, to_id)` a zlyhá fail-closed s jasným zoznamom duplicitných riadkov (`DUPLICATE_IMPORT_ROWS`), aby sa predišlo viacnásobnému započítaniu transakcií.
+- **Nezávislý export manifestu (`lib/forza/export-pdf.ts`):** Vyšetrovateľ si môže stiahnuť auditný balík reportu ako samostatný JSON (`downloadManifestJson`), ktorý obsahuje SHA-256 hash manifestu a stav všetkých overených dôkazov.
+- **Forenzný disclaimer manifestu:** Hash manifestu je kryptografický dôkaz integrity samotného exportu, nie potvrdenie pravdivosti alebo súdnej prípustnosti hypotéz (`AI OUTPUT ≠ EVIDENCE`).
+
 Kanonický webhook header je `x-forenzx-webhook-secret`. Edge Function musí overiť secret, evidence status, idempotency key a serverové údaje. Presigned download musí používať iba povolený hostname; HTTP, localhost, private IP, neoverené redirecty a nepovolené hosty sú odmietnuté.
 
 MCP kontrakt musí obsahovať nástroj `forenzx_analysis_start` s `download_url` a `download_filename`. Hash mismatch alebo bezpečnostné odmietnutie nesmie skončiť ako úspešný job.

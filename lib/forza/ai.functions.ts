@@ -1125,7 +1125,9 @@ export async function runForensicAutopilotInner(
   );
   const budget = createAiExecutionBudget();
 
-  const partials = [] as ReturnType<typeof parseForensicDossier>[];
+  // P4: partials sú ParsedForensicDossier (nie ParseForensicDossierResult — rôzne od vôľkodu parseForensicDossier).
+  const partials: import("./forensic-dossier.schema").ParsedForensicDossier[] = [];
+
   const chunkMeta: AutopilotChunkMeta[] = [];
   const failures: string[] = [];
   let lastModel = priorMeta?.model ?? "unknown";
@@ -1199,12 +1201,16 @@ export async function runForensicAutopilotInner(
           "AI_EXECUTION_DEADLINE_EXCEEDED: Parsing a validácia odpovede prekročili maximálny limit 500 sekúnd.",
         );
       }
-      partials.push(parseForensicDossier(result.content));
+      // P4: parseForensicDossier vracia { data, wasRepaired }; chunk status
+      // musí odrážať skutočný stav JSON — opravený JSON nie je "ok".
+      const parsed = parseForensicDossier(result.content);
+      partials.push(parsed.data);
       chunkMeta.push({
         index,
         total: chunks.length,
         charCount: chunk.length,
-        status: retrySet ? "repaired" : "ok",
+        // Repaired: buď bol JSON JSON-opravený, alebo ide o retry existujúceho chunka.
+        status: parsed.wasRepaired || retrySet?.has(index) ? "repaired" : "ok",
       });
     } catch (error) {
       if (error instanceof AiDeadlineExceededError) throw error;
@@ -1376,9 +1382,37 @@ export async function handleSaveCaseDossier(
   supabase: SupabaseLike,
 ) {
   const validated = forensicDossierSchema.safeParse(data.dossier);
-  if (!validated.success || !validated.data.analysisMeta || typeof validated.data.analysisMeta !== "object") {
-    throw new Error("Forenzný spis nemá overiteľný serverový pôvod.");
+  if (!validated.success) {
+    throw new Error("Forenzný spis nemá platnú štruktúru.");
   }
+
+  const meta = validated.data.analysisMeta;
+
+  // P4: analysisMeta musí existovať a pochádzať zo serverového workflow.
+  // Klient nesmie injektovať vlastné meta a vydávať ho za serverový výsledok.
+  if (!meta || typeof meta !== "object") {
+    throw new Error("Forenzný spis nemá overiteľný serverový pôvod (chýba analysisMeta).");
+  }
+
+  // P4: idempotencyKey musí zodpovedať formátu generovanému serverom (prefix "ap:").
+  const key = meta.idempotencyKey as string | undefined;
+  if (!key || !key.startsWith("ap:")) {
+    throw new Error(
+      "Forenzný spis nemá platný idempotencyKey (serverový pôvod neoveriteľný).",
+    );
+  }
+
+  // P4: analysisStatus musí byť complete alebo partial — žiadne demo, failed alebo
+  // neznáme hodnoty sa nesmú uložiť ako produkčný výsledok.
+  const allowedStatuses: string[] = ["complete", "partial"];
+  const status = meta.analysisStatus as string | undefined;
+  if (!status || !allowedStatuses.includes(status)) {
+    throw new Error(
+      `Dossier so stavom "${status ?? "neznámy"}" sa nesmie uložiť ako produkčný výsledok. ` +
+        "Spustite Autopilot nad reálnym spisom.",
+    );
+  }
+
   const { isDemoDossier } = await import("./autopilot-meta");
   if (isDemoDossier(data.dossier)) {
     throw new Error(

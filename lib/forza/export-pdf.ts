@@ -222,6 +222,43 @@ export function exportDossierToPDF(
   }, 500);
 }
 
+/**
+ * Stiahne manifest reportu ako JSON súbor pre nezávislé overenie (P4).
+ *
+ * Umožňuje vyšetrovateľovi overiť hash reportu externe bez závislosti
+ * na aplikácii. Manifestový hash je kontrolný súčet — NIE je to dôkaz
+ * pravdivosti tvrdení ani automatickej súdnej prípustnosti.
+ */
+export function downloadManifestJson(
+  dossier: ForensicDossier,
+  knownEvidence: ReadonlySet<string> = NO_VERIFIED_EVIDENCE,
+): void {
+  const { manifest, manifestSha256 } = buildReportPackage(dossier, knownEvidence);
+
+  // Exportný objekt obsahuje manifest aj jeho hash pre nezávislé porovnanie.
+  // UPOZORNENIE: Tento súbor overuje integritu (zhodu obsahu), nie pravdivosť
+  // tvrdení ani súdnu prípustnosť dôkazov.
+  const exportObj = {
+    _disclaimer:
+      "Tento manifest overuje integritu (zhodu obsahu) reportu — NIE pravdivosť tvrdení, " +
+      "ani súdnu prípustnosť dôkazov. SHA-256 hash nie je elektronický podpis ani pečať.",
+    manifest_sha256: manifestSha256,
+    manifest,
+  };
+
+  const json = JSON.stringify(exportObj, null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const safeId = (dossier.caseId ?? "export").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
+  a.download = `forenx-manifest-${safeId}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export function buildReportHTML(
   dossier: ForensicDossier,
   knownEvidence: ReadonlySet<string> = NO_VERIFIED_EVIDENCE,

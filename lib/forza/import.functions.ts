@@ -100,8 +100,8 @@ const commitRow = z.object({
 /** Atomické potvrdenie: databázová funkcia zapíše všetky riadky, alebo žiadny. */
 export const commitImport = createServerFn({ method: "POST", id: "import/commitImport" })
   .middleware([requireSupabaseAuth])
-  .validator((input: unknown) =>
-    z
+  .validator((input: unknown) => {
+    const parsed = z
       .object({
         importId: uuid,
         rows: z.array(commitRow).min(1).max(IMPORT_MAX_ROWS),
@@ -109,8 +109,32 @@ export const commitImport = createServerFn({ method: "POST", id: "import/commitI
       .refine((v) => v.rows.every((r) => r.from_id !== r.to_id), {
         message: "Odosielateľ a príjemca nesmú byť rovnaký subjekt.",
       })
-      .parse(input),
-  )
+      .parse(input);
+
+    // P4: Detekcia duplicít — identické transakcie (dátum, suma, mena, od, ku)
+    // nesmú byť čiastočne skryté, chyba musí byť zreteľná so zdrojovými riadkami.
+    const seen = new Map<string, number>();
+    const duplicateRows: number[] = [];
+    for (const row of parsed.rows) {
+      const key = `${row.date}|${row.amount}|${row.currency}|${row.from_id}|${row.to_id}`;
+      const prev = seen.get(key);
+      if (prev !== undefined) {
+        if (!duplicateRows.includes(prev)) duplicateRows.push(prev);
+        duplicateRows.push(row.source_row);
+      } else {
+        seen.set(key, row.source_row);
+      }
+    }
+    if (duplicateRows.length > 0) {
+      const listed = duplicateRows.slice(0, 10).join(", ");
+      const suffix = duplicateRows.length > 10 ? ` … a ďalšie (${duplicateRows.length} celkom)` : "";
+      throw new Error(
+        `Vstupné riadky obsahujú duplicitné transakcie (rovnaký dátum, suma, mena, odosielateľ a príjemca). ` +
+          `Duplicitné riadky: ${listed}${suffix}. Opravte CSV pred importom.`,
+      );
+    }
+    return parsed;
+  })
   .handler(async ({ data, context }) => {
     // Zápis beží len na serveri; vlastníctvo importu overuje databáza voči
     // overenej identite z auth middleware.
