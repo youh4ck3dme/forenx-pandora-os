@@ -48,6 +48,10 @@ describe("public health calculations", () => {
       },
       1,
       true,
+      {
+        s3Configured: true,
+        s3Available: true,
+      },
     );
     const serialized = JSON.stringify(response);
 
@@ -56,6 +60,38 @@ describe("public health calculations", () => {
     expect(serialized).not.toContain("input_summary");
     expect(serialized).not.toContain("error_message");
     expect(serialized).not.toContain("postgresql://");
+
+    // P5: Every check has an ISO measuredAt timestamp
+    for (const check of response.checks) {
+      expect(check.measuredAt).toBeDefined();
+      expect(new Date(check.measuredAt!).getTime()).not.toBeNaN();
+    }
+
+    // P5: S3 vault and Supabase document storage are distinct checks
+    const byId = new Map(response.checks.map((check) => [check.id, check]));
+    expect(byId.get("document-storage")).toBeDefined();
+    expect(byId.get("s3-vault")).toBeDefined();
+    expect(byId.get("s3-vault")?.status).toBe("ok");
+    expect(byId.get("s3-vault")?.value).toContain("S3 WORM");
+  });
+
+  it("evaluates AI failure attention threshold strictly before rounding (Blueprint P5)", () => {
+    // 5 failures out of 49 total = 10.204% failure rate
+    // If rounded first, success rate is 44/49 = 89.79% -> 90% (which would look like 10% failure)
+    // Evaluated before rounding: 5/49 = 0.102 > 0.10 -> attention!
+    expect(getAiSuccessStatus(49, 5)).toBe("attention");
+    // 1 failure out of 11 total = 9.09% failure rate -> ok
+    expect(getAiSuccessStatus(11, 1)).toBe("ok");
+  });
+
+  it("distinguishes S3 vault failure from Supabase storage success", () => {
+    const response = buildPublicHealthResponse(null, 2, true, {
+      s3Configured: true,
+      s3Available: false,
+    });
+    const byId = new Map(response.checks.map((check) => [check.id, check]));
+    expect(byId.get("document-storage")?.status).toBe("ok");
+    expect(byId.get("s3-vault")?.status).toBe("unavailable");
   });
 });
 

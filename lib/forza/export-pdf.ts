@@ -842,3 +842,62 @@ function strengthEmoji(light: string): string {
   if (light === "red") return "🔴";
   return "⚪";
 }
+
+/**
+ * P5: Lokálny self-test PDF exportu v prehliadači.
+ * Skontroluje window.print rozhranie a overí generovanie syntetického reportu s SHA-256 manifestom.
+ */
+export function testPdfExportCapability(): {
+  available: boolean;
+  value: string;
+  status: "ok" | "unavailable";
+  reason?: string;
+} {
+  if (typeof window === "undefined") {
+    return {
+      available: false,
+      value: "Nedostupné na serveri",
+      status: "unavailable",
+      reason: "Server-side prostredie nepodporuje window.print",
+    };
+  }
+
+  if (typeof window.print !== "function") {
+    return {
+      available: false,
+      value: "Tlač v prehliadači nepodporovaná",
+      status: "unavailable",
+      reason: "window.print nie je k dispozícii",
+    };
+  }
+
+  try {
+    const dummyDossier: ForensicDossier = {
+      caseId: "00000000-0000-0000-0000-000000000000",
+      caseTitle: "Self-test",
+      defendabilityIndex: 100,
+      generatedAt: new Date().toISOString(),
+      facts: { timeline: [], traces: [] },
+      defenseAttack: { overallRisk: "NÍZKE", attacks: [] },
+      evidenceStrength: { traces: [], paragraphs: [] },
+      judgeReadyText: { skutkovyStav: "Test", vyporiadanie: "Test", vedecke: "Test" },
+    };
+    const pkg = buildReportPackage(dummyDossier, NO_VERIFIED_EVIDENCE);
+    if (!pkg.html || !pkg.manifestSha256) {
+      throw new Error("Generovanie testovacieho reportu zlyhalo");
+    }
+
+    return {
+      available: true,
+      value: "Lokálny self-test úspešný (print + manifest)",
+      status: "ok",
+    };
+  } catch (err) {
+    return {
+      available: false,
+      value: "Chyba lokálneho self-testu",
+      status: "unavailable",
+      reason: err instanceof Error ? err.message : String(err),
+    };
+  }
+}

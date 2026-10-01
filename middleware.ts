@@ -414,6 +414,19 @@ export async function middleware(
   request: NextRequest,
   _event?: any
 ): Promise<NextResponse> {
+  const correlationId = request.headers.get('x-correlation-id') || crypto.randomUUID();
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-correlation-id', correlationId);
+
+  const respond = (res: NextResponse): NextResponse => {
+    res.headers.set('x-correlation-id', correlationId);
+    return res;
+  };
+
+  const next = (): NextResponse => {
+    return respond(NextResponse.next({ request: { headers: requestHeaders } }));
+  };
+
   const pathname = request.nextUrl.pathname;
 
   // 1. Root route: directed navigation according to blueprint invariant
@@ -422,9 +435,9 @@ export async function middleware(
   if (pathname === '/') {
     const session = await getSessionFromRequest(request);
     if (session) {
-      return NextResponse.redirect(new URL('/browser/', request.nextUrl));
+      return respond(NextResponse.redirect(new URL('/browser/', request.nextUrl)));
     }
-    return NextResponse.redirect(new URL('/auth/login/?next=%2Fbrowser%2F', request.nextUrl));
+    return respond(NextResponse.redirect(new URL('/auth/login/?next=%2Fbrowser%2F', request.nextUrl)));
   }
 
   // Get route category
@@ -432,12 +445,12 @@ export async function middleware(
 
   // PUBLIC routes: allow through without authentication
   if (category === 'PUBLIC') {
-    return NextResponse.next();
+    return next();
   }
 
   // SYSTEM routes: allow through (they have their own auth mechanisms)
   if (category === 'SYSTEM') {
-    return NextResponse.next();
+    return next();
   }
 
   // PROTECTED ROUTES: Require authentication
@@ -451,9 +464,11 @@ export async function middleware(
     if (isApiRoute) {
       // API routes: return 401 JSON, never redirect to HTML login
       // This prevents open redirect vulnerabilities and provides clean API errors
-      return NextResponse.json(
-        { error: 'Unauthorized: Authentication required' },
-        { status: 401 }
+      return respond(
+        NextResponse.json(
+          { error: 'Unauthorized: Authentication required' },
+          { status: 401 }
+        )
       );
     }
 
@@ -483,7 +498,7 @@ export async function middleware(
 
     // Special case: if we're already on the login page or an auth page, don't redirect
     if (pathname === '/auth' || pathname.startsWith('/auth/')) {
-      return NextResponse.next();
+      return next();
     }
 
     const response = NextResponse.redirect(new URL(redirectUrl, request.nextUrl));
@@ -491,13 +506,13 @@ export async function middleware(
     // Clear any potentially stale auth cookies
     // Note: We don't clear the actual Supabase cookies as they're httpOnly
     // and the redirect to login will handle the auth flow
-    return response;
+    return respond(response);
   }
 
   // If session was refreshed during validation, persist new tokens in response cookies
   const refreshedSession = session.refreshedSession;
   if (refreshedSession) {
-    const response = NextResponse.next();
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
     const isProd = process.env.NODE_ENV === 'production';
     response.cookies.set('sb-access-token', refreshedSession.access_token, {
       path: '/',
@@ -513,7 +528,7 @@ export async function middleware(
         secure: isProd,
       });
     }
-    return response;
+    return respond(response);
   }
 
   // Authenticated user - check if route requires project/case access
@@ -522,18 +537,18 @@ export async function middleware(
     // Case ownership verification should happen at the page/API level
     // where the specific case ID is known
     // This is consistent with the current vault-auth pattern
-    return NextResponse.next();
+    return next();
   }
 
   // ROLE_REQUIRED: Placeholder for future role checking
   if (category === 'ROLE_REQUIRED') {
     // For now, treat same as AUTHENTICATED
     // Future: check user role from session
-    return NextResponse.next();
+    return next();
   }
 
   // AUTHENTICATED routes with valid session
-  return NextResponse.next();
+  return next();
 }
 
 // ============================================================================

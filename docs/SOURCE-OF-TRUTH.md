@@ -175,6 +175,15 @@ agregované metriky bez secrets, používateľských identifikátorov, obsahu lo
 promptov a stack traces. Zápisové API a administrátorský health endpoint sa
 nesmú použiť ako verejný dátový zdroj.
 
+### 7.1 Pravdivý live stav a diagnostika (Blueprint P5)
+
+- **Kategorizácia a rozlíšenie úložísk:** Live stav pokrýva aplikačný server, databázu (dostupnosť, odozva, pripojenia, transakcie, zámky, veľkosť), evidenciu spisov, samostatné úložisko dokumentov Supabase, samostatný Hetzner S3 Trezor príloh, konfigurácie modelov Mistral (chat a analýza), telemetriu a úspešnosť AI, systémové chyby a lokálny PDF export. Úspešná kontrola jedného úložiska nesmie dokazovať dostupnosť druhého.
+- **Bezpečná a nezvrstvená cache:** Endpoint `/api/health/public` vracia `Cache-Control: public, max-age=15, no-transform` bez CDN `stale-while-revalidate` okna. Zlyhané meranie sa nikdy neukladá do cache ako platný stav.
+- **Čerstvosť meraní a varovanie pred zastaraním:** Každá položka obsahuje atribút `measuredAt`. UI automaticky obnovuje stav pri otvorení, každých 15 sekúnd a manuálne. Ak je meranie staršie ako 60 sekúnd, UI zobrazí varovanie o zastaranom stave. Pri chybe refreshu zostáva zobrazený posledný známy stav s jasným upozornením.
+- **Hodnotenie AI úspešnosti:** Hranica chybovosti 10 % sa vyhodnocuje pred zaokrúhlením. Pri nulovom počte AI volaní je hodnota transparentne „Bez meraní“ so stavom `unavailable`, nikdy nie falošných 100 % úspešnosti.
+- **Lokálny self-test PDF exportu:** Schopnosť exportu do PDF sa nehlási pevnou hodnotou `ok`, ale reálnym klientskym self-testom overujúcim `window.print` rozhranie a generovanie syntetického reportu s SHA-256 manifestom.
+- **Korelačné ID:** Middleware generuje alebo propaguje hlavičku `x-correlation-id` pre sledovateľnosť požiadaviek naprieč UI, API, S3 trezorom a workerom bez zaznamenávania citlivých údajov.
+
 Povinné UI stavy:
 
 - `idle` — nič sa nespúšťa,

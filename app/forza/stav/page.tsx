@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -12,6 +13,7 @@ import {
   Loader2,
   RefreshCw,
   Server,
+  ShieldCheck,
   TriangleAlert,
   XCircle,
 } from "lucide-react";
@@ -30,6 +32,7 @@ import {
   type PublicHealthResponse,
   type PublicHealthStatus,
 } from "@/lib/forza/public-health";
+import { testPdfExportCapability } from "@/lib/forza/export-pdf";
 
 const CHECK_ICONS = {
   "application-server": Server,
@@ -41,6 +44,7 @@ const CHECK_ICONS = {
   "waiting-locks": CircleAlert,
   "database-size": Database,
   "document-storage": FolderOpen,
+  "s3-vault": ShieldCheck,
   "mistral-chat": Server,
   "mistral-analysis": Server,
   "ai-telemetry": Gauge,
@@ -80,6 +84,7 @@ async function fetchPublicHealth(): Promise<PublicHealthResponse> {
   }
   return parsed.data;
 }
+
 function formatCheckedAt(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "čas neznámy";
@@ -89,6 +94,7 @@ function formatCheckedAt(value: string): string {
     second: "2-digit",
   });
 }
+
 function StatusBadge({ status }: { status: PublicHealthStatus }) {
   const Icon = STATUS_ICONS[status];
   return (
@@ -102,8 +108,17 @@ function StatusBadge({ status }: { status: PublicHealthStatus }) {
   );
 }
 
-function HealthCheckCard({ check }: { check: PublicHealthCheck }) {
+function HealthCheckCard({
+  check,
+  checkedAt,
+}: {
+  check: PublicHealthCheck;
+  checkedAt: string;
+}) {
   const Icon = CHECK_ICONS[check.id as keyof typeof CHECK_ICONS] ?? Gauge;
+  const measurementTimestamp = check.measuredAt || checkedAt;
+  const isStale = Date.now() - new Date(measurementTimestamp).getTime() > 60_000;
+
   return (
     <Card className="flex min-h-36 flex-col gap-3 border-white/15 bg-black/75 p-4">
       <div className="flex items-start justify-between gap-3">
@@ -118,11 +133,19 @@ function HealthCheckCard({ check }: { check: PublicHealthCheck }) {
         <StatusBadge status={check.status} />
       </div>
       <p className="text-xs leading-relaxed text-white/65">{check.description}</p>
-      <div className="mt-auto border-t border-white/10 pt-3">
-        <p className="text-sm font-bold text-white">{check.value}</p>
-        <p className="mt-1 text-[10px] text-white/45">
-          {check.measurement === "live" ? "Live meranie" : "Lokálna schopnosť klienta"}
-        </p>
+      <div className="mt-auto flex flex-col gap-1 border-t border-white/10 pt-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="text-sm font-bold text-white">{check.value}</p>
+          {isStale ? (
+            <span className="rounded bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-semibold text-amber-300">
+              Zastarané (&gt;60s)
+            </span>
+          ) : null}
+        </div>
+        <div className="flex items-center justify-between text-[10px] text-white/45">
+          <span>{check.measurement === "live" ? "Live meranie" : "Lokálna schopnosť klienta"}</span>
+          <span>{formatCheckedAt(measurementTimestamp)}</span>
+        </div>
       </div>
     </Card>
   );
@@ -160,6 +183,28 @@ export default function StavPage() {
     refetchOnWindowFocus: true,
     retry: 1,
   });
+
+  // P5: Lokálny self-test PDF exportu v prehliadači namiesto fixnej hodnoty
+  const pdfSelfTest = useMemo(() => {
+    return testPdfExportCapability();
+  }, []);
+
+  const checksWithClientTests = useMemo(() => {
+    if (!query.data) return [];
+    return query.data.checks.map((check) => {
+      if (check.id === "pdf-export" && pdfSelfTest) {
+        return {
+          ...check,
+          status: pdfSelfTest.status,
+          value: pdfSelfTest.value,
+          description: pdfSelfTest.reason
+            ? `Lokálny self-test: ${pdfSelfTest.reason}`
+            : "Lokálny self-test v prehliadači overil window.print rozhranie aj generovanie reportu a manifestu.",
+        };
+      }
+      return check;
+    });
+  }, [query.data, pdfSelfTest]);
 
   const lastUpdateError = query.isError && query.data
     ? "Aktualizácia zlyhala. Zobrazuje sa posledný úspešne načítaný stav."
@@ -215,8 +260,12 @@ export default function StavPage() {
               Kontroly systému
             </SectionTitle>
             <div className="grid gap-3 lg:grid-cols-2">
-              {query.data.checks.map((check) => (
-                <HealthCheckCard key={check.id} check={check} />
+              {checksWithClientTests.map((check) => (
+                <HealthCheckCard
+                  key={check.id}
+                  check={check}
+                  checkedAt={query.data.checkedAt}
+                />
               ))}
             </div>
           </>
@@ -226,3 +275,4 @@ export default function StavPage() {
     </PhoneFrame>
   );
 }
+

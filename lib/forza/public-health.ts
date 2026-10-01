@@ -9,6 +9,7 @@ export type PublicHealthCheck = {
   value: string;
   status: PublicHealthStatus;
   measurement: "live" | "capability";
+  measuredAt?: string;
 };
 
 export type PublicHealthResponse = {
@@ -28,6 +29,7 @@ export const PublicHealthResponseSchema = z.object({
       value: z.string().min(1),
       status: z.enum(["ok", "attention", "unavailable"]),
       measurement: z.enum(["live", "capability"]),
+      measuredAt: z.string().datetime().optional(),
     }),
   ),
 });
@@ -64,9 +66,12 @@ export function getAiSuccessStatus(
   total: number,
   failures: number,
 ): PublicHealthStatus {
-  const rate = calculateAiSuccessRate(total, failures);
-  if (rate === null) return "unavailable";
-  return rate < 100 - AI_FAILURE_ATTENTION_THRESHOLD_PERCENT
+  if (!Number.isInteger(total) || total < 0) return "unavailable";
+  if (!Number.isInteger(failures) || failures < 0 || failures > total) return "unavailable";
+  if (total === 0) return "unavailable";
+  // P5: Hranica chybovosti 10 % sa vyhodnocuje pred zaokrúhlením
+  const failureRate = failures / total;
+  return failureRate > AI_FAILURE_ATTENTION_THRESHOLD_PERCENT / 100
     ? "attention"
     : "ok";
 }
@@ -94,6 +99,7 @@ const unavailable = (
   title: string,
   description: string,
   measurement: PublicHealthCheck["measurement"] = "live",
+  measuredAt?: string,
 ): PublicHealthCheck => ({
   id,
   title,
@@ -101,6 +107,7 @@ const unavailable = (
   value: "Nedostupné",
   status: "unavailable",
   measurement,
+  ...(measuredAt ? { measuredAt } : {}),
 });
 
 export function buildPublicHealthResponse(
@@ -110,11 +117,16 @@ export function buildPublicHealthResponse(
   options?: {
     aiChatConfigured?: boolean;
     aiAnalysisConfigured?: boolean;
+    s3Configured?: boolean;
+    s3Available?: boolean;
   },
 ): PublicHealthResponse {
+  const nowIso = new Date().toISOString();
   const checks: PublicHealthCheck[] = [];
   const aiChatConfigured = Boolean(options?.aiChatConfigured);
   const aiAnalysisConfigured = Boolean(options?.aiAnalysisConfigured);
+  const s3Configured = Boolean(options?.s3Configured);
+  const s3Available = options?.s3Available ?? s3Configured;
 
   checks.push({
     id: "application-server",
@@ -123,6 +135,7 @@ export function buildPublicHealthResponse(
     value: "Dostupný",
     status: "ok",
     measurement: "live",
+    measuredAt: nowIso,
   });
 
   if (snapshot) {
@@ -141,6 +154,7 @@ export function buildPublicHealthResponse(
         value: "Dostupná",
         status: "ok",
         measurement: "live",
+        measuredAt: nowIso,
       },
       {
         id: "case-storage",
@@ -149,6 +163,7 @@ export function buildPublicHealthResponse(
         value: `${snapshot.case_count} ${snapshot.case_count === 1 ? "záznam" : "záznamov"}`,
         status: "ok",
         measurement: "live",
+        measuredAt: nowIso,
       },
       {
         id: "database-latency",
@@ -157,6 +172,7 @@ export function buildPublicHealthResponse(
         value: `${snapshot.latency_ms} ms`,
         status: "ok",
         measurement: "live",
+        measuredAt: nowIso,
       },
       {
         id: "database-connections",
@@ -165,6 +181,7 @@ export function buildPublicHealthResponse(
         value: `${snapshot.total_connections} z ${snapshot.max_connections} pripojení`,
         status: connectionStatus,
         measurement: "live",
+        measuredAt: nowIso,
       },
       {
         id: "idle-transactions",
@@ -173,6 +190,7 @@ export function buildPublicHealthResponse(
         value: `${snapshot.idle_in_transaction}`,
         status: snapshot.idle_in_transaction === 0 ? "ok" : "attention",
         measurement: "live",
+        measuredAt: nowIso,
       },
       {
         id: "waiting-locks",
@@ -181,6 +199,7 @@ export function buildPublicHealthResponse(
         value: `${snapshot.waiting_connections}`,
         status: snapshot.waiting_connections === 0 ? "ok" : "attention",
         measurement: "live",
+        measuredAt: nowIso,
       },
       {
         id: "database-size",
@@ -189,6 +208,7 @@ export function buildPublicHealthResponse(
         value: formatBytes(snapshot.database_size_bytes),
         status: "ok",
         measurement: "live",
+        measuredAt: nowIso,
       },
       {
         id: "ai-telemetry",
@@ -197,6 +217,7 @@ export function buildPublicHealthResponse(
         value: `${snapshot.ai_total} volaní`,
         status: "ok",
         measurement: "live",
+        measuredAt: nowIso,
       },
       {
         id: "ai-success",
@@ -204,10 +225,11 @@ export function buildPublicHealthResponse(
         description: "Úspešnosť sa označí ako vyžadujúca pozornosť pri viac než 10 % zlyhaní.",
         value:
           aiRate === null
-            ? "Žiadne merania"
+            ? "Bez meraní"
             : `${aiRate} % úspešnosť (${snapshot.ai_failures} z ${snapshot.ai_total} zlyhaní)`,
         status: aiStatus,
         measurement: "live",
+        measuredAt: nowIso,
       },
       {
         id: "system-errors",
@@ -216,33 +238,47 @@ export function buildPublicHealthResponse(
         value: `${snapshot.error_count} udalostí`,
         status: snapshot.error_count === 0 ? "ok" : "attention",
         measurement: "live",
+        measuredAt: nowIso,
       },
     );
   } else {
     checks.push(
-      unavailable("database", "PostgreSQL databáza", "Databázový health snapshot sa nepodarilo načítať."),
-      unavailable("case-storage", "Úložisko spisov", "Počet spisov sa nepodarilo overiť."),
-      unavailable("database-latency", "Odozva databázy", "Odozvu databázy sa nepodarilo zmerať."),
-      unavailable("database-connections", "Limit pripojení databázy", "Stav pripojení sa nepodarilo načítať."),
-      unavailable("idle-transactions", "Otvorené databázové transakcie", "Stav transakcií sa nepodarilo načítať."),
-      unavailable("waiting-locks", "Čakanie na databázové zámky", "Stav zámkov sa nepodarilo načítať."),
-      unavailable("database-size", "Veľkosť databázy", "Veľkosť databázy sa nepodarilo načítať."),
-      unavailable("ai-telemetry", "Telemetria AI volaní", "Telemetriu AI sa nepodarilo načítať."),
-      unavailable("ai-success", "Úspešnosť AI za 24 hodín", "Úspešnosť AI sa nepodarilo vypočítať."),
-      unavailable("system-errors", "Záznam systémových chýb", "Záznamy chýb sa nepodarilo načítať."),
+      unavailable("database", "PostgreSQL databáza", "Databázový health snapshot sa nepodarilo načítať.", "live", nowIso),
+      unavailable("case-storage", "Úložisko spisov", "Počet spisov sa nepodarilo overiť.", "live", nowIso),
+      unavailable("database-latency", "Odozva databázy", "Odozvu databázy sa nepodarilo zmerať.", "live", nowIso),
+      unavailable("database-connections", "Limit pripojení databázy", "Stav pripojení sa nepodarilo načítať.", "live", nowIso),
+      unavailable("idle-transactions", "Otvorené databázové transakcie", "Stav transakcií sa nepodarilo načítať.", "live", nowIso),
+      unavailable("waiting-locks", "Čakanie na databázové zámky", "Stav zámkov sa nepodarilo načítať.", "live", nowIso),
+      unavailable("database-size", "Veľkosť databázy", "Veľkosť databázy sa nepodarilo načítať.", "live", nowIso),
+      unavailable("ai-telemetry", "Telemetria AI volaní", "Telemetriu AI sa nepodarilo načítať.", "live", nowIso),
+      unavailable("ai-success", "Úspešnosť AI za 24 hodín", "Úspešnosť AI sa nepodarilo vypočítať.", "live", nowIso),
+      unavailable("system-errors", "Záznam systémových chýb", "Záznamy chýb sa nepodarilo načítať.", "live", nowIso),
     );
   }
 
+  // P5: Rozlíšiť Supabase Storage od skutočného S3 trezoru príloh
   checks.push(
     {
       id: "document-storage",
-      title: "Úložisko dokumentov",
+      title: "Úložisko dokumentov (Supabase)",
       description: "Dostupnosť konfigurovaných Supabase storage bucketov.",
       value: storageAvailable && storageBucketCount !== null
         ? `${storageBucketCount} ${storageBucketCount === 1 ? "úložný priestor" : "úložných priestorov"}`
         : "Nedostupné",
       status: storageAvailable ? "ok" : "unavailable",
       measurement: "live",
+      measuredAt: nowIso,
+    },
+    {
+      id: "s3-vault",
+      title: "S3 Trezor príloh",
+      description: "Samostatné overenie dostupnosti externého Hetzner S3/WORM trezoru príloh.",
+      value: s3Configured
+        ? (s3Available ? "Aktívny (S3 WORM)" : "Nedostupný")
+        : "Nenakonfigurovaný",
+      status: s3Configured ? (s3Available ? "ok" : "unavailable") : "attention",
+      measurement: "live",
+      measuredAt: nowIso,
     },
     {
       id: "mistral-chat",
@@ -250,7 +286,8 @@ export function buildPublicHealthResponse(
       description: "Konfigurácia serverového kľúča pre chat a kontroly.",
       value: aiChatConfigured ? "Nakonfigurovaný" : "Nenakonfigurovaný",
       status: aiChatConfigured ? "ok" : "attention",
-      measurement: "live",
+      measurement: "capability",
+      measuredAt: nowIso,
     },
     {
       id: "mistral-analysis",
@@ -258,7 +295,8 @@ export function buildPublicHealthResponse(
       description: "Konfigurácia serverového kľúča pre analýzu dokumentov a OCR.",
       value: aiAnalysisConfigured ? "Nakonfigurovaný" : "Nenakonfigurovaný",
       status: aiAnalysisConfigured ? "ok" : "attention",
-      measurement: "live",
+      measurement: "capability",
+      measuredAt: nowIso,
     },
     {
       id: "pdf-export",
@@ -267,12 +305,14 @@ export function buildPublicHealthResponse(
       value: "Dostupný v prehliadači",
       status: "ok",
       measurement: "capability",
+      measuredAt: nowIso,
     },
   );
 
   return {
-    checkedAt: new Date().toISOString(),
+    checkedAt: nowIso,
     overallStatus: getOverallHealthStatus(checks.map((check) => check.status)),
     checks,
   };
 }
+

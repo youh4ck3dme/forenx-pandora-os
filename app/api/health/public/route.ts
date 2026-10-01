@@ -12,6 +12,7 @@ import {
   getCachedPublicHealth,
 } from "@/lib/forza/public-health-cache.server";
 import { mistralConfigured } from "@/lib/forza/ai/llm.server";
+import { isS3Configured } from "@/lib/storage/s3-vault";
 import {
   getRateLimiter,
   type RateLimitRule,
@@ -66,6 +67,7 @@ async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number): Promi
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const correlationId = request.headers.get("x-correlation-id") || crypto.randomUUID();
   const rate = await getRateLimiter().hit(
     PUBLIC_HEALTH_RATE_LIMIT,
     requestRateLimitKey(request),
@@ -75,7 +77,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       { error: rate.unavailable ? "Stav systému nie je možné overiť." : "Príliš veľa požiadaviek." },
       {
         status: rate.unavailable ? 503 : 429,
-        headers: { "Cache-Control": "no-store" },
+        headers: { "Cache-Control": "no-store", "x-correlation-id": correlationId },
       },
     );
   }
@@ -86,8 +88,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json(cachedHealth, {
       status: 200,
       headers: {
-        "Cache-Control": "public, max-age=15, stale-while-revalidate=30",
+        // P5: Zrušiť vrstvenie cache (bez stale-while-revalidate okna)
+        "Cache-Control": "public, max-age=15, no-transform",
         "X-Health-Cache": "HIT",
+        "x-correlation-id": correlationId,
       },
     });
   }
@@ -119,6 +123,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       {
         aiChatConfigured: mistralConfigured("chat"),
         aiAnalysisConfigured: mistralConfigured("analysis"),
+        s3Configured: isS3Configured(),
       },
     );
     const parsedResponse = PublicHealthResponseSchema.safeParse(candidateResponse);
@@ -129,7 +134,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           overallStatus: "unavailable",
           checks: [],
         },
-        { status: 503, headers: { "Cache-Control": "no-store" } },
+        { status: 503, headers: { "Cache-Control": "no-store", "x-correlation-id": correlationId } },
       );
     }
     const response = parsedResponse.data;
@@ -144,8 +149,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json(response, {
       status: 200,
       headers: {
-        "Cache-Control": "public, max-age=15, stale-while-revalidate=30",
+        // P5: Zrušiť vrstvenie cache (bez stale-while-revalidate okna)
+        "Cache-Control": "public, max-age=15, no-transform",
         "X-Health-Cache": "MISS",
+        "x-correlation-id": correlationId,
       },
     });
   } catch {
@@ -155,7 +162,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         overallStatus: "unavailable",
         checks: [],
       },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
+      { status: 503, headers: { "Cache-Control": "no-store", "x-correlation-id": correlationId } },
     );
   }
 }
+

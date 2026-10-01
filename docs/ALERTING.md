@@ -4,11 +4,18 @@ Zdroj pravdy pre operatívne metriky PANDORA ForenX OS. Endpoint
 `GET /api/health/observe` (iba administrátor) vracia agregáty za 24 h
 (`public.health_metrics()`) aj s vyhodnotenými alert prahmi.
 
-## Alert prahy
+## Alert prahy (Blueprint P5)
 
 | Alert | Prah | Zdroj dát | Závažnosť |
 |---|---|---|---|
-| `ai_timeouts_over_60s` | akékoľvek AI volanie > 60 s (alebo `error_code = 'timeout'`) v okne 24 h | `ai_usage` | vysoká |
+| `disk_usage_80pct` | Využitie disku VPS >= 80 % | VPS monitor (`df -h`) | stredná |
+| `disk_usage_90pct` | Využitie disku VPS >= 90 % | VPS monitor (`df -h`) | kritická |
+| `repeated_5xx_errors` | >= 5 chýb 5xx za 5 minút v aplikačných logoch | NGINX/Apache proxy / Next.js logy | vysoká |
+| `db_storage_unavailable` | Databáza alebo S3 Trezor nedostupný pri health checku | `GET /api/health/public` | kritická |
+| `verification_stuck` | Dôkaz v stave `checking` / `pending` dlhšie ako 10 minút | `evidence_items` | vysoká |
+| `backup_failure` | Posledná plánovaná záloha zlyhala alebo chýba > 24 h | Backup log / cron | kritická |
+| `ai_failure_rate_over_10pct` | > 10 % AI volaní zlyhalo za 24 h (pred zaokrúhlením) | `ai_usage` / `public_health_snapshot` | stredná |
+| `ai_timeouts_over_60s` | Akékoľvek AI volanie > 60 s (alebo `error_code = 'timeout'`) v okne 24 h | `ai_usage` | vysoká |
 | `s3_failure_rate_over_1pct` | > 1 % dôkazov v stave `mismatch` / `object_missing` / `error` v okne 24 h | `evidence_items` | kritická |
 | `supabase_errors_high` | >= 10 záznamov v `error_logs` za 24 h | `error_logs` | stredná |
 
