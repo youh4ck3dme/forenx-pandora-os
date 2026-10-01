@@ -81,19 +81,34 @@ export function isInternalPath(path: string | null | undefined): boolean {
 export function validateRedirectTarget(next: string | null | undefined): string | null {
   if (!next) return null;
   
+  let target = next.trim();
+  if (!target) return null;
+
+  // Reject dangerous characters like backslashes, encoded slashes, and null bytes
+  if (target.includes('%2F') || target.includes('%5C') || target.includes('\\') || target.includes('%00')) {
+    return null;
+  }
+
+  // Safely decode URI component if encoded (e.g. %2Fbrowser%2F -> /browser/)
+  try {
+    target = decodeURIComponent(target);
+  } catch {
+    return null;
+  }
+
   // Reject absolute URLs
-  if (next.startsWith('http://') || next.startsWith('https://') || next.startsWith('//')) {
+  if (target.startsWith('http://') || target.startsWith('https://') || target.startsWith('//')) {
     return null;
   }
   
   // Reject javascript: and data: URLs
-  if (next.toLowerCase().startsWith('javascript:') || next.toLowerCase().startsWith('data:')) {
+  if (target.toLowerCase().startsWith('javascript:') || target.toLowerCase().startsWith('data:')) {
     return null;
   }
   
   // Parse the path
   try {
-    const url = new URL(next, 'http://dummy.example');
+    const url = new URL(target, 'http://dummy.example');
     const pathname = url.pathname;
     const search = url.search;
     const hash = url.hash;
@@ -112,11 +127,11 @@ export function validateRedirectTarget(next: string | null | undefined): string 
     return `${pathname}${search}${hash}`;
   } catch {
     // If URL parsing fails, check if it's a simple path
-    const cleanNext = next.split('?')[0].split('#')[0];
+    const cleanNext = target.split('?')[0].split('#')[0];
     
     if (isInternalPath(cleanNext)) {
       // It's an internal path, allow it as-is
-      return next;
+      return target;
     }
     
     return null;

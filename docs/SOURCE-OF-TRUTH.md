@@ -103,6 +103,15 @@ Zakázané:
 - použiť neoverenú URL alebo neznámy hostname na download,
 - vymazať auditný záznam, aby sa skryl neúspešný pokus.
 
+### 5.1 Priamy upload do S3 a WORM Trezora (Blueprint P3)
+
+- **Pre-flight SHA-256 a presign:** Klient pred uploadom spočíta SHA-256 hash cez `crypto.subtle.digest`. Následne požiada server o presigned URL (`POST /api/vault/presign`) s overením existencie a vlastníctva `caseId` (striktne UUID).
+- **Fail-closed správanie pri uploade:** Pri HTTP 401/403 je proces uploadu okamžite zastavený s chybou prístupu. Je zakázané prepnúť na neoverený unauthenticated multipart fallback.
+- **Autorizovaný presigned download:** Endpoint `GET /api/vault?storageKey=...&action=presign` vydá presigned URL na stiahnutie iba v prípade, že `storageKey` existuje v `evidence_items` ledgeri a patrí autentifikovanému vyšetrovateľovi s prístupom k danému spisu (ochrana pred IDOR a neautorizovaným čítaním z bucketu).
+- **Podpora mobilného forenzného triage (ALEAPP, iLEAPP, Andriller):** Súbory z mobilných extrakcií (`.tar`, `.gz`, `.tgz`, `.ab`, `.zip`), databázy (`.sqlite`, `.db`, `.sqlite3`), auditné logy (`.log`, `.txt`), ako aj výstupy reportérov ALEAPP / iLEAPP / Andriller sú automaticky tagované a prijaté do úložiska s výpočtom SHA-256 integrity.
+- **Asynchrónna periodická verifikácia integrity (VPS cron):** Skript `deploy/vps/verify-cron.sh` (inštalovaný cez `deploy/vps/setup-verification-cron.sh`) beží v intervale `*/2 * * * *` a volá `/api/vault/verify?limit=25` autorizovaný cez tajomstvo `CRON_SECRET` (min. 32 znakov). Pri zistení nesúladu hashu prepne stav položky na `compromised`.
+- **Zákaz analýzy neoverených dôkazov v UI:** Tlačidlo „Odoslať na AI analýzu“ je v `evidence-vault-panel.tsx` povolené výhradne pre položky so stavom `integrityStatus === 'verified'`. Položky so stavom `checking` alebo `compromised` majú akciu zablokovanú (`AI OUTPUT ≠ EVIDENCE`).
+
 ## 6. AI a ForenZX kontrakt
 
 AI vstup prechádza privacy gateway. Pred odoslaním sa odstránia alebo pseudonymizujú citlivé údaje podľa existujúcich modulov:
@@ -232,10 +241,14 @@ Negatívne testy musia overiť minimálne:
 ## 10. Deployment a zodpovednosť
 
 - `main` je zdrojový branch iba po úspešných relevantných kontrolách.
-- Staging a produkcia musia mať oddelené databázy, buckety, secrets, URL a testovacie UUID.
+- Východiskový verifikovaný commit je `86597c4cefbb71c6da29d53fe67a93b9f120dd34`.
+- Produkčný projekt Supabase je `tlmuvzrgighahnjkxoyw`. Staging a produkcia musia mať oddelené databázy, buckety, secrets, URL a testovacie UUID.
+- Produkčný VPS runtime: Porty 80/443 obsluhuje Apache/httpd ako reverzná proxy smerujúca na loopback `:3005`. Dôvera proxy hlavičkám (`x-forwarded-for`, `x-forwarded-proto`) patrí výhradne lokálnemu Apache proxy (`127.0.0.1`).
+- Kontajnerový runtime je zjednotený na **Node.js 22 LTS** (`docker/Dockerfile.production`).
+- Build prebieha deterministicky v Linux GitHub Actions, nie na produkčnom VPS. Runtime image sa publikuje do privátneho GHCR a nasadzuje striktne podľa digestu (`sha256:...`).
 - Žiadny regresný fixture nesmie používať produkčné dáta.
 - Deployment nie je dôkaz funkčnosti; po deploymente sa overia health endpointy, migrácie, MCP kontrakt a príslušný E2E test.
-- Rollback musí byť možný bez mazania dôkazov alebo auditnej histórie.
+- Rollback musí byť možný bez mazania dôkazov alebo auditnej histórie. Chránený rollback image `pandora-rollback:protected` sa nesmie zmazať pri čistení.
 
 ## 11. Pravidlá pre AI agentov
 

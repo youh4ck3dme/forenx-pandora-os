@@ -47,13 +47,55 @@ const TabContent = memo(
     }, [tab.url]);
 
     const isNewTab = tab.url === "pandora://newtab" || tab.url.startsWith("pandora://");
-    const isInternalApp =
-      tab.url.includes("/forza/") ||
-      tab.url.startsWith("/") ||
-      tab.url.includes("localhost:3000") ||
-      tab.url.includes("127.0.0.1:3000") ||
-      tab.url.includes("100.70.1.16:3000");
-    const shouldRenderIframe = isInternalApp || (!isElectronEnv && !isNewTab);
+
+    // Single Shell Architecture & URL Normalization:
+    // Determine if URL is strictly same-origin (never trust external origin just because it includes '/forza/')
+    let isInternalApp = false;
+    let isNestedShell = false;
+    let isAuthLogin = false;
+
+    if (!isNewTab && typeof window !== "undefined") {
+      try {
+        const origin = window.location.origin;
+        const parsed = new URL(tab.url, origin);
+        const isSameOrigin = parsed.origin === origin;
+
+        if (isSameOrigin) {
+          isInternalApp = true;
+          const pathname = parsed.pathname;
+          // Prevent nested shell if tab navigates to '/' or '/browser'
+          if (pathname === "/" || pathname === "/browser" || pathname.startsWith("/browser/")) {
+            isNestedShell = true;
+          }
+          if (pathname === "/auth/login" || pathname.startsWith("/auth/")) {
+            isAuthLogin = true;
+          }
+        }
+      } catch {
+        isInternalApp = false;
+      }
+    }
+
+    // If an embedded tab attempted to navigate to login (e.g. session expired),
+    // escape iframe and transfer auth flow to top-level window with return path
+    useEffect(() => {
+      if (isAuthLogin && typeof window !== "undefined" && window.top) {
+        window.top.location.href = tab.url;
+      }
+    }, [isAuthLogin, tab.url]);
+
+    // If a tab attempted to load the browser shell itself, redirect it to the forensic overview
+    useEffect(() => {
+      if (isNestedShell) {
+        updateTab(tab.id, {
+          url: "/forza/prehlad",
+          title: "Forenzný prehľad",
+          isLoading: false,
+        });
+      }
+    }, [isNestedShell, tab.id, updateTab]);
+
+    const shouldRenderIframe = (isInternalApp || (!isElectronEnv && !isNewTab)) && !isNestedShell && !isAuthLogin;
 
     return (
       <div
@@ -89,10 +131,22 @@ const TabContent = memo(
                   ? undefined
                   : "allow-scripts allow-forms allow-popups allow-modals allow-downloads"
               }
-              onLoad={() => {
+              onLoad={(e) => {
                 clearLoadTimeout();
                 setLoadTimedOut(false);
                 updateTab(tab.id, { isLoading: false });
+
+                // Inspect same-origin iframe location for auth redirect
+                try {
+                  const iframeLoc = (e.target as HTMLIFrameElement)?.contentWindow?.location;
+                  if (iframeLoc && iframeLoc.pathname.startsWith("/auth/")) {
+                    if (window.top) {
+                      window.top.location.href = iframeLoc.href;
+                    }
+                  }
+                } catch {
+                  // Cross-origin iframe, ignore
+                }
               }}
               onError={(e) => {
                 console.error("Iframe load error", e);
@@ -102,10 +156,7 @@ const TabContent = memo(
               }}
             />
             {loadTimedOut &&
-              !tab.url.includes("localhost") &&
-              !tab.url.includes("127.0.0.1") &&
               !isInternalApp &&
-              !tab.url.startsWith("/") &&
               !tab.url.startsWith("pandora://") && (
                 <div className="absolute bottom-4 right-4 bg-black/80 text-white p-2 rounded-lg text-xs pointer-events-none z-20 max-w-xs">
                   This site may refuse to load inside an embedded frame

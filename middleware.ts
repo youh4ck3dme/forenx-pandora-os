@@ -178,12 +178,11 @@ function isInternalPath(path: string): boolean {
 function validateRedirectTarget(next: string | null): string | null {
   if (!next) return null;
 
-  // Trim whitespace
-  const trimmed = next.trim();
+  let trimmed = next.trim();
   if (!trimmed) return null;
 
   // Check for encoded slashes or other dangerous characters in the raw input
-  if (trimmed.includes('%2F') || trimmed.includes('%5C') || trimmed.includes('%00')) {
+  if (trimmed.includes('%2F') || trimmed.includes('%5C') || trimmed.includes('\\') || trimmed.includes('%00')) {
     return null;
   }
 
@@ -265,17 +264,28 @@ async function getSessionFromRequest(request: NextRequest): Promise<{
   if (!supabase) return null;
 
   try {
-    // 1. Check sb-access-token cookie
+    // 1. Explicit Bearer token MUST have precedence (Blueprint line 61).
+    // If a Bearer token is provided, verify it. If invalid, FAIL IMMEDIATELY.
+    // Invariant: "ak je neplatný, požiadavka nesmie potichu prejsť cez inú identitu"
+    const authHeader = request.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      const bearerToken = authHeader.slice(7).trim();
+      if (!bearerToken) return null;
+
+      const cleanToken = decodeURIComponent(bearerToken);
+      const { data, error } = await supabase.auth.getUser(cleanToken);
+
+      if (!error && data?.user) {
+        return { user: data.user, token: cleanToken };
+      }
+
+      console.debug('[middleware] Invalid explicit Bearer token:', error?.message);
+      return null; // Do NOT fall back to cookies!
+    }
+
+    // 2. Check sb-access-token cookie
     let accessToken = request.cookies.get('sb-access-token')?.value;
     const refreshToken = request.cookies.get('sb-refresh-token')?.value;
-
-    // 2. Check Authorization header
-    if (!accessToken) {
-      const authHeader = request.headers.get('authorization');
-      if (authHeader?.startsWith('Bearer ')) {
-        accessToken = authHeader.slice(7).trim();
-      }
-    }
 
     // 3. Check standard Supabase auth cookie (e.g. sb-<project-ref>-auth-token)
     if (!accessToken) {
@@ -400,8 +410,22 @@ function devAuthBypassAllowed(request: NextRequest): boolean {
  *    - If valid: allows through
  */
 
-export const middleware: NextMiddleware = async (request: NextRequest) => {
+export async function middleware(
+  request: NextRequest,
+  _event?: any
+): Promise<NextResponse> {
   const pathname = request.nextUrl.pathname;
+
+  // 1. Root route: directed navigation according to blueprint invariant
+  // - Neprihlásený vstup na / smeruje na /auth/login/?next=%2Fbrowser%2F
+  // - Prihlásený vstup na / smeruje na /browser/
+  if (pathname === '/') {
+    const session = await getSessionFromRequest(request);
+    if (session) {
+      return NextResponse.redirect(new URL('/browser/', request.nextUrl));
+    }
+    return NextResponse.redirect(new URL('/auth/login/?next=%2Fbrowser%2F', request.nextUrl));
+  }
 
   // Get route category
   const { category } = getRouteCategory(pathname);
@@ -510,7 +534,7 @@ export const middleware: NextMiddleware = async (request: NextRequest) => {
 
   // AUTHENTICATED routes with valid session
   return NextResponse.next();
-};
+}
 
 // ============================================================================
 // MIDDLEWARE CONFIGURATION
@@ -541,3 +565,4 @@ export {
   isDevelopment,
   devAuthBypassAllowed,
 };
+

@@ -27,8 +27,19 @@ export const S3StorageKeySchema = z
   .brand<"S3StorageKey">();
 export type S3StorageKey = z.infer<typeof S3StorageKeySchema>;
 
-// ─── 2. DOMÉNOVÉ SCHÉMY DÔKAZOV ──────────────────────────────────
-export const EvidenceTagSchema = z.enum(["zmluva", "vypis", "screenshot", "komunikacia", "ine"]);
+export const EvidenceTagSchema = z.enum([
+  "zmluva",
+  "vypis",
+  "screenshot",
+  "komunikacia",
+  "mobilna_extrakcia",
+  "aleapp_report",
+  "ileapp_backup",
+  "andriller_triage",
+  "databaza",
+  "log",
+  "ine",
+]);
 export type EvidenceTag = z.infer<typeof EvidenceTagSchema>;
 
 export const ForensicEvidenceItemSchema = z.object({

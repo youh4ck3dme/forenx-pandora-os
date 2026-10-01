@@ -2,20 +2,20 @@
 
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { setAuthCookies, clearAuthCookies } from "@/lib/auth/cookies";
+import { syncAuthCookies } from "@/lib/auth/cookies";
 
 /**
- * Background provider that keeps document.cookie in sync with Supabase Auth:
- * - Syncs existing session on mount
- * - Sets cookies when SIGNED_IN or TOKEN_REFRESHED occurs
- * - Clears cookies when SIGNED_OUT occurs
+ * Background provider that keeps auth cookies in sync with Supabase Auth:
+ * - Syncs existing session on mount via server bridge
+ * - Sets HttpOnly server cookies when SIGNED_IN or TOKEN_REFRESHED occurs
+ * - Clears cookies via DELETE /api/auth/session when SIGNED_OUT occurs
  */
 export function AuthCookieSync() {
   useEffect(() => {
     // 1. Check existing session on mount
     supabase.auth.getSession().then(({ data }: { data: { session: any } }) => {
       if (data?.session) {
-        setAuthCookies(data.session);
+        syncAuthCookies(data.session);
       }
     });
 
@@ -29,10 +29,10 @@ export function AuthCookieSync() {
         (event === "INITIAL_SESSION" && session)
       ) {
         if (session) {
-          setAuthCookies(session);
+          syncAuthCookies(session);
         }
       } else if (event === "SIGNED_OUT") {
-        clearAuthCookies();
+        syncAuthCookies(null);
       }
     });
 

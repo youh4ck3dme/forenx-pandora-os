@@ -10,7 +10,7 @@ import {
   getRouteCategory,
   isInternalPath,
   validateRedirectTarget,
-} from '@/middleware';
+} from '../../../middleware';
 
 describe('matchPathPattern', () => {
   it('matches exact paths', () => {
@@ -40,7 +40,6 @@ describe('matchPathPattern', () => {
 describe('Route Classification Logic', () => {
   it('identifies PUBLIC routes correctly', () => {
     const publicRoutes = [
-      '/',
       '/auth',
       '/auth/login',
       '/auth/register',
@@ -148,3 +147,4 @@ describe('Open Redirect Protection Edge Cases', () => {
     expect(validateRedirectTarget('?param=value')).toBeNull();
   });
 });
+

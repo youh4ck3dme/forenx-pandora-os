@@ -125,6 +125,40 @@ async function handleGet(request: NextRequest): Promise<NextResponse> {
           { status: 503 },
         );
       }
+      // Overenie existencie dôkazu v ledgeri (ochrana pred neoprávneným sťahovaním nepovolených kľúčov)
+      if (auth.token && ledgerConfigured()) {
+        try {
+          const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+          const { data: evidenceRow, error: evError } = await supabaseAdmin
+            .from("evidence_items")
+            .select("id, investigator_id, s3_object_key")
+            .eq("s3_object_key", storageKey)
+            .maybeSingle();
+
+          if (evError) {
+            return NextResponse.json(
+              { error: "Overenie evidencie dôkazu zlyhalo." },
+              { status: 503 },
+            );
+          }
+          if (
+            !evidenceRow ||
+            (evidenceRow.investigator_id && evidenceRow.investigator_id !== auth.userId) ||
+            ((evidenceRow as any).user_id && (evidenceRow as any).user_id !== auth.userId)
+          ) {
+            return NextResponse.json(
+              { error: "Dôkaz nebol nájdený v evidencii spisu." },
+              { status: 404 },
+            );
+          }
+        } catch {
+          return NextResponse.json(
+            { error: "Overenie evidencie dôkazu zlyhalo." },
+            { status: 503 },
+          );
+        }
+      }
+
       // Audit je fail-closed: bez zápisu sa presigned URL nevydá.
       const audited = auth.token
         ? await logVaultAccess({

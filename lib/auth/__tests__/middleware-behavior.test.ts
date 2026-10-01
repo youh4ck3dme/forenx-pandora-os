@@ -10,7 +10,7 @@
 
 import { describe, test, expect, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { middleware } from '@/middleware';
+import { middleware } from '../../../middleware';
 
 // Mock Supabase client to avoid actual network calls
 vi.mock('@supabase/supabase-js', () => ({
@@ -20,6 +20,10 @@ vi.mock('@supabase/supabase-js', () => ({
     },
   }),
 }));
+
+// Helper to invoke middleware with optional NextFetchEvent stub
+const callMiddleware = (request: NextRequest) =>
+  (middleware as (req: NextRequest, event?: any) => Promise<any>)(request, {} as any);
 
 // ============================================================================
 // CORE MIDDLEWARE BEHAVIOR TESTS
@@ -38,7 +42,7 @@ describe('Middleware - API Routes Return 401 JSON', () => {
       method: 'GET',
     });
 
-    const response = await middleware(request);
+    const response = await callMiddleware(request);
 
     // API routes should return 401 JSON, not redirect
     expect(response?.status).toBe(401);
@@ -58,7 +62,7 @@ describe('Middleware - Public API Routes Pass Through', () => {
       method: 'GET',
     });
 
-    const response = await middleware(request);
+    const response = await callMiddleware(request);
 
     // PUBLIC routes should NOT return 401
     // They pass through to the route handler
@@ -72,7 +76,7 @@ describe('Middleware - Machine-to-Machine Routes Pass Through', () => {
       method: 'GET',
     });
 
-    const response = await middleware(request);
+    const response = await callMiddleware(request);
 
     // SYSTEM routes should NOT return 401
     // They pass through to the route handler which checks CRON_SECRET
@@ -91,7 +95,7 @@ describe('Middleware - Page Routes Redirect to Login', () => {
       method: 'GET',
     });
 
-    const response = await middleware(request);
+    const response = await callMiddleware(request);
 
     // Page routes should redirect to login
     expect(response?.status).toBe(307); // Temporary Redirect
@@ -103,7 +107,7 @@ describe('Middleware - Page Routes Redirect to Login', () => {
       method: 'GET',
     });
 
-    const response = await middleware(request);
+    const response = await callMiddleware(request);
 
     expect(response?.status).toBe(307);
     const location = response?.headers.get('location');
@@ -116,7 +120,7 @@ describe('Middleware - Page Routes Redirect to Login', () => {
       method: 'GET',
     });
 
-    const response = await middleware(request);
+    const response = await callMiddleware(request);
 
     expect(response?.status).toBe(307);
     const location = response?.headers.get('location');
@@ -129,7 +133,6 @@ describe('Middleware - Page Routes Redirect to Login', () => {
 
 describe('Middleware - Public Page Routes Pass Through', () => {
   test.each([
-    '/',
     '/auth',
     '/auth/login',
     '/auth/register',
@@ -140,11 +143,22 @@ describe('Middleware - Public Page Routes Pass Through', () => {
       method: 'GET',
     });
 
-    const response = await middleware(request);
+    const response = await callMiddleware(request);
 
     // PUBLIC routes should NOT return 401 or redirect
     expect(response?.status).not.toBe(401);
     expect(response?.status).not.toBe(307);
+  });
+
+  test('redirects unauthenticated root / to /auth/login/?next=%2Fbrowser%2F (Blueprint P2)', async () => {
+    const request = new NextRequest('http://localhost/', {
+      method: 'GET',
+    });
+    const response = await callMiddleware(request);
+    expect(response?.status).toBe(307);
+    const location = response?.headers.get('location');
+    expect(location).toContain('/auth/login');
+    expect(location).toContain('next=%2Fbrowser%2F');
   });
 });
 
@@ -154,7 +168,7 @@ describe('Middleware - Project Required Routes', () => {
       method: 'GET',
     });
 
-    const response = await middleware(request);
+    const response = await callMiddleware(request);
 
     // Should redirect to login (no session)
     expect(response?.status).toBe(307);
@@ -172,7 +186,7 @@ describe('Status Code Consistency', () => {
       method: 'GET',
     });
 
-    const response = await middleware(request);
+    const response = await callMiddleware(request);
 
     // API routes should NEVER redirect (302/307)
     expect(response?.status).toBe(401);
@@ -185,10 +199,37 @@ describe('Status Code Consistency', () => {
       method: 'GET',
     });
 
-    const response = await middleware(request);
+    const response = await callMiddleware(request);
 
     // Page routes should redirect, not return 401
     expect(response?.status).toBe(307);
     expect(response?.status).not.toBe(401);
+  });
+});
+
+
+describe('Middleware - Root Route Invariant (Blueprint P2)', () => {
+  test('redirects unauthenticated / to /auth/login/?next=%2Fbrowser%2F', async () => {
+    const request = new NextRequest('http://localhost/', {
+      method: 'GET',
+    });
+
+    const response = await callMiddleware(request);
+    expect(response?.status).toBe(307);
+    expect(response?.headers.get('location')).toContain('/auth/login/?next=%2Fbrowser%2F');
+  });
+});
+
+describe('Middleware - Explicit Bearer Token Precedence (Blueprint P2)', () => {
+  test('fails closed with 401 on invalid Bearer token for API route', async () => {
+    const request = new NextRequest('http://localhost/api/vault', {
+      method: 'GET',
+      headers: {
+        authorization: 'Bearer invalid.token.payload',
+      },
+    });
+
+    const response = await callMiddleware(request);
+    expect(response?.status).toBe(401);
   });
 });

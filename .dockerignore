@@ -1,19 +1,46 @@
+# Dependencies & Builds
 node_modules
 .next
-.git
-.github
+.swc
 dist
 dist-electron
 out
-.env*.local
-.env.*
+
+# Version Control & CI
+.git
+.github
+.claude
+.vscode
+.agents
+.qa
+
+# Environment & Secrets (Hard exclusion - only examples allowed)
+.env
+.env*
+!.env.example
+!.env.production.example
+*.key
+*.pem
+*.cert
+*.crt
+*staging-config.json
+
+# Database & Archives
+*.sql
+*.dump
+*.db
 *.tar
 *.tar.gz
 *.tgz
-*staging-config.json
-tmp*
+*.zip
+
+# Tests & Coverage
+test-fixtures
 test-results
 coverage
+e2e
+
+# Logs & Scripts
 *.log
 *.ps1
-
+tmp*

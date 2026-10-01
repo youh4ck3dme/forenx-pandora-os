@@ -6,6 +6,7 @@ import { tracedError, withTraceRoute } from "@/lib/forza/trace";
 import {
   accessContext,
   authenticateVaultRequest,
+  isUuidCaseId,
   logVaultAccess,
 } from "@/lib/storage/vault-auth";
 
@@ -90,6 +91,12 @@ async function handlePost(request: NextRequest, traceId: string): Promise<NextRe
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!auth.devBypass) {
+      if (!isUuidCaseId(caseId)) {
+        return NextResponse.json(
+          { error: "Neplatný identifikátor spisu (očakáva sa UUID)." },
+          { status: 400 },
+        );
+      }
       if (!supabaseUrl || !serviceRoleKey) {
         return NextResponse.json(
           { error: "Overenie oprávnenia k spisu nie je nakonfigurované; nahratie nebolo povolené." },

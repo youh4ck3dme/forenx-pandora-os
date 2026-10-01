@@ -4,6 +4,10 @@
   "private": true,
   "description": "PANDORA Browser - Official Build",
   "author": "PΛND0RΛ Team",
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
   "scripts": {
     "build": "next build",
     "dev": "next dev",

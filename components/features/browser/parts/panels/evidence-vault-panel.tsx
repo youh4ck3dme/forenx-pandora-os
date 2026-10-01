@@ -17,8 +17,10 @@ import {
   Loader2,
   HardDrive,
   RefreshCw,
+  Clock,
 } from "lucide-react";
 import {
+  EvidenceTag,
   ForensicEvidenceItem,
   IngestProgressState,
   Sha256Hash,
@@ -28,6 +30,59 @@ import { useActiveCase } from "@/lib/hooks/useActiveCase";
 export interface EvidenceVaultPanelProps {
   readonly caseId?: string;
   readonly onSendToAiAnalysis?: (item: ForensicEvidenceItem) => void;
+}
+
+// ─── KLASIFIKÁCIA FORENZNÝCH FORMÁTOV (MOBILNÝ TRIAGE, ALEAPP, iLEAPP, ANDRILLER) ───
+function classifyEvidenceTags(fileName: string): EvidenceTag[] {
+  const lower = fileName.toLowerCase();
+  const tags: EvidenceTag[] = [];
+
+  // Detekcia mobilných forenzných nástrojov
+  if (lower.includes("aleapp")) {
+    tags.push("aleapp_report", "mobilna_extrakcia");
+  } else if (lower.includes("ileapp")) {
+    tags.push("ileapp_backup", "mobilna_extrakcia");
+  } else if (lower.includes("andriller")) {
+    tags.push("andriller_triage", "mobilna_extrakcia");
+  }
+
+  // Archívy a extrakcie (.tar, .tar.gz, .tgz, .zip, .ab)
+  if (
+    lower.endsWith(".tar") ||
+    lower.endsWith(".tar.gz") ||
+    lower.endsWith(".tgz") ||
+    lower.endsWith(".ab") ||
+    lower.endsWith(".zip")
+  ) {
+    if (!tags.includes("mobilna_extrakcia")) tags.push("mobilna_extrakcia");
+  }
+
+  // Databázy (.sqlite, .db, .sqlite3)
+  if (lower.endsWith(".sqlite") || lower.endsWith(".db") || lower.endsWith(".sqlite3")) {
+    tags.push("databaza");
+  }
+
+  // Systémové a auditné logy
+  if (lower.endsWith(".log") || lower.endsWith(".txt")) {
+    tags.push("log");
+  }
+
+  // Štandardné výpisy a zmluvy
+  if (lower.endsWith(".csv")) {
+    tags.push("vypis");
+  } else if (lower.endsWith(".pdf")) {
+    tags.push("zmluva");
+  } else if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+    tags.push("screenshot");
+  } else if (lower.endsWith(".eml") || lower.endsWith(".msg")) {
+    tags.push("komunikacia");
+  }
+
+  if (tags.length === 0) {
+    tags.push("ine");
+  }
+
+  return Array.from(new Set(tags));
 }
 
 // ─── BEZPEČNÝ KLIENTSKY VÝPOČET HASHU ────────────────────────────
@@ -51,9 +106,14 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
   caseId: propCaseId,
   onSendToAiAnalysis,
 }) => {
-  // Ak nie je caseId explicitne predané v prope, vezmeme aktívny spis z kontextu
+  // Rozlíšenie zobrazovaného názvu/čísla spisu od interného overeného UUID
   const activeCaseContext = useActiveCase();
-  const effectiveCaseId = propCaseId || activeCaseContext?.activeCaseId || "CASE-KS-2026-881";
+  const rawId = propCaseId || activeCaseContext?.activeCaseId || activeCaseContext?.activeCase?.id || null;
+  const isUuid = rawId ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawId) : false;
+
+  const matchedCase = activeCaseContext?.cases.find((c) => c.id === rawId || c.name === rawId);
+  const effectiveCaseId = matchedCase?.id || (isUuid ? rawId : null);
+  const displayCaseName = matchedCase?.name || activeCaseContext?.activeCase?.name || (isUuid ? effectiveCaseId : rawId) || "Nevybraný spis";
 
   const [ingestState, setIngestState] = useState<IngestProgressState>({ status: "idle" });
   const [items, setItems] = useState<readonly ForensicEvidenceItem[]>([]);
@@ -75,7 +135,7 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
   }, []);
 
   // Načítanie zoznamu zaistených dôkazov pre daný spis
-  const loadVaultItems = useCallback(async (cId: string) => {
+  const loadVaultItems = useCallback(async (cId: string | null) => {
     if (!cId) return;
     try {
       setIsLoadingList(true);
@@ -139,108 +199,95 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
 
         if (controller.signal.aborted) return;
 
-        // Krok 2: Pokus o autorizovaný Direct-to-S3 upload (obchádza 4.5 MB Vercel limit)
+        // Krok 2: Autorizovaný Direct-to-S3 upload (obchádza 4.5 MB Vercel limit)
         setIngestState({ status: "uploading", progressPercent: 40, clientHash });
 
-        let directS3Success = false;
-        try {
-          const presignToken = await getSupabaseSessionToken();
-          const presignRes = await fetch("/api/vault/presign", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(presignToken ? { authorization: `Bearer ${presignToken}` } : {}),
-            },
-            body: JSON.stringify({
-              caseId: effectiveCaseId,
-              fileName: file.name,
-              fileSizeBytes: file.size,
-              mimeType: file.type || "application/octet-stream",
-              sha256Hash: clientHash,
-            }),
-            signal: controller.signal,
-          });
+        const presignToken = await getSupabaseSessionToken();
+        const presignRes = await fetch("/api/vault/presign", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(presignToken ? { authorization: `Bearer ${presignToken}` } : {}),
+          },
+          body: JSON.stringify({
+            caseId: effectiveCaseId,
+            fileName: file.name,
+            fileSizeBytes: file.size,
+            mimeType: file.type || "application/octet-stream",
+            sha256Hash: clientHash,
+          }),
+          signal: controller.signal,
+        });
 
-          if (presignRes.ok) {
-            const presignData = (await presignRes.json()) as PresignData & { success: boolean };
-
-            if (presignData.uploadUrl) {
-              setIngestState({ status: "uploading", progressPercent: 70, clientHash });
-
-              // Priamy PUT do S3 so všetkými podpísanými hlavičkami + zápis do ledgeru.
-              const direct = await uploadEvidenceDirect({
-                file,
-                fileName: file.name,
-                caseId: effectiveCaseId,
-                sha256Hash: clientHash,
-                presign: presignData,
-                token: presignToken,
-                signal: controller.signal,
-              });
-
-              if (direct.ok) {
-                const item: ForensicEvidenceItem = {
-                  id: (direct.evidenceId ??
-                    (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `ev-${Date.now()}`)) as ForensicEvidenceItem["id"],
-                  caseId: effectiveCaseId as ForensicEvidenceItem["caseId"],
-                  fileName: file.name,
-                  fileSizeBytes: file.size,
-                  mimeType: file.type || "application/octet-stream",
-                  sha256Hash: clientHash,
-                  s3StorageKey: presignData.storageKey as ForensicEvidenceItem["s3StorageKey"],
-                  s3Bucket: presignData.bucket || "forenx-vault-sk",
-                  uploadedAt: new Date().toISOString(),
-                  uploadedBy: "investigator-session-user",
-                  // Stav zo servera: "checking", kým worker neoverí hash v S3.
-                  integrityStatus: direct.integrityStatus,
-                  aiAnalyzed: false,
-                  tags: [file.name.endsWith(".csv") ? "vypis" : file.name.endsWith(".pdf") ? "zmluva" : "ine"],
-                };
-
-                setIngestState({ status: "ready", item });
-                setItems((prev) => [item, ...prev.filter((p) => p.s3StorageKey !== item.s3StorageKey)]);
-                directS3Success = true;
-              } else if (direct.stage === "ledger_commit") {
-                // Súbor je v S3, ale nie je evidovaný — nehlásiť úspech ani nenahrávať znova.
-                setIngestState({
-                  status: "error",
-                  errorMessage: `Súbor bol nahratý, no zápis do ledgeru dôkazov zlyhal: ${direct.error} Skúste to znova.`,
-                });
-                return;
-              }
-            }
+        if (!presignRes.ok) {
+          const errData = (await presignRes.json().catch(() => null)) as { error?: string } | null;
+          // P3 Invariant: Pri 401/403 zastaviť upload; neskúšať alternatívnu cestu, ktorá obíde ochranu
+          if (presignRes.status === 401 || presignRes.status === 403) {
+            setIngestState({
+              status: "error",
+              errorMessage: errData?.error || "Prístup zamietnutý: Nemáte oprávnenie nahrávať dôkazy do tohto spisu.",
+            });
+            return;
           }
-        } catch {
-          // Pri zlyhaní priameho S3 presignu sa použije štandardný fallback
+          setIngestState({
+            status: "error",
+            errorMessage: errData?.error || `Príprava nahrávania do trezoru zlyhala (HTTP ${presignRes.status}).`,
+          });
+          return;
         }
 
-        // Krok 3: Fallback cez /api/vault/ multipart upload ak direct-to-S3 neprebehol
-        if (!directS3Success) {
-          setIngestState({ status: "uploading", progressPercent: 60, clientHash });
-
-          const formData = new FormData();
-          formData.append("file", file);
-          formData.append("caseId", effectiveCaseId);
-          formData.append("clientSha256", clientHash);
-
-          const multipartToken = await getSupabaseSessionToken();
-          const response = await fetch("/api/vault/", {
-            method: "POST",
-            headers: multipartToken ? { authorization: `Bearer ${multipartToken}` } : undefined,
-            body: formData,
-            signal: controller.signal,
+        const presignData = (await presignRes.json()) as PresignData & { success: boolean };
+        if (!presignData.uploadUrl) {
+          setIngestState({
+            status: "error",
+            errorMessage: "Server nevrátil autorizovanú URL pre upload do S3.",
           });
-
-          if (!response.ok) {
-            const errData = (await response.json().catch(() => null)) as { error?: string } | null;
-            throw new Error(errData?.error ?? `Upload zlyhal s HTTP ${response.status}`);
-          }
-
-          const data = (await response.json()) as { success: boolean; item: ForensicEvidenceItem };
-
-          setIngestState({ status: "ready", item: data.item });
-          setItems((prev) => [data.item, ...prev]);
+          return;
         }
+
+        setIngestState({ status: "uploading", progressPercent: 70, clientHash });
+
+        // Priamy PUT do S3 so všetkými podpísanými hlavičkami + zápis do ledgeru.
+        const direct = await uploadEvidenceDirect({
+          file,
+          fileName: file.name,
+          caseId: effectiveCaseId,
+          sha256Hash: clientHash,
+          presign: presignData,
+          token: presignToken,
+          signal: controller.signal,
+        });
+
+        if (!direct.ok) {
+          setIngestState({
+            status: "error",
+            errorMessage: direct.stage === "ledger_commit"
+              ? `Súbor bol nahratý do S3, no zápis do ledgeru dôkazov zlyhal: ${direct.error} Skúste to znova.`
+              : `Upload do úložiska S3 zlyhal: ${direct.error}`,
+          });
+          return;
+        }
+
+        const tags = classifyEvidenceTags(file.name);
+        const item: ForensicEvidenceItem = {
+          id: (direct.evidenceId ??
+            (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `ev-${Date.now()}`)) as ForensicEvidenceItem["id"],
+          caseId: effectiveCaseId as ForensicEvidenceItem["caseId"],
+          fileName: file.name,
+          fileSizeBytes: file.size,
+          mimeType: file.type || "application/octet-stream",
+          sha256Hash: clientHash,
+          s3StorageKey: presignData.storageKey as ForensicEvidenceItem["s3StorageKey"],
+          s3Bucket: presignData.bucket || "forenx-vault-sk",
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: "investigator-session-user",
+          integrityStatus: direct.integrityStatus,
+          aiAnalyzed: false,
+          tags,
+        };
+
+        setIngestState({ status: "ready", item });
+        setItems((prev) => [item, ...prev.filter((p) => p.s3StorageKey !== item.s3StorageKey)]);
       } catch (err: unknown) {
         if (err instanceof Error && err.name === "AbortError") {
           setIngestState({ status: "idle" });
@@ -293,7 +340,7 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
             Hetzner S3 Evidence Vault
           </h2>
           <p className="text-[11px] text-zinc-400 font-mono mt-0.5 truncate max-w-50">
-            Spis: <span className="text-zinc-200 font-semibold">{effectiveCaseId}</span>
+            Spis: <span className="text-zinc-200 font-semibold">{displayCaseName}</span>
           </p>
         </div>
         <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[10px] font-mono text-emerald-400">
@@ -331,6 +378,7 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
           name="evidenceFile"
           ref={fileInputRef}
           type="file"
+          accept=".pdf,.csv,.tar,.gz,.tgz,.zip,.ab,.sqlite,.db,.sqlite3,.log,.xml,.json,.eml,.msg,.png,.jpg,.jpeg,.bin"
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0];
@@ -340,7 +388,7 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
 
         <Upload className={`w-7 h-7 mb-1.5 ${isDragOver ? "text-cyan-400" : "text-zinc-500"}`} />
         <p className="text-xs font-medium text-zinc-300">
-          Pretiahnite spis alebo dôkaz (PDF, CSV, PNG, EML)
+          Pretiahnite dôkaz (PDF, CSV, TAR/ZIP, SQLite, mobilná extrakcia ALEAPP/iLEAPP/Andriller)
         </p>
         <p className="text-[10px] text-zinc-500 mt-1 font-mono">
           SHA-256 pre-flight • Šifrované v Hetzner S3 (do 250 MB)
@@ -464,17 +512,31 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
 
                 {/* Status integrity a akčné tlačidlá */}
                 <div className="flex items-center justify-between pt-1 border-t border-zinc-800/50">
-                  <span className="flex items-center gap-1 text-[9px] font-semibold text-emerald-400">
-                    <ShieldCheck className="w-3 h-3" />
-                    INTEGRITA OVERENÁ
-                  </span>
+                  <div>
+                    {item.integrityStatus === "verified" ? (
+                      <span className="flex items-center gap-1 text-[9px] font-semibold text-emerald-400">
+                        <ShieldCheck className="w-3 h-3" />
+                        INTEGRITA OVERENÁ
+                      </span>
+                    ) : item.integrityStatus === "checking" ? (
+                      <span className="flex items-center gap-1 text-[9px] font-semibold text-amber-400">
+                        <Clock className="w-3 h-3 animate-pulse" />
+                        OVERUJE SA SERVEROM
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-[9px] font-semibold text-red-400">
+                        <AlertTriangle className="w-3 h-3" />
+                        INTEGRITA PORUŠENÁ
+                      </span>
+                    )}
+                  </div>
 
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
                       disabled={downloadingKey === item.s3StorageKey}
                       onClick={() => void handleDownload(item.s3StorageKey, item.fileName)}
-                      className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] font-medium transition-colors"
+                      className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] font-medium transition-colors cursor-pointer disabled:opacity-50"
                       title="Stiahnuť originál cez čerstvú Presigned S3 URL"
                     >
                       {downloadingKey === item.s3StorageKey ? (
@@ -488,9 +550,22 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
                     {onSendToAiAnalysis && (
                       <button
                         type="button"
-                        onClick={() => onSendToAiAnalysis(item)}
-                        className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-950/60 border border-purple-500/30 hover:bg-purple-900/60 text-purple-300 text-[10px] font-medium transition-colors"
-                        title="Odoslať súbor na forenznú analýzu do Mistral AI"
+                        disabled={item.integrityStatus !== "verified"}
+                        onClick={() => {
+                          if (item.integrityStatus === "verified") {
+                            onSendToAiAnalysis(item);
+                          }
+                        }}
+                        className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                          item.integrityStatus === "verified"
+                            ? "bg-purple-950/60 border border-purple-500/30 hover:bg-purple-900/60 text-purple-300 cursor-pointer"
+                            : "bg-zinc-800/40 border border-zinc-700/30 text-zinc-500 cursor-not-allowed"
+                        }`}
+                        title={
+                          item.integrityStatus === "verified"
+                            ? "Odoslať overený súbor na forenznú analýzu do Mistral AI"
+                            : "Analýza vyžaduje overený dôkaz (overenie serverom ešte neprebehlo)"
+                        }
                       >
                         <Sparkles className="w-3 h-3 text-purple-400" />
                         AI
@@ -498,6 +573,20 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
                     )}
                   </div>
                 </div>
+
+                {/* Značky a kategórie dôkazu (mobilná extrakcia, db, zmluva...) */}
+                {Array.isArray(item.tags) && item.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-0.5">
+                    {item.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="px-1.5 py-0.2 rounded bg-zinc-800/80 border border-zinc-700/40 text-[9px] font-mono text-zinc-400"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
