@@ -1,7 +1,7 @@
 import http from "node:http";
 import https from "node:https";
 
-const BASE_URL = process.env.TEST_BASE_URL || "https://pandora-browser-main.vercel.app";
+const BASE_URL = process.env.TEST_BASE_URL || "https://pandora.whoiswho.at";
 
 const routes = [
   // 1. Core Web & Browser

@@ -22,7 +22,7 @@ function loadEnv() {
 }
 
 const env = loadEnv();
-const BASE_URL = process.env.TEST_BASE_URL || "https://pandora-browser-main.vercel.app";
+const BASE_URL = process.env.TEST_BASE_URL || "https://pandora.whoiswho.at";
 
 const pages = [
   // 1. Core Web & Browser

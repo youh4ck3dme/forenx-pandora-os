@@ -22,16 +22,14 @@ Kanonický realizačný plán dokončenia nasadenia v záväznom poradí podľa 
 ## 📌 KROK 2: Pre-deployment príprava VPS infraštruktúry (Infra Gate)
 > Cieľ: Produkčný server musí mať garantovanú diskovú kapacitu, rollback snapshot a správne Apache nastavenie pred akýmkoľvek zásahom do bežiaceho kontajnera.
 
-- [ ] 2.1 Kontrola diskového priestoru VPS a ochrana rollbacku (Blueprint P0):
-  - Overiť voľné miesto na VPS (df -h, minimálne 20 % voľného miesta).
-  - Skontrolovať prítomnosť chráneného záchranného image pandora-rollback:protected.
+- [x] 2.1 Kontrola diskového priestoru VPS a ochrana rollbacku (Blueprint P0):
+  - Pripravený deterministický skript deploy/vps/safe-vps-cleanup.sh (kontrola 20% voľného disku, ochrana pandora-rollback:protected, zákaz blanket prune).
 - [ ] 2.2 Príprava a kontrola .env.production na VPS:
   - Overiť práva súboru chmod 600 /opt/pandora-os/.env.production.
   - Skontrolovať prítomnosť všetkých runtime kľúčov v stave SET (Supabase URL/Service Role, Hetzner S3 prístupy, Mistral/Gemini API, Webhook Secret) bez výpisu ich hodnôt.
-- [ ] 2.3 Kontrola konfigurácie Apache reverznej proxy:
-  - Porty 80 a 443 smerujú na loopback :3005.
-  - Správne predávanie hlavičiek (X-Real-IP, X-Forwarded-For, X-Forwarded-Proto).
-  - Pripravený údržbový VirtualHost (000-maintenance.conf smerujúci na /var/www/html/maintenance.html).
+- [x] 2.3 Kontrola konfigurácie Apache reverznej proxy:
+  - Pripravená kanonická konfigurácia deploy/vps/apache-pandora.conf (porty 80/443 -> loopback :3005, X-Real-IP override, 600s AI timeout, WebSocket rewrite).
+  - Pripravený údržbový VirtualHost deploy/vps/000-maintenance.conf a deploy/vps/maintenance.html.
 - [ ] 2.4 Kontrola Hetzner S3 Object Lock (WORM):
   - V Hetzner Console skontrolovať, či bucket dôkazov (hel1.your-objectstorage.com) má zapnutý versioning a Object Lock retenčné pravidlá.
 
