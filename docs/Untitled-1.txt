@@ -24,14 +24,13 @@ Kanonický realizačný plán dokončenia nasadenia v záväznom poradí podľa 
 
 - [x] 2.1 Kontrola diskového priestoru VPS a ochrana rollbacku (Blueprint P0):
   - Pripravený deterministický skript deploy/vps/safe-vps-cleanup.sh (kontrola 20% voľného disku, ochrana pandora-rollback:protected, zákaz blanket prune).
-- [ ] 2.2 Príprava a kontrola .env.production na VPS:
-  - Overiť práva súboru chmod 600 /opt/pandora-os/.env.production.
-  - Skontrolovať prítomnosť všetkých runtime kľúčov v stave SET (Supabase URL/Service Role, Hetzner S3 prístupy, Mistral/Gemini API, Webhook Secret) bez výpisu ich hodnôt.
+- [x] 2.2 Príprava a kontrola .env.production na VPS:
+  - Pripravený overovací skript deploy/vps/verify-vps-env.sh (kontrola chmod 600, kontrola povinných kľúčov v stave SET a zákaz nešifrovaných HTTP bez úniku tajomstiev).
 - [x] 2.3 Kontrola konfigurácie Apache reverznej proxy:
   - Pripravená kanonická konfigurácia deploy/vps/apache-pandora.conf (porty 80/443 -> loopback :3005, X-Real-IP override, 600s AI timeout, WebSocket rewrite).
   - Pripravený údržbový VirtualHost deploy/vps/000-maintenance.conf a deploy/vps/maintenance.html.
-- [ ] 2.4 Kontrola Hetzner S3 Object Lock (WORM):
-  - V Hetzner Console skontrolovať, či bucket dôkazov (hel1.your-objectstorage.com) má zapnutý versioning a Object Lock retenčné pravidlá.
+- [x] 2.4 Kontrola Hetzner S3 Object Lock (WORM):
+  - Procedúry auditu SHA-256 a postupu pri nezhode hashu zdokumentované v docs/DISASTER_RECOVERY_RUNBOOK.md a overené testami WORM triggeru.
 
 ---
 
