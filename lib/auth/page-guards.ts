@@ -76,16 +76,33 @@ function getPageAuthClient() {
 export async function getTokenFromCookies(): Promise<string | null> {
   try {
     const cookieStore = await cookies();
-    const accessToken = cookieStore.get('sb-access-token')?.value;
+    let accessToken = cookieStore.get('sb-access-token')?.value;
     
-    if (!accessToken) return null;
-    
-    // Basic JWT validation
-    if (accessToken.split('.').length !== 3) {
-      return null;
+    if (accessToken) {
+      accessToken = decodeURIComponent(accessToken);
+      if (accessToken.split('.').length === 3) {
+        return accessToken;
+      }
+    }
+
+    // Fallback to standard Supabase auth cookie
+    for (const cookie of cookieStore.getAll()) {
+      if (cookie.name.startsWith('sb-') && cookie.name.endsWith('-auth-token')) {
+        try {
+          const raw = decodeURIComponent(cookie.value);
+          const parsed = raw.startsWith('base64-')
+            ? JSON.parse(Buffer.from(raw.slice(7), 'base64').toString('utf-8'))
+            : JSON.parse(raw);
+          if (parsed?.access_token && parsed.access_token.split('.').length === 3) {
+            return parsed.access_token;
+          }
+        } catch {
+          // ignore
+        }
+      }
     }
     
-    return accessToken;
+    return null;
   } catch {
     return null;
   }

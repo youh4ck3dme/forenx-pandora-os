@@ -88,16 +88,33 @@ export function extractBearerToken(request: NextRequest | Request): string | nul
  */
 export function extractTokenFromCookies(request: NextRequest): string | null {
   // Supabase stores session in cookies
-  const accessToken = request.cookies.get('sb-access-token')?.value;
+  let accessToken = request.cookies.get('sb-access-token')?.value;
   
-  if (!accessToken) return null;
-  
-  // Basic validation
-  if (accessToken.split('.').length !== 3) {
-    return null;
+  if (accessToken) {
+    accessToken = decodeURIComponent(accessToken);
+    if (accessToken.split('.').length === 3) {
+      return accessToken;
+    }
+  }
+
+  // Fallback to standard Supabase auth cookie (e.g. sb-<project-ref>-auth-token)
+  for (const cookie of request.cookies.getAll()) {
+    if (cookie.name.startsWith('sb-') && cookie.name.endsWith('-auth-token')) {
+      try {
+        const raw = decodeURIComponent(cookie.value);
+        const parsed = raw.startsWith('base64-')
+          ? JSON.parse(Buffer.from(raw.slice(7), 'base64').toString('utf-8'))
+          : JSON.parse(raw);
+        if (parsed?.access_token && parsed.access_token.split('.').length === 3) {
+          return parsed.access_token;
+        }
+      } catch {
+        // ignore malformed cookie
+      }
+    }
   }
   
-  return accessToken;
+  return null;
 }
 
 // ============================================================================

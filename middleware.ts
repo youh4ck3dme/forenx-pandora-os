@@ -77,6 +77,11 @@ function getRouteCategory(pathname: string): { category: RouteCategory; pattern:
     { pattern: '/blog', category: 'PUBLIC' },
     { pattern: '/blog/[...slug]', category: 'PUBLIC' },
 
+    // Read-only system status page: intentionally available without a session.
+    // More specific routes must remain protected by the Forza catch-all below.
+    { pattern: '/forza/stav', category: 'PUBLIC' },
+    { pattern: '/forza/stav/', category: 'PUBLIC' },
+
     // PUBLIC API ROUTES - No authentication required
     // CSP reports: browsers send without credentials, write-only, rate-limited
     { pattern: '/api/csp-report', category: 'PUBLIC' },
@@ -84,6 +89,8 @@ function getRouteCategory(pathname: string): { category: RouteCategory; pattern:
     // Health check: external monitoring tools need unauthenticated access
     { pattern: '/api/healthz', category: 'PUBLIC' },
     { pattern: '/api/healthz/*', category: 'PUBLIC' },
+    { pattern: '/api/health/public', category: 'PUBLIC' },
+    { pattern: '/api/health/public/', category: 'PUBLIC' },
 
     // ======================================================================
     // SYSTEM ROUTES - Internal system endpoints
@@ -145,7 +152,7 @@ function getRouteCategory(pathname: string): { category: RouteCategory; pattern:
 // APPLICATION CONSTANTS
 // ============================================================================
 
-const SIGN_IN_ROUTE = '/auth';
+const SIGN_IN_ROUTE = '/auth/login';
 const HOME_ROUTE = '/';
 
 /**
@@ -260,11 +267,11 @@ function validateRedirectTarget(next: string | null): string | null {
 // SESSION VALIDATION
 // ============================================================================
 
-/**
- * Supabase client for middleware (server-side only).
- * Uses anon key - cannot access user data without valid session.
- */
+let _middlewareSupabase: ReturnType<typeof createClient> | null = null;
+
 function getSupabaseClient() {
+  if (_middlewareSupabase) return _middlewareSupabase;
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
 
@@ -273,35 +280,87 @@ function getSupabaseClient() {
     return null;
   }
 
-  return createClient(supabaseUrl, supabaseAnonKey);
+  _middlewareSupabase = createClient(supabaseUrl, supabaseAnonKey);
+  return _middlewareSupabase;
 }
 
 /**
- * Validate Supabase session from request cookies.
- * Next.js with Supabase SSR stores session in cookies.
+ * Validate Supabase session from request cookies or headers.
+ * Supports:
+ * 1. `sb-access-token` cookie
+ * 2. `Authorization: Bearer <token>` header
+ * 3. Standard Supabase SSR cookie (`sb-*-auth-token`)
+ * 4. Automatic token refresh if access token expired but `sb-refresh-token` is present
  */
-async function getSessionFromRequest(request: NextRequest) {
+async function getSessionFromRequest(request: NextRequest): Promise<{
+  user: any;
+  token: string;
+  refreshedSession?: any;
+} | null> {
   const supabase = getSupabaseClient();
   if (!supabase) return null;
 
   try {
-    // Supabase session cookie name
-    const accessToken = request.cookies.get('sb-access-token')?.value;
+    // 1. Check sb-access-token cookie
+    let accessToken = request.cookies.get('sb-access-token')?.value;
     const refreshToken = request.cookies.get('sb-refresh-token')?.value;
 
+    // 2. Check Authorization header
     if (!accessToken) {
-      return null;
+      const authHeader = request.headers.get('authorization');
+      if (authHeader?.startsWith('Bearer ')) {
+        accessToken = authHeader.slice(7).trim();
+      }
     }
 
-    // Validate the token
-    const { data, error } = await supabase.auth.getUser(accessToken);
+    // 3. Check standard Supabase auth cookie (e.g. sb-<project-ref>-auth-token)
+    if (!accessToken) {
+      for (const cookie of request.cookies.getAll()) {
+        if (cookie.name.startsWith('sb-') && cookie.name.endsWith('-auth-token')) {
+          try {
+            const raw = decodeURIComponent(cookie.value);
+            const parsed = raw.startsWith('base64-')
+              ? JSON.parse(Buffer.from(raw.slice(7), 'base64').toString('utf-8'))
+              : JSON.parse(raw);
+            if (parsed?.access_token) {
+              accessToken = parsed.access_token;
+              break;
+            }
+          } catch {
+            // ignore malformed cookie
+          }
+        }
+      }
+    }
 
-    if (error || !data.user) {
+    if (accessToken) {
+      const cleanToken = decodeURIComponent(accessToken);
+      const { data, error } = await supabase.auth.getUser(cleanToken);
+
+      if (!error && data?.user) {
+        return { user: data.user, token: cleanToken };
+      }
       console.debug('[middleware] Invalid session:', error?.message);
-      return null;
     }
 
-    return { user: data.user, token: accessToken };
+    // 4. Token refresh fallback: if access token is expired or missing, try refresh token
+    if (refreshToken) {
+      const cleanRefreshToken = decodeURIComponent(refreshToken);
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession({
+        refresh_token: cleanRefreshToken,
+      });
+
+      if (!refreshError && refreshData?.session && refreshData?.user) {
+        return {
+          user: refreshData.user,
+          token: refreshData.session.access_token,
+          refreshedSession: refreshData.session,
+        };
+      }
+      console.debug('[middleware] Refresh session failed:', refreshError?.message);
+    }
+
+    return null;
   } catch (err) {
     console.error('[middleware] Session validation error:', err);
     return null;
@@ -417,8 +476,8 @@ export const middleware: NextMiddleware = async (request: NextRequest) => {
       ? `${SIGN_IN_ROUTE}?${searchParams.toString()}`
       : SIGN_IN_ROUTE;
 
-    // Special case: if we're already on the login page, don't redirect
-    if (pathname === SIGN_IN_ROUTE || pathname.startsWith(`${SIGN_IN_ROUTE}/`)) {
+    // Special case: if we're already on the login page or an auth page, don't redirect
+    if (pathname === '/auth' || pathname.startsWith('/auth/')) {
       return NextResponse.next();
     }
 
@@ -427,6 +486,27 @@ export const middleware: NextMiddleware = async (request: NextRequest) => {
     // Clear any potentially stale auth cookies
     // Note: We don't clear the actual Supabase cookies as they're httpOnly
     // and the redirect to login will handle the auth flow
+    return response;
+  }
+
+  // If session was refreshed during validation, persist new tokens in response cookies
+  if (session.refreshedSession) {
+    const response = NextResponse.next();
+    const isProd = process.env.NODE_ENV === 'production';
+    response.cookies.set('sb-access-token', session.refreshedSession.access_token, {
+      path: '/',
+      maxAge: session.refreshedSession.expires_in || 3600,
+      sameSite: 'lax',
+      secure: isProd,
+    });
+    if (session.refreshedSession.refresh_token) {
+      response.cookies.set('sb-refresh-token', session.refreshedSession.refresh_token, {
+        path: '/',
+        maxAge: 60 * 60 * 24 * 30,
+        sameSite: 'lax',
+        secure: isProd,
+      });
+    }
     return response;
   }
 

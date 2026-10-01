@@ -7,6 +7,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { clearDevFreeEntry } from "@/lib/dev-auth";
 import { idbClear } from "@/lib/idb";
 import { beginIntentionalSignOut } from "@/lib/session-guard";
+import { clearAuthCookies } from "@/lib/auth/cookies";
 
 /** Po úmyselnom odhlásení — welcome page (nie /auth). */
 export const POST_SIGN_OUT_ROUTE = "/" as const;
@@ -99,6 +100,11 @@ export async function clearClientState(
     /* prázdne */
   }
   clearWebStorage();
+  try {
+    clearAuthCookies();
+  } catch {
+    /* prázdne */
+  }
 
   try {
     await idbClear();
