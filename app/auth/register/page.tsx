@@ -193,6 +193,8 @@ export default function RegisterPage() {
                     <input
                       type="text"
                       id="username"
+                      name="username"
+                      autoComplete="username"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       placeholder="Enter your username"
