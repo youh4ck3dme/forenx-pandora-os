@@ -6,6 +6,7 @@ import "./globals.css";
 import { ServiceWorkerRegistration } from "@/components/core/providers/service-worker-registration";
 import { ObservabilityReporter } from "@/components/forza/ObservabilityReporter";
 import { QueryProvider } from "@/components/core/providers/query-provider";
+import { AuthCookieSync } from "@/components/core/providers/auth-cookie-sync";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -97,6 +98,7 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <QueryProvider>
+          <AuthCookieSync />
           <ObservabilityReporter />
           {children}
           <Toaster richColors position="top-right" />

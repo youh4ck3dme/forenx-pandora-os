@@ -15,6 +15,8 @@ import {
 import Link from "next/link";
 import { PandoraLogo } from "@/components/ui/branding/pandora-logo";
 import { getSafeRedirectTarget } from "@/lib/auth/redirect";
+import { supabase } from "@/integrations/supabase/client";
+import { setAuthCookies } from "@/lib/auth/cookies";
 
 // ssr: false — AccountSignInForm uses useQueryClient() which requires
 // QueryClientProvider; disabling SSR avoids prerender crash at build time.
@@ -34,6 +36,19 @@ export default function LoginPage() {
   } | null>(null);
 
   useEffect(() => {
+    // If user already has an active Supabase session, sync cookies and redirect forward
+    supabase.auth.getSession().then(({ data }: { data: { session: any } }) => {
+      if (data?.session) {
+        setAuthCookies(data.session);
+        const nextParam =
+          typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search).get("next")
+            : null;
+        const next = getSafeRedirectTarget(nextParam, "/forza/pripady") ?? "/forza/pripady";
+        router.replace(next);
+      }
+    });
+
     const userData = localStorage.getItem("pandora_user");
     if (userData) {
       try {
@@ -42,7 +57,7 @@ export default function LoginPage() {
         // Invalid data
       }
     }
-  }, []);
+  }, [router]);
 
   const handleBiometricLogin = async () => {
     setIsLoading(true);
@@ -183,6 +198,7 @@ export default function LoginPage() {
                         : null;
                     const next = getSafeRedirectTarget(nextParam, "/forza/pripady") ?? "/forza/pripady";
                     router.push(next);
+                    router.refresh();
                   }}
                 />
               </div>
