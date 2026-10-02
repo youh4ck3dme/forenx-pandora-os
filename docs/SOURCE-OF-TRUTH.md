@@ -269,6 +269,8 @@ Negatívne testy musia overiť minimálne:
 - Žiadny regresný fixture nesmie používať produkčné dáta.
 - Deployment nie je dôkaz funkčnosti; po deploymente sa overia health endpointy, migrácie, MCP kontrakt a príslušný E2E test.
 - Rollback musí byť možný bez mazania dôkazov alebo auditnej histórie. Chránený rollback image `pandora-rollback:protected` sa nesmie zmazať pri čistení.
+- Monitoring a Alert Watchdog: Pravidelné vyhodnocovanie prevádzkových prahov (`deploy/vps/alert-watchdog.sh`, `scripts/test-alert-dispatch.mjs` a `/api/health/observe`) v zmysle `docs/ALERTING.md`. Alerty pokrývajú zaplnenie disku (80/90 %), 5xx chyby, výpadok DB/S3, zlyhanie verifikácie, AI timeouty > 60 s a chybovosť AI > 10 %.
+- Prijatie do pilotnej prevádzky: Formálny audit a udelenie statusu „GO PRE PILOT“ sa zaznamenáva v `docs/PILOT-GO-CHAIN-OF-CUSTODY-PROTOCOL.md` podľa podmienok z `docs/BLUEPRINT-PILOT-RELEASE.md` (časť 5.2).
 
 ## 11. Pravidlá pre AI agentov
 
@@ -288,6 +290,9 @@ Po úprave uveď zmenené súbory, spustené testy a presne čo zostalo neoveren
 - [Architektúra](ARCHITECTURE.md)
 - [Deployment runbook](DEPLOYMENT.md)
 - [Disaster recovery](DISASTER_RECOVERY_RUNBOOK.md)
+- [Alerting a operačný runbook](ALERTING.md)
+- [Protokol GO pre pilot](PILOT-GO-CHAIN-OF-CUSTODY-PROTOCOL.md)
 - [Backlog source of truth](BACKLOG-SOURCE-OF-TRUTH.md)
 - [Contributing](../CONTRIBUTING.md)
 - [Root agent instructions](../AGENTS.md)
+

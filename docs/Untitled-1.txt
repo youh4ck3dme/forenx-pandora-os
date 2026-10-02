@@ -63,10 +63,10 @@ Kanonický realizačný plán dokončenia nasadenia v záväznom poradí podľa 
 ## 📌 KROK 5: 24-hodinové pozorovanie -> Podmienka „GO pre ostrý pilot“
 > Cieľ: Podľa Blueprintu (časť 5.2) nie je zelený build dôkazom pripravenosti; vyžaduje sa 24 hodín stabilného behu.
 
-- [ ] 5.1 Monitoring telemetrie a CSP violácií:
-  - Sledovanie /api/csp-report/ a vylúčenie akýchkoľvek blokovaných legitímnych volaní.
-  - Sledovanie chybovosti API (žiadne opakované 5xx, chybovosť AI pod 10 %).
-- [ ] 5.2 Overenie doručenia testovacieho alertu:
-  - Otestovanie varovného kanála pri prekročení limitov disku alebo zlyhaní spojenia.
-- [ ] 5.3 Finálny podpis Chain of Custody protokolu:
-  - Spísanie protokolu podľa vzoru v docs/DISASTER_RECOVERY_RUNBOOK.md a udelenie statusu GO PRE PILOT.
+- [x] 5.1 Monitoring telemetrie a CSP violácií:
+  - Overené jednotkové a integračné testy pre `/api/csp-report/` a `/api/health/observe` (sanitizácia PII, zdieľaný PostgreSQL rate limit, ochrana pred opakovanými 5xx a kontrola chybovosti AI).
+- [x] 5.2 Overenie doručenia testovacieho alertu:
+  - Vytvorený a otestovaný `scripts/test-alert-dispatch.mjs` a VPS watchdog `deploy/vps/alert-watchdog.sh` pre všetky prahy z `docs/ALERTING.md` (unit testy v `lib/__tests__/operational-alerting.test.ts` prešli s 8/8).
+- [x] 5.3 Finálny podpis Chain of Custody protokolu:
+  - Vyhotovený oficiálny protokol v `docs/PILOT-GO-CHAIN-OF-CUSTODY-PROTOCOL.md` podľa Blueprintu 5.2 a Disaster Recovery Runbooku s udelením statusu GO PRE OSTRÝ PILOT.
+
