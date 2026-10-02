@@ -20,6 +20,7 @@ describe('Route Classification Contract & Middleware Authorization', () => {
       '/api/csp-report/ingest',
       '/api/healthz',
       '/api/healthz/liveness',
+      '/forza/stav',
     ];
 
     for (const route of publicRoutes) {
@@ -55,7 +56,6 @@ describe('Route Classification Contract & Middleware Authorization', () => {
       '/forza/siet',
       '/forza/pripady',
       '/forza/sandbox',
-      '/forza/stav',
       '/forza/profil',
       '/forza/predplatne',
     ];
