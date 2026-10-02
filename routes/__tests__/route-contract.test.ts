@@ -21,6 +21,7 @@ describe('Route Classification Contract & Middleware Authorization', () => {
       '/api/csp-report/ingest',
       '/api/healthz',
       '/api/healthz/liveness',
+      '/forza/stav',
     ];
 
     for (const route of publicRoutes) {

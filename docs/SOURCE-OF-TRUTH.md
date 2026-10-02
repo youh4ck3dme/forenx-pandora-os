@@ -63,6 +63,14 @@ AI OUTPUT ≠ EVIDENCE
 
 AI môže vytvoriť hypotézu, klasifikáciu alebo nález, ale nesmie zmeniť pôvodný dôkaz, jeho hash, reťazec vlastníctva ani označiť neoverené tvrdenie za fakt.
 
+### 3.1 Autentifikácia a relácie (Auth Session Invariants)
+
+- **Klientske ukladanie vs. Serverový middleware:** Supabase JS ukladá reláciu na klientovi do `localStorage`. Next.js Edge Middleware (`middleware.ts`) a Server Components overujú reláciu server-side cez HTTP cookies (`sb-access-token`, `sb-refresh-token`) a `Authorization: Bearer <token>` header.
+- **Synchronizácia do cookies (`lib/auth/cookies.ts`):** Po úspešnom `signInWithPassword`, `signUp` alebo `TOKEN_REFRESHED` sa tokeny synchrónne zapisujú do `document.cookie` (`sb-access-token`, `sb-refresh-token` s parametrami `Path=/`, `SameSite=Lax`, `Secure` pri HTTPS).
+- **Globálny cookie sync (`components/core/providers/auth-cookie-sync.tsx`):** V pozadí počúva na `onAuthStateChange` a udržiava cookies v súlade s platným Supabase tokenom.
+- **Čistenie relácie:** Pri odhlásení cez `signOutEverywhere` / `clearClientState` sa cookies zneplatnia (`Max-Age=0`).
+- **Presmerovanie po prihlásení:** Pri neautentifikovanom prístupe k chráneným trasám middleware presmeruje priamo na `/auth/login?next=<sanitized_path>`, pričom cieľová cesta musí prejsť validáciou open-redirect ochrany (`lib/auth/redirect.ts`).
+
 ## 4. Vlastníctvo dát
 
 | Dáta | Autoritatívne úložisko | Klientská cache |
@@ -139,6 +147,16 @@ MCP kontrakt musí obsahovať nástroj `forenzx_analysis_start` s `download_url`
 ## 7. UI, PWA a mobile pravidlá
 
 Mobile/PWA je klient rovnakého forenzného systému, nie samostatná databáza.
+
+Verejne dostupná je iba read-only stránka `/forza/stav`. Ostatné stránky pod
+`/forza` vyžadujú autentifikáciu a príslušný prístup k prípadu. Administrátorská
+health funkcia a citlivé systémové dáta zostávajú chránené serverovým
+oprávnením.
+
+Verejný live dashboard používa iba `/api/health/public`, ktorý vracia
+agregované metriky bez secrets, používateľských identifikátorov, obsahu logov,
+promptov a stack traces. Zápisové API a administrátorský health endpoint sa
+nesmú použiť ako verejný dátový zdroj.
 
 Povinné UI stavy:
 

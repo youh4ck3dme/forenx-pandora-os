@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { adoptCloudSession } from "@/lib/session";
+import { setAuthCookies } from "@/lib/auth/cookies";
 import { cn } from "@/lib/utils";
 
 const inputClass =
@@ -71,6 +72,7 @@ export function AccountSignInForm({
           setMode("signin");
           return;
         }
+        setAuthCookies(data.session);
         adoptCloudSession(queryClient);
         setPassword("");
         toast.success("Účet je vytvorený — ste prihlásený.");
@@ -78,11 +80,14 @@ export function AccountSignInForm({
         return;
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: address,
         password,
       });
       if (error) throw new Error("Prihlásenie zlyhalo. Skontrolujte údaje.");
+      if (data.session) {
+        setAuthCookies(data.session);
+      }
       adoptCloudSession(queryClient);
       setPassword("");
       toast.success("Ste prihlásený — pracujete vo svojom účte.");

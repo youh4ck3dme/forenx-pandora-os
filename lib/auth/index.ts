@@ -17,6 +17,7 @@
  */
 
 export * from './redirect';
+export * from './cookies';
 
 export type { RouteCategory } from '@/middleware';
 
