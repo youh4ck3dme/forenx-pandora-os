@@ -44,7 +44,6 @@ export const exportMyData = createServerFn({ method: "POST", id: "account/export
     for (const table of tables) {
       const column = table === "profiles" ? "id" : "user_id";
       // Voľná schéma: tabuľky majú rôzne stĺpce, dotaz je vždy obmedzený na vlastníka.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const query = (supabase.from(table) as any)
         .select("*")
         .eq(column, userId)

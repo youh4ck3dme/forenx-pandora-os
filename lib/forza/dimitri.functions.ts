@@ -22,7 +22,10 @@ function fail(
 /**
  * Importuje report z Dimitri Checker pre daný prípad.
  */
-export const importDimitriCheckerReport = createServerFn({ method: "POST", id: "dimitri/importDimitriCheckerReport" })
+export const importDimitriCheckerReport = createServerFn({
+  method: "POST",
+  id: "dimitri/importDimitriCheckerReport",
+})
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) =>
     z
@@ -54,9 +57,7 @@ export const importDimitriCheckerReport = createServerFn({ method: "POST", id: "
       subtitle: owned.subtitle ?? "",
       referenceDate: owned.reference_date,
       baseCurrency: owned.base_currency ?? "EUR",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       entities: (owned.case_entities as any[]) || [],
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       transactions: (owned.case_transactions as any[]) || [],
       weapons: [],
       relations: [],
@@ -73,26 +74,26 @@ export const importDimitriCheckerReport = createServerFn({ method: "POST", id: "
     const { report, warnings } = validateDimitriReferences(rawReport, caseData);
 
     // 4. Uloženie do databázy cross_border_analyses
-    const { data: inserted, error: insertError } =
-      await // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (supabase.from("cross_border_analyses" as any) as any)
-        .insert({
-          case_id: data.caseId,
-          user_id: userId,
-          report_id: report.reportId,
-          source: report.source.source,
-          captured_at: report.capturedAt,
-          countries: report.countries,
-          routes: report.routes,
-          intermediaries: report.intermediaries,
-          signals: report.signals,
-          nominee_indicators: report.nomineeIndicators || [],
-          source_url: report.source.sourceUrl ?? null,
-          source_hash: report.source.sourceHash ?? null,
-          raw_payload: data.reportPayload,
-        })
-        .select("id")
-        .single();
+    const { data: inserted, error: insertError } = await (
+      supabase.from("cross_border_analyses") as any
+    )
+      .insert({
+        case_id: data.caseId,
+        user_id: userId,
+        report_id: report.reportId,
+        source: report.source.source,
+        captured_at: report.capturedAt,
+        countries: report.countries,
+        routes: report.routes,
+        intermediaries: report.intermediaries,
+        signals: report.signals,
+        nominee_indicators: report.nomineeIndicators || [],
+        source_url: report.source.sourceUrl ?? null,
+        source_hash: report.source.sourceHash ?? null,
+        raw_payload: data.reportPayload,
+      })
+      .select("id")
+      .single();
 
     if (insertError)
       fail(insertError, "Uloženie reportu Dimitri Checker zlyhalo.");
@@ -112,19 +113,22 @@ export const importDimitriCheckerReport = createServerFn({ method: "POST", id: "
 /**
  * Zoznam uložených cezhraničných analýz pre prípad.
  */
-export const listCrossBorderAnalyses = createServerFn({ method: "POST", id: "dimitri/listCrossBorderAnalyses" })
+export const listCrossBorderAnalyses = createServerFn({
+  method: "POST",
+  id: "dimitri/listCrossBorderAnalyses",
+})
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => z.object({ caseId: uuid }).parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
-    const { data: analyses, error } =
-      await // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (supabase.from("cross_border_analyses" as any) as any)
-        .select("*")
-        .eq("case_id", data.caseId)
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false });
+    const { data: analyses, error } = await (
+      supabase.from("cross_border_analyses") as any
+    )
+      .select("*")
+      .eq("case_id", data.caseId)
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
 
     if (error) fail(error, "Načítanie cezhraničných analýz zlyhalo.");
     return { ok: true, analyses: analyses ?? [] };

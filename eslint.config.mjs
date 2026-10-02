@@ -37,6 +37,7 @@ export default [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      "app/.well-known/workflow/**",
     ],
   },
 ];

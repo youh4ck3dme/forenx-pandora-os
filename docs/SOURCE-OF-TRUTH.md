@@ -192,6 +192,8 @@ npm run typecheck
 npx vitest run
 ```
 
+Vitest beží v troch projektoch: `main` (jsdom, paralelný), `cleanroom` (node, PGlite/Docker PostgreSQL, serializovane `maxWorkers=1`) a `supabase-db` (node, PGlite, serializovane `maxWorkers=1`). Ťažké PGlite sady sa nesmú spúšťať paralelne v jednom workri s jsdom sadami — worker zomiera na OOM. `next build` vyžaduje `NODE_OPTIONS=--max-old-space-size=4096` (zabudované v `npm run build`).
+
 Podľa rozsahu zmeny:
 
 ```powershell

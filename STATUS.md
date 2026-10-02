@@ -4,7 +4,7 @@
 
 Projekt je v **vysoko stabilnom a plne funkčnom stave**. Prebehol rozsiahly refaktoring, prechod AI jadra na Mistral AI, oprava chýb hydratácie a linteru, a kompletné zjednotenie vizuálnej a dátovej vrstvy.
 
-Všetkých **129 testov naprieč 23 testovacími sadami úspešne prechádza** (100% pass rate).
+Všetkých **887 vitest testov naprieč 107 testovacími sadami úspešne prechádza** (0 chýb, 0 unhandled worker errors; 3 skipped sády vyžadujú Docker/Postgres runtime).
 
 ---
 
@@ -31,7 +31,7 @@ Všetkých **129 testov naprieč 23 testovacími sadami úspešne prechádza** (
 
 ### 5. Kvalita kódu & Testovacia stabilita
 - **TypeScript & Linter**: 0 chýb a 0 varovaní. Vyriešený typový mismatch v `omnibox.tsx` a Next.js `no-img-element` v `copilot.tsx`.
-- **Vitest Suite**: 129/129 úspešných testov pokrývajúcich:
+- **Vitest Suite**: 887/887 úspešných testov pokrývajúcich (projekty `main` + `cleanroom` + `supabase-db`; ťažké PGlite sady bežia serializovane kvôli pamäťovým limitom):
   - `ai-service.test.ts` (Mistral API routing, chybové stavy a payloady)
   - `browser-store.test.ts` (Správa tabov, histórie, mistralApiKey, navigácia)
   - `wallet-service.test.ts` & `search-service.test.ts`
