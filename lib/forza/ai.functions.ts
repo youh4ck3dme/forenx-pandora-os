@@ -225,7 +225,17 @@ export const previewAiPayload = createServerFn({ method: "POST", id: "ai/preview
       data.task === "explain_finding"
         ? ({ task: "explain_finding", alertId: data.alertId ?? "" } as const)
         : ({ task: data.task } as const);
-    const { payload } = buildAiPayload(analysis, scope);
+    const { payload: basePayload } = buildAiPayload(analysis, scope);
+    const bindsEvidence = data.task === "alt_devil" || data.task === "admiss_audit";
+    const { loadEvidenceRegistry, pseudonymizeRegistry } = await import("./evidence-registry");
+    const ledgerClient = context.supabase as unknown as Parameters<typeof loadEvidenceRegistry>[0];
+    const evidenceRegistry = bindsEvidence
+      ? await loadEvidenceRegistry(ledgerClient, data.caseId)
+      : [];
+    const evidencePseudonyms = pseudonymizeRegistry(evidenceRegistry);
+    const payload = bindsEvidence
+      ? { ...basePayload, evidence: evidencePseudonyms.entries }
+      : basePayload;
     return { payload, dataFingerprint: analysis.dataFingerprint };
   });
 
@@ -456,10 +466,12 @@ async function runAiTaskInner(
     // Case-úlohy analyzujú záznamy prípadu (transakcie, entity), nie obsah dôkazov:
     // model obsah WORM dôkazov nevidí, takže väzbu nemôže dokázať → prázdny register;
     // hypotézy a vady sa zobrazia iba ako neoverené (enforceTaskEvidenceBinding).
-    const { pseudonymizeRegistry, remapEvidenceReferences } = await import("./evidence-registry");
-    const registryEntries: import("./evidence-registry").RegistryEntry[] = [];
+    const { loadEvidenceRegistry, pseudonymizeRegistry, remapEvidenceReferences } = await import("./evidence-registry");
+    const registryEntries = bindsEvidence
+      ? await loadEvidenceRegistry(context.supabase, data.caseId)
+      : [];
     const evidencePseudonyms = pseudonymizeRegistry(registryEntries);
-    if (bindsEvidence && evidencePseudonyms.entries.length > 0) {
+    if (bindsEvidence) {
       payload = { ...payload, evidence: evidencePseudonyms.entries };
     }
 
