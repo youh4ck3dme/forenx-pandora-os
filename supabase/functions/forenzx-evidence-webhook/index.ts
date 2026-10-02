@@ -19,6 +19,8 @@ type Input = {
   packId?: string;
   claimedSha256?: string;
   idempotencyKey?: string;
+  downloadUrl?: string;
+  downloadFilename?: string;
   record?: EvidenceRecord;
   type?: string;
 };
@@ -58,10 +60,8 @@ function requiredEnv(name: string): string {
 function isAuthorized(request: Request): boolean {
   const expected = Deno.env.get("FORENZX_WEBHOOK_SECRET")?.trim();
   if (!expected) return false;
-  return (
-    request.headers.get("x-forenzx-webhook-secret") === expected ||
-    request.headers.get("x-webhook-secret") === expected
-  );
+  // Canonical header only — SOURCE-OF-TRUTH §6
+  return request.headers.get("x-forenzx-webhook-secret") === expected;
 }
 
 function extractInput(body: Input) {
@@ -81,6 +81,8 @@ function extractInput(body: Input) {
     packId,
     claimedSha256,
     idempotencyKey,
+    downloadUrl: body.downloadUrl,
+    downloadFilename: body.downloadFilename,
   };
 }
 
@@ -179,16 +181,19 @@ Deno.serve(async (request: Request) => {
     if (insertError || !row) throw new Error(`forenzx job persistence failed: ${insertError?.message ?? "no row"}`);
 
     try {
-      // ── NEW: Fetch presigned download URL from Pandora ─────────────────────
-      // The Edge Function (Deno) cannot use the AWS SDK, so Pandora generates
-      // a short-lived presigned GET URL via /api/forenzx/presign-for-hub.
-      const s3Key = input.record.s3_object_key;
-      if (!s3Key) throw new Error("evidence_items.s3_object_key is required to generate download URL");
+      let download_url = input.downloadUrl;
+      let filename = input.downloadFilename ?? input.record.file_name ?? "evidence.bin";
 
-      const pandoraUrl = requiredEnv("PANDORA_URL");
-      const webhookSecret = requiredEnv("FORENZX_WEBHOOK_SECRET");
-      const { download_url, filename } = await fetchPresignedDownloadUrl(s3Key, pandoraUrl, webhookSecret);
-      // ──────────────────────────────────────────────────────────────────────
+      if (!download_url) {
+        const s3Key = input.record.s3_object_key;
+        if (!s3Key) throw new Error("evidence_items.s3_object_key is required to generate download URL");
+
+        const pandoraUrl = requiredEnv("PANDORA_URL");
+        const webhookSecret = requiredEnv("FORENZX_WEBHOOK_SECRET");
+        const presigned = await fetchPresignedDownloadUrl(s3Key, pandoraUrl, webhookSecret);
+        download_url = presigned.download_url;
+        filename = presigned.filename;
+      }
 
       const result = await callHub("forenzx_analysis_start", {
         case_id: input.caseId,
