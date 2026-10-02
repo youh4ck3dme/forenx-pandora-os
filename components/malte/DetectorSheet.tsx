@@ -176,7 +176,7 @@ export function DetectorSheet({
     }, 320);
     return () => window.clearTimeout(timer);
     // logRun je stabilné cez useMemo v store
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [target?.kind, target?.id, activeCase]);
 
   const reviewedId = target ? `${target.kind}:${target.id}` : "";
