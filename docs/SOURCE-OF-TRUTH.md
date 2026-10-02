@@ -227,6 +227,8 @@ Všeobecné `S3_*` premenné môžu slúžiť existujúcemu Vaultu, ale automati
 
 Testovacie env premenné `FORENZX_REGRESSION_*` patria iba do lokálneho PowerShell procesu alebo ignored lokálneho loadera. Nikdy ich nepridávať do gitu.
 
+Verejné Supabase hodnoty (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`) sa do CI/docker build dodávajú výhradne cez GitHub Repository Variables (`vars.NEXT_PUBLIC_SUPABASE_URL`) a Repository Secrets (`secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY`) — nikdy hardcoded vo workflow alebo v repozitári. Sú `NEXT_PUBLIC_*`, takže ich Next.js inlinuje do browser bundlu pri buildu (docker/Dockerfile.production ARG/ENV), ale anon key nie je serverový secret; za ochranu stále zodpovedá RLS.
+
 ## 9. Testovacie brány
 
 Pred zmenou:
