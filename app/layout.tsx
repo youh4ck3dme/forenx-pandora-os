@@ -37,8 +37,16 @@ export const metadata: Metadata = {
   authors: [{ name: "PΛND0RΛ Team" }],
   manifest: "/manifest.json",
   icons: {
-    icon: "/favicon.svg",
-    apple: "/icons/icon.svg",
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "32x32" },
+      { url: "/icon-dark-32x32.png", sizes: "32x32", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: [
+      { url: "/apple-icon.png", sizes: "180x180", type: "image/png" },
+      { url: "/icons/icon.svg", type: "image/svg+xml" },
+    ],
   },
   appleWebApp: {
     capable: true,

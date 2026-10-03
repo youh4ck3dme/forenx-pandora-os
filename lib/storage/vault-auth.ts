@@ -153,6 +153,9 @@ export async function verifyCaseOwnership(
   caseId: string,
   userId: string,
 ): Promise<OwnershipResult> {
+  if (!isUuidCaseId(caseId)) {
+    return "not_found";
+  }
   try {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
@@ -160,7 +163,10 @@ export async function verifyCaseOwnership(
       .select("id, user_id")
       .eq("id", caseId)
       .maybeSingle();
-    if (error) return "unavailable";
+    if (error) {
+      if (error.code === "22P02") return "not_found";
+      return "unavailable";
+    }
     if (!data) return "not_found";
     return data.user_id === userId ? "ok" : "forbidden";
   } catch {
