@@ -48,7 +48,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { evidenceId, inputType, packId } = parsed.data;
 
   // ── IDOR protection & load trusted evidence row ────────────────────────────
-  const { data: evidenceRow, error: lookupError } = await (supabaseAdmin as any)
+  const { data: evidenceRow, error: lookupError } = await supabaseAdmin
     .from("evidence_items")
     .select("*")
     .eq("id", evidenceId)
