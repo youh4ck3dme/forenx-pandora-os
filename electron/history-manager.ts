@@ -15,6 +15,9 @@ export interface HistoryDoc {
     title: string
     content?: string
     timestamp: number
+    // Opaque ciphertext kept in memory when decryption was unavailable at load time.
+    // Never sent to callers; used only to round-trip back to disk on save.
+    encryptedContent?: string
 }
 
 export interface PersistedHistoryDoc {
@@ -106,6 +109,7 @@ export class HistoryManager {
         if (!url || typeof url !== 'string') return null
         for (const doc of this.docs.values()) {
             if (doc.url === url) {
+                // Never expose encryptedContent (opaque ciphertext) to callers
                 return {
                     id: doc.id,
                     url: doc.url,
@@ -159,9 +163,22 @@ export class HistoryManager {
                             diskRecord.encryptedContent = encryptedBuffer.toString('base64')
                         } catch (err) {
                             console.error('[HistoryManager] safeStorage encryption failed, omitting content from disk:', err)
+                            // If we have a stale ciphertext from a previous session, preserve it
+                            if (doc.encryptedContent) {
+                                diskRecord.encryptedContent = doc.encryptedContent
+                            }
                         }
                     }
-                    // When encryption is unavailable, diskRecord does NOT include content or encryptedContent
+                    // When encryption is unavailable, do NOT write plaintext content.
+                    // If we have a stale ciphertext from a previous session, preserve it so
+                    // decryption can succeed once safeStorage becomes available again.
+                    if (!encryptionAvailable && doc.encryptedContent) {
+                        diskRecord.encryptedContent = doc.encryptedContent
+                    }
+                } else if (doc.encryptedContent) {
+                    // content is empty (decrypt was unavailable or failed at load time),
+                    // but we still hold the original ciphertext — round-trip it to disk.
+                    diskRecord.encryptedContent = doc.encryptedContent
                 }
 
                 return diskRecord
@@ -213,10 +230,15 @@ export class HistoryManager {
                         } catch (err) {
                             console.error('[HistoryManager] Failed to decrypt encryptedContent:', err)
                             content = ''
+                            // Preserve ciphertext so it can be round-tripped back to disk
+                            // and decrypted once safeStorage becomes available again
+                            ;(record as any)._preserveEncrypted = record.encryptedContent
                         }
                     } else {
-                        // SafeStorage unavailable: fail-closed, do not expose or decrypt
+                        // SafeStorage unavailable: fail-closed, do not expose or decrypt.
+                        // Preserve ciphertext for round-trip so it survives this session.
                         content = ''
+                        ;(record as any)._preserveEncrypted = record.encryptedContent
                     }
                 } else if ('content' in record) {
                     // Legacy record with plaintext content: migration needed
@@ -238,7 +260,8 @@ export class HistoryManager {
                     url: String(record.url || ''),
                     title: String(record.title || ''),
                     content,
-                    timestamp: Number(record.timestamp) || Date.now()
+                    timestamp: Number(record.timestamp) || Date.now(),
+                    encryptedContent: (record as any)._preserveEncrypted as string | undefined
                 }
 
                 this.index.add(doc)

@@ -245,6 +245,53 @@ describe('HistoryManager - Second Brain Encrypt-At-Rest', () => {
     });
   });
 
+  describe('Ciphertext round-trip (Copilot P1)', () => {
+    it('(a) preserves ciphertext when encryption off during session, restores body after re-enabling', () => {
+      // Step 1: write encrypted entry with encryption on
+      const manager1 = new HistoryManager(storagePath);
+      manager1.addEntry({ url: 'https://case.local/doc', title: 'Doc', content: 'ORIGINAL_BODY' });
+
+      // Step 2: turn encryption off, reload (decrypt unavailable) and add a new entry
+      mockSafeStorage.setEncryptionAvailable(false);
+      const manager2 = new HistoryManager(storagePath);
+      manager2.addEntry({ url: 'https://case.local/doc2', title: 'Doc2', content: 'NEW_BODY' });
+      // NEW_BODY cannot be encrypted — must not appear on disk
+      const raw2 = fs.readFileSync(storagePath, 'utf8');
+      expect(raw2).not.toContain('NEW_BODY');
+      // Original ciphertext must still be present on disk (round-tripped)
+      const parsed2 = JSON.parse(raw2);
+      const originalOnDisk = parsed2.find((r: any) => r.url === 'https://case.local/doc');
+      expect(originalOnDisk?.encryptedContent).toBeDefined();
+
+      // Step 3: turn encryption back on, reload — old body decrypts correctly
+      mockSafeStorage.setEncryptionAvailable(true);
+      const manager3 = new HistoryManager(storagePath);
+      const restored = manager3.getContent('https://case.local/doc');
+      expect(restored?.content).toBe('ORIGINAL_BODY');
+    });
+
+    it('(b) preserves ciphertext when decryptString throws, restores body after fix', () => {
+      // Step 1: write encrypted entry
+      const manager1 = new HistoryManager(storagePath);
+      manager1.addEntry({ url: 'https://case.local/secure', title: 'Secure', content: 'DECRYPT_ME' });
+
+      // Step 2: make decryptString throw, reload
+      const originalDecrypt = mockSafeStorage.decryptString.getMockImplementation?.();
+      mockSafeStorage.decryptString.mockImplementationOnce(() => { throw new Error('mock decrypt failure') });
+      const manager2 = new HistoryManager(storagePath);
+      // content is empty in memory
+      expect(manager2.getContent('https://case.local/secure')?.content).toBe('');
+      // ciphertext must still be on disk
+      const raw2 = fs.readFileSync(storagePath, 'utf8');
+      const parsed2 = JSON.parse(raw2);
+      expect(parsed2.find((r: any) => r.url === 'https://case.local/secure')?.encryptedContent).toBeDefined();
+
+      // Step 3: decrypt works again — reload and recover
+      const manager3 = new HistoryManager(storagePath);
+      expect(manager3.getContent('https://case.local/secure')?.content).toBe('DECRYPT_ME');
+    });
+  });
+
   describe('IPC Sender Gating (Requirement 3)', () => {
     it('verifies electron/main.mts gates both history:search and history:getContent with isMainWindowSender', () => {
       const mainPath = path.resolve(__dirname, '../main.mts');
