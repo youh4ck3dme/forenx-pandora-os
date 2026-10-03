@@ -267,4 +267,73 @@ describe("POST /api/forenzx/start", () => {
 
     expect(startForenZXAnalysisMock).not.toHaveBeenCalled();
   });
+
+  it("rejects request with HTTP 403 when evidence row does not yield a valid UUID caseId", async () => {
+    const { POST } = await import("../../../app/api/forenzx/start/route");
+
+    // s3 key does not have UUID format, and no case_id field exists on row
+    mockEvidenceRow = {
+      ...mockEvidenceRow,
+      s3_object_key: "cases/non-uuid-case-folder/evidence/dump.tar.gz",
+    };
+
+    const request = new NextRequest("http://localhost/api/forenzx/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        evidenceId: EVIDENCE_ID,
+        inputType: "ios_backup",
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(403);
+
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toContain("UUID caseId");
+    expect(startForenZXAnalysisMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts evidence row with valid UUID in case_id field directly", async () => {
+    const { POST } = await import("../../../app/api/forenzx/start/route");
+
+    const directCaseUuid = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
+    mockEvidenceRow = {
+      ...mockEvidenceRow,
+      case_id: directCaseUuid,
+      s3_object_key: `cases/${CASE_UUID}/evidence/dump.tar.gz`,
+    };
+
+    const request = new NextRequest("http://localhost/api/forenzx/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        evidenceId: EVIDENCE_ID,
+        inputType: "ios_backup",
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    expect(startForenZXAnalysisMock).toHaveBeenCalledTimes(1);
+    const calledArgs = startForenZXAnalysisMock.mock.calls[0][0];
+    expect(calledArgs.caseId).toBe(directCaseUuid);
+  });
+
+  it("validates request schema correctly from lib schema module", async () => {
+    const { ForenzxStartRequestSchema } = await import("@/lib/forza/forenzx-start.schema");
+    const valid = ForenzxStartRequestSchema.safeParse({
+      evidenceId: EVIDENCE_ID,
+      inputType: "ios_backup",
+      packId: "mobile_compromise",
+    });
+    expect(valid.success).toBe(true);
+
+    const invalid = ForenzxStartRequestSchema.safeParse({
+      evidenceId: "not-a-uuid",
+      inputType: "",
+    });
+    expect(invalid.success).toBe(false);
+  });
 });

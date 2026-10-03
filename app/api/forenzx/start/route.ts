@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { authenticateVaultRequest } from "@/lib/storage/vault-auth";
 import { startForenZXAnalysis } from "@/lib/forza/forenzx-mcp.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { ForenzxStartRequestSchema } from "@/lib/forza/forenzx-start.schema";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 /**
  * POST /api/forenzx/start
@@ -17,15 +19,10 @@ export const runtime = "nodejs";
  *  - Client sends ONLY evidenceId, packId, and inputType.
  *  - caseId, s3ObjectKey, sha256, and fileSize are loaded exclusively from evidence_items.
  *  - Evidence must have hash_verification_status = 'verified'. Otherwise HTTP 403.
+ *  - If no valid UUID caseId can be resolved from evidence ledger row, return HTTP 403.
  *  - Any client-supplied s3ObjectKey, sha256, or caseId is strictly ignored.
  *  - ForenZX tool call and S3 presigned URL use only ledger row values.
  */
-
-export const ForenzxStartRequestSchema = z.object({
-  evidenceId: z.string().uuid(),
-  inputType: z.string().min(1).max(64),
-  packId: z.string().min(1).max(128).default("mobile_compromise"),
-});
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await authenticateVaultRequest(request);
@@ -85,14 +82,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Ak v tabuľke nie je case_id, použijeme to, čo riadok naozaj má:
-  // (row.case_id ak existuje, extrakciu z s3_object_key, alebo case_name)
-  const keyCaseMatch = trustedS3Key.match(/^cases\/([^/]+)\/evidence\//);
-  const resolvedCaseId =
-    (typeof evidenceRow.case_id === "string" && evidenceRow.case_id ? evidenceRow.case_id : null) ??
-    (keyCaseMatch?.[1] ? keyCaseMatch[1] : null) ??
-    (typeof evidenceRow.case_name === "string" && evidenceRow.case_name ? evidenceRow.case_name : null) ??
-    "unknown-case";
+  // Ak z evidence riadku nevyjde UUID caseId, vráť 403. Žiadny unknown-case, žiadny case_name.
+  const rawCaseIdFromRow =
+    typeof evidenceRow.case_id === "string" && UUID_REGEX.test(evidenceRow.case_id)
+      ? evidenceRow.case_id
+      : null;
+
+  const keyCaseMatch = trustedS3Key.match(
+    /^cases\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\/evidence\//
+  );
+  const rawCaseIdFromS3 = keyCaseMatch?.[1] ?? null;
+
+  const resolvedCaseId = rawCaseIdFromRow ?? rawCaseIdFromS3;
+
+  if (!resolvedCaseId) {
+    return NextResponse.json(
+      { error: "Dôkaz nie je priradený k platnému prípadu (chýba platné UUID caseId)." },
+      { status: 403 },
+    );
+  }
 
   // ── Idempotency check ──────────────────────────────────────────────────────
   // Use verified SHA-256 digest from evidence row
