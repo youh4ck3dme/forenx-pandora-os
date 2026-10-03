@@ -151,21 +151,37 @@ ipcMain.handle('shield:getLogs', () => {
 })
 
 // IPC Handlers for Password Manager
-ipcMain.handle('password:save', async (_, entry) => {
+function isMainWindowSender(event: Electron.IpcMainInvokeEvent): boolean {
+    return !!mainWindow && event.sender.id === mainWindow.webContents.id
+}
+
+ipcMain.handle('password:get', async (event) => {
+    if (!isMainWindowSender(event)) return { ok: false, code: 'FORBIDDEN' }
+    return passwordManager?.listMasked() ?? []
+})
+
+ipcMain.handle('password:reveal', async (event, id: unknown) => {
+    if (!isMainWindowSender(event)) return { ok: false, code: 'FORBIDDEN' }
+    if (typeof id !== 'string' || id.length === 0 || id.length > 128) return { ok: false, code: 'VALIDATION_ERROR' }
+    const entry = passwordManager?.revealPassword(id) ?? null
+    if (!entry) return { ok: false, code: 'NOT_FOUND' }
+    return { ok: true, entry }
+})
+
+ipcMain.handle('password:save', async (event, entry) => {
+    if (!isMainWindowSender(event)) return { ok: false, code: 'FORBIDDEN' }
     return passwordManager?.savePassword(entry)
 })
 
-ipcMain.handle('password:get', async () => {
-    return passwordManager?.getPasswords()
-})
-
-ipcMain.handle('password:delete', async (_, id) => {
+ipcMain.handle('password:delete', async (event, id) => {
+    if (!isMainWindowSender(event)) return { ok: false, code: 'FORBIDDEN' }
     return passwordManager?.deletePassword(id)
 })
 
 
 // IPC Handlers for Session Data
-ipcMain.handle('session:clear-data', async () => {
+ipcMain.handle('session:clear-data', async (event) => {
+    if (!isMainWindowSender(event)) return false
     try {
         const webTabsSession = getWebTabsSession()
         await webTabsSession.clearStorageData({
@@ -420,7 +436,8 @@ function createWindow() {
         return historyManager?.search(query) || []
     })
 
-    ipcMain.handle('history:getContent', (_, url) => {
+    ipcMain.handle('history:getContent', (event, url) => {
+        if (!isMainWindowSender(event)) return null
         // Find doc by URL in history
         const docs = Array.from((historyManager as any).docs.values())
         return docs.find((d: any) => d.url === url)
@@ -485,7 +502,8 @@ function createWindow() {
     })
 
     // IPC for Extensions
-    ipcMain.handle('extension:load', async (_, path) => {
+    ipcMain.handle('extension:load', async (event, path) => {
+        if (!isMainWindowSender(event)) return { ok: false, code: 'FORBIDDEN' }
         try {
             const webTabsSession = getWebTabsSession()
             const ext = await webTabsSession.loadExtension(path)
@@ -561,7 +579,8 @@ function createWindow() {
         }
     })
 
-    ipcMain.handle('capture:page', async () => {
+    ipcMain.handle('capture:page', async (event) => {
+        if (!isMainWindowSender(event)) return null
         if (!mainWindow || !activeTabId) return null
         const tab = tabs.find(t => t.id === activeTabId)
         if (!tab?.view) return null
@@ -584,7 +603,8 @@ function createWindow() {
     })
 
     // Native File Dialogs (Forensic Files & Dossiers)
-    ipcMain.handle('dialog:openFile', async (_, options?: { title?: string; filters?: { name: string; extensions: string[] }[] }) => {
+    ipcMain.handle('dialog:openFile', async (event, options?: { title?: string; filters?: { name: string; extensions: string[] }[] }) => {
+        if (!isMainWindowSender(event)) return null
         if (!mainWindow) return null
 
         const defaultFilters = [
@@ -650,7 +670,8 @@ function createWindow() {
         )
     })
 
-    ipcMain.handle('dialog:saveFile', async (_, options?: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => {
+    ipcMain.handle('dialog:saveFile', async (event, options?: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => {
+        if (!isMainWindowSender(event)) return null
         if (!mainWindow) return null
 
         const result = await dialog.showSaveDialog(mainWindow, {

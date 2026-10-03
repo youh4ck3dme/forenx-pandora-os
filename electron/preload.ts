@@ -53,6 +53,7 @@ const invokeSchemas = {
   "extension:list": z.undefined(),
   "extension:load": z.string().min(1).max(1024),
   "password:get": z.undefined(),
+  "password:reveal": z.string().min(1).max(128),
   "password:save": z.object({
     url,
     username: z.string().trim().min(1).max(320),
