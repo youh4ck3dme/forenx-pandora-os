@@ -13,12 +13,20 @@ const nextConfig = {
   trailingSlash: true,
   allowedDevOrigins: ["localhost", "127.0.0.1", "100.70.1.16"],
   eslint: {
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: false,
   },
   images: {
     unoptimized: true,
     remotePatterns: [
-      { protocol: "https", hostname: "**" },
+      // Supabase storage (own project)
+      { protocol: "https", hostname: "*.supabase.co" },
+      { protocol: "https", hostname: "*.supabase.in" },
+      // Hetzner S3 object vault
+      { protocol: "https", hostname: "*.your-objectstorage.com" },
+      { protocol: "https", hostname: "*.hetzner.com" },
+      // Avatars / identity providers used in auth
+      { protocol: "https", hostname: "avatars.githubusercontent.com" },
+      { protocol: "https", hostname: "lh3.googleusercontent.com" },
     ],
   },
   experimental: {
@@ -83,7 +91,11 @@ const nextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
           {
-            key: "Content-Security-Policy-Report-Only",
+            // Enforced CSP (not Report-Only). script-src intentionally keeps
+            // 'unsafe-inline' until nonce injection is wired in middleware;
+            // at minimum this blocks object-src, base-uri and cross-origin frames.
+            // TODO(N-02): replace 'unsafe-inline' with nonce once middleware nonce flow lands.
+            key: "Content-Security-Policy",
             value: `default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; img-src 'self' data: blob: https:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ""}; connect-src 'self' https: wss:; worker-src 'self' blob:; report-uri /api/csp-report/`,
           },
         ],

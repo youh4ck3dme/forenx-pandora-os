@@ -200,6 +200,139 @@ export type Database = {
         };
         Relationships: [];
       };
+      forensic_workflow_runs: {
+        Row: {
+          id: string;
+          case_id: string;
+          user_id: string;
+          workflow_type: 'FORENSIC_CASE_ANALYSIS' | 'DOCUMENT_ANALYSIS' | 'BULK_IMPORT' | 'EVIDENCE_VALIDATION' | 'DOSSIER_GENERATION' | 'REPORT_EXPORT';
+          workflow_run_id: string | null;
+          idempotency_key: string;
+          status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+          attempt_count: number;
+          error_code: string | null;
+          error_message: string | null;
+          created_at: string;
+          started_at: string | null;
+          completed_at: string | null;
+          duration_ms: number | null;
+        };
+        Insert: {
+          id?: string;
+          case_id: string;
+          user_id: string;
+          workflow_type: 'FORENSIC_CASE_ANALYSIS' | 'DOCUMENT_ANALYSIS' | 'BULK_IMPORT' | 'EVIDENCE_VALIDATION' | 'DOSSIER_GENERATION' | 'REPORT_EXPORT';
+          workflow_run_id?: string | null;
+          idempotency_key: string;
+          status?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+          attempt_count?: number;
+          error_code?: string | null;
+          error_message?: string | null;
+          created_at?: string;
+          started_at?: string | null;
+          completed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          case_id?: string;
+          user_id?: string;
+          workflow_type?: 'FORENSIC_CASE_ANALYSIS' | 'DOCUMENT_ANALYSIS' | 'BULK_IMPORT' | 'EVIDENCE_VALIDATION' | 'DOSSIER_GENERATION' | 'REPORT_EXPORT';
+          workflow_run_id?: string | null;
+          idempotency_key?: string;
+          status?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+          attempt_count?: number;
+          error_code?: string | null;
+          error_message?: string | null;
+          created_at?: string;
+          started_at?: string | null;
+          completed_at?: string | null;
+        };
+        Relationships: [];
+      };
+      forenzx_analysis_jobs: {
+        Row: {
+          id: string;
+          case_id: string;
+          evidence_id: string;
+          user_id: string;
+          hub_job_id: string | null;
+          pack_id: string;
+          input_type: string;
+          idempotency_key: string;
+          status: 'starting' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+          error_message: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          case_id: string;
+          evidence_id: string;
+          user_id: string;
+          hub_job_id?: string | null;
+          pack_id: string;
+          input_type: string;
+          idempotency_key: string;
+          status?: 'starting' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+          error_message?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          case_id?: string;
+          evidence_id?: string;
+          user_id?: string;
+          hub_job_id?: string | null;
+          pack_id?: string;
+          input_type?: string;
+          idempotency_key?: string;
+          status?: 'starting' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+          error_message?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      forenzx_dispatch_outbox: {
+        Row: {
+          id: string;
+          evidence_id: string;
+          case_id: string | null;
+          payload: Json;
+          status: 'pending' | 'sent' | 'failed';
+          attempts: number;
+          last_error: string | null;
+          next_attempt_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          evidence_id: string;
+          case_id?: string | null;
+          payload: Json;
+          status?: 'pending' | 'sent' | 'failed';
+          attempts?: number;
+          last_error?: string | null;
+          next_attempt_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          evidence_id?: string;
+          case_id?: string | null;
+          payload?: Json;
+          status?: 'pending' | 'sent' | 'failed';
+          attempts?: number;
+          last_error?: string | null;
+          next_attempt_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       case_audit_log: {
         Row: {
           action: string;

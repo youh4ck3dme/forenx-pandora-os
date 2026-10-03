@@ -46,7 +46,7 @@ alebo podpisovanie desktopu je nakonfigurované.
 | 5  | Doména, TLS, WebAuthn na produkcii                             | `BLOCKED`           | P0-01         |
 | 6  | Migrácie na hostovanom Supabase                                | `BLOCKED`           | P0-03         |
 | 7  | Záloha a obnova (PITR, Object Lock, drill)                     | `BLOCKED`           | P0-06         |
-| 8  | CSP len Report-Only + API kľúč v localStorage (N-02, N-09)     | `IN PROGRESS`       | P0-05         |
+| 8  | CSP len Report-Only + API kľúč v localStorage (N-02, N-09)     | `IN PROGRESS` (CSP enforced, localStorage odstránený; nonce TODO) | P0-05 |
 | 9  | Rate limity v pamäti na serverless (N-04)                      | `IN PROGRESS`       | P0-09         |
 | 10 | Merge do `main` blokuje branch protection (§ 4)                | `BLOCKED`           | § 4           |
 
@@ -60,7 +60,7 @@ alebo podpisovanie desktopu je nakonfigurované.
 | Core engine testy                      | `DONE`        | 559/559 (predchádzajúca verzia backlogu).                                                                           |
 | Core engine TypeScript                 | `IN PROGRESS` | **Rozpor:** pôvodný § 2 hlásil 0 chýb, P3-03 hlásil TODO. Znova spustiť `npx tsc --noEmit` v core-engine a zapísať.  |
 | Next produkčný build                   | `DONE`        | `npm run build` (30/30 routes, predchádzajúca verzia).                                                             |
-| Audit závislostí                       | `RED`         | N-05: 3 high + 13 moderate; CI kontroluje len `--audit-level=critical`. Pozri P1-06.                               |
+| Audit závislostí                       | `RED`         | N-05: 3 high + 13 moderate; CI zmenená na `--audit-level=high` (2026-10-03) — zraniteľnosti samotné ostávajú. Pozri P1-06.  |
 | Secret scan (gitleaks, celá história)  | `DONE`        | V CI beží. Falošné poplachy z `fix/gate-remaining-ai-text` sú od merge #19 v `.gitleaksignore`.                   |
 | E2E (Playwright)                       | `TODO`        | Testy existujú (`e2e/`), ale CI ich nespúšťa.                                                                       |
 | AST guard (`ci:guard`)                 | `TODO`        | Pokrýva iba `lib/ai` a CI ho nespúšťa (N-08).                                                                       |
@@ -133,9 +133,10 @@ alebo podpisovanie desktopu je nakonfigurované.
 
 - [x] Nginx šablóna: 250 MB limit, streaming, 500 s timeouty, HSTS, `nosniff`, `DENY`, permissions policy.
 - [x] CSP Report-Only a zberač `/api/csp-report/` (rate limit, sanitizácia, audit) — 5/5 testov.
-- [ ] **N-02 (HIGH):** CSP je iba `Content-Security-Policy-Report-Only` so `script-src 'unsafe-inline'` a `connect-src https: wss:` (`next.config.mjs:81–82`). Prejsť na nonce CSP v middleware, odstrániť `unsafe-inline` zo `script-src` a zúžiť `connect-src` na allowlist (`self`, Mistral, Supabase URL, S3 endpoint). Až potom vynucovať.
-- [ ] **N-09 (MEDIUM):** BYOK kľúč Mistral/OpenAI je v `localStorage` (`lib/store/browser-store.ts:133, 223, 235`), takže jediné XSS znamená jeho únik. Minimum: vynútená CSP. Lepšie: session-scoped úložisko s krátkou TTL alebo proxy cez server.
-- [ ] **N-10 (LOW):** `images.remotePatterns` povoľuje `hostname: "**"` (`next.config.mjs:20`). Zúžiť pred zapnutím optimalizácie obrázkov.
+- [x] **N-02 (PARTIAL):** CSP zmenená z `Content-Security-Policy-Report-Only` na `Content-Security-Policy` (`next.config.mjs`). Hlavička je teraz vynútená. `script-src` stále obsahuje `unsafe-inline` — vyžaduje nonce injection v middleware (TODO).
+- [x] **N-09:** BYOK kľúč Mistral/OpenAI odstránený z `localStorage` (`lib/store/browser-store.ts`). Kľúče teraz žijú iba v pamäti Zustand stavu (session-only); po refreshe stránky je potrebné znovu zadať. (2026-10-03)
+- [x] **N-10:** `images.remotePatterns` zúžené z `hostname: "**"` na konkrétne hosty (Supabase, Hetzner S3, GitHub avatars, Google avatars) (`next.config.mjs`). (2026-10-03)
+- [ ] **N-02 (TODO):** Implementovať nonce injection v `middleware.ts`, nahradiť `unsafe-inline` nonce-om v `script-src`, zúžiť `connect-src` na allowlist.
 - [ ] Nasadiť Nginx šablónu a overiť `nginx -t` na VPS.
 - [ ] Rozhodnúť o HSTS `preload` pre rodičovskú doménu; až potom predĺžiť max-age.
 

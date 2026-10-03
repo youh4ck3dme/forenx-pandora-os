@@ -84,7 +84,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // ── Ledger validation: S3 key must exist in evidence_items and have verified status ──
-  const { data: evidenceRow, error: lookupError } = await (supabaseAdmin as any)
+  const { data: evidenceRow, error: lookupError } = await supabaseAdmin
     .from("evidence_items")
     .select("id, s3_object_key, hash_verification_status")
     .eq("s3_object_key", s3_object_key)
