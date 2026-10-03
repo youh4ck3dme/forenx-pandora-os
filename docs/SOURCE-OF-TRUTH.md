@@ -31,6 +31,8 @@ PANDORA / ForenX je jedna aplikácia s viacerými runtime obalmi:
 
 Web, PWA, mobile a Electron nesmú implementovať rozdielne pravidlá pre vlastníctvo prípadu, integritu dôkazu alebo AI výstupy. Rozdiely medzi runtime patria do adaptérov, nie do dátového modelu.
 
+- **Electron runtime izolácia session a webových tabov**: Webové taby bežia výhradne v izolovanej perzistentnej partícii persist:pandora-web-tabs (getWebTabsSession() v lectron/browser-view-factory.ts). Proxy (proxy:set), adblocker / shield štatistiky, mazanie dát (session:clear-data), download listener (will-download) a správa rozšírení sú viazané na túto partíciu, čím zostáva session.defaultSession (hlavný shell aplikácie) nedotknutá. Navigácia tabov (cez IPC aj will-navigate) striktne povoľuje iba http: a https: protokoly; nepovolené protokoly (ile:, javascript:, data:, chrome:, bout:) sa odmietajú pred volaním loadURL.
+
 ## 3. Kanonický dátový tok
 
 ```text
