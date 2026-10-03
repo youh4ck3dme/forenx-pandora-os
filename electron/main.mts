@@ -178,7 +178,6 @@ ipcMain.handle('password:delete', async (event, id) => {
     return passwordManager?.deletePassword(id)
 })
 
-
 // IPC Handlers for Session Data
 ipcMain.handle('session:clear-data', async (event) => {
     if (!isMainWindowSender(event)) return false
@@ -431,16 +430,17 @@ function createWindow() {
         updateTabUrl(id, url)
     })
 
-    // IPC for History Search
-    ipcMain.handle('history:search', (_, query) => {
+    // IPC for History Search & Second Brain
+    ipcMain.handle('history:search', (event, query) => {
+        if (!isMainWindowSender(event)) return []
+        if (typeof query !== 'string') return []
         return historyManager?.search(query) || []
     })
 
     ipcMain.handle('history:getContent', (event, url) => {
         if (!isMainWindowSender(event)) return null
-        // Find doc by URL in history
-        const docs = Array.from((historyManager as any).docs.values())
-        return docs.find((d: any) => d.url === url)
+        if (typeof url !== 'string') return null
+        return historyManager?.getContent(url) || null
     })
 
     ipcMain.handle('search:suggestions', async (_, query) => {

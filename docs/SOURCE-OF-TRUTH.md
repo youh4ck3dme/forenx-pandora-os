@@ -33,6 +33,8 @@ Web, PWA, mobile a Electron nesmú implementovať rozdielne pravidlá pre vlastn
 
 - **Electron runtime izolácia session a webových tabov**: Webové taby bežia výhradne v izolovanej perzistentnej partícii persist:pandora-web-tabs (getWebTabsSession() v lectron/browser-view-factory.ts). Proxy (proxy:set), adblocker / shield štatistiky, mazanie dát (session:clear-data), download listener (will-download) a správa rozšírení sú viazané na túto partíciu, čím zostáva session.defaultSession (hlavný shell aplikácie) nedotknutá. Navigácia tabov (cez IPC aj will-navigate) striktne povoľuje iba http: a https: protokoly; nepovolené protokoly (ile:, javascript:, data:, chrome:, bout:) sa odmietajú pred volaním loadURL.
 
+- **Second Brain at-rest šifrovanie a IPC sender gate**: `userData/history-index.json` nesmie ukladať plaintext page body (`content`). `HistoryManager` (`electron/history-manager.ts`) šifruje zachytený obsah stránky pomocou `safeStorage.encryptString` a ukladá ho ako base64 `encryptedContent`. Ak `safeStorage.isEncryptionAvailable()` nie je k dispozícii, nový text stránky sa na disk nezapisuje (fail-closed); už uložený nepriehľadný ciphertext sa však v pamäti bezpečne zachová a pri ďalšom zápise sa prenesie bez zmeny, ak sa obsah nepodarilo dešifrovať. Volajúci dovtedy dostávajú prázdny obsah. Starý plaintext index sa pri prvom načítaní okamžite premigruje (zašifruje alebo očistí od plaintextu) a prepíše na disku. Kanály `history:search` a `history:getContent` sú prísne viazané na `isMainWindowSender(event)` (`mainWindow.webContents`), čím sa zabraňuje crosstalku a úniku histórie z BrowserView alebo cudzích rámcov.
+
 ## 3. Kanonický dátový tok
 
 ```text
