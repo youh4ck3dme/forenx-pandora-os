@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { adoptCloudSession } from "@/lib/forza/session";
 import { setAuthCookies } from "@/lib/auth/cookies";
+import { loginWithPasskey } from "@/lib/auth/webauthn.client";
 import { cn } from "@/lib/utils";
 
 const inputClass =
@@ -32,6 +33,7 @@ export function AccountSignInForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
 
   const fieldClass = dark
     ? "h-11 w-full rounded-xl border border-white/20 bg-black/50 px-3.5 text-sm text-white placeholder:text-slate-400 outline-none transition-all focus:border-amber-400 focus:ring-2 focus:ring-amber-400/25"
@@ -109,6 +111,29 @@ export function AccountSignInForm({
     }
   }
 
+  async function handlePasskeyLogin() {
+    if (passkeyBusy || busy) return;
+    setPasskeyBusy(true);
+    try {
+      const searchParams = typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search)
+        : null;
+      const nextParam = searchParams?.get("next") ?? undefined;
+      const result = await loginWithPasskey(nextParam);
+      if (!result.ok) {
+        toast.error(result.reason);
+        return;
+      }
+      adoptCloudSession(queryClient);
+      toast.success("Prihlásený cez Passkey.");
+      onSignedIn?.();
+    } catch {
+      toast.error("Passkey prihlásenie zlyhalo.");
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
+
   const submitLabel = busy
     ? "Pracujem…"
     : mode === "signup"
@@ -120,6 +145,10 @@ export function AccountSignInForm({
   const linkClass = dark
     ? "underline text-slate-300 hover:text-white transition-colors cursor-pointer text-xs"
     : "underline text-muted-foreground hover:text-foreground";
+
+  const passkeySupported =
+    typeof window !== "undefined" &&
+    typeof window.PublicKeyCredential !== "undefined";
 
   return (
     <form className="space-y-3" onSubmit={handleSubmit}>
@@ -174,6 +203,31 @@ export function AccountSignInForm({
       >
         {submitLabel}
       </Button>
+
+      {mode === "signin" && passkeySupported && (
+        <div className="relative flex items-center gap-2">
+          <div className="flex-1 border-t border-white/10" />
+          <span className="text-[10px] text-slate-500 uppercase tracking-widest">alebo</span>
+          <div className="flex-1 border-t border-white/10" />
+        </div>
+      )}
+      {mode === "signin" && passkeySupported && (
+        <Button
+          type="button"
+          data-testid="passkey-login-btn"
+          aria-label="Prihlásiť sa cez Passkey"
+          className={cn(
+            "min-h-11 w-full font-bold transition-all active:scale-[0.99]",
+            dark
+              ? "bg-transparent border border-white/20 text-white hover:bg-white/5"
+              : "variant-outline",
+          )}
+          disabled={passkeyBusy || busy}
+          onClick={handlePasskeyLogin}
+        >
+          {passkeyBusy ? "Čakám na Passkey…" : "Passkey"}
+        </Button>
+      )}
 
       <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pt-1 text-xs">
         {mode !== "signin" ? (

@@ -333,6 +333,51 @@ export type Database = {
         };
         Relationships: [];
       };
+      webauthn_credentials: {
+        Row: {
+          id: string;
+          user_id: string;
+          credential_id: string;
+          public_key_cbor: string;
+          sign_count: number;
+          aaguid: string | null;
+          device_type: string | null;
+          backed_up: boolean;
+          transports: string[] | null;
+          friendly_name: string | null;
+          created_at: string;
+          last_used_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          credential_id: string;
+          public_key_cbor: string;
+          sign_count?: number;
+          aaguid?: string | null;
+          device_type?: string | null;
+          backed_up?: boolean;
+          transports?: string[] | null;
+          friendly_name?: string | null;
+          created_at?: string;
+          last_used_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          credential_id?: string;
+          public_key_cbor?: string;
+          sign_count?: number;
+          aaguid?: string | null;
+          device_type?: string | null;
+          backed_up?: boolean;
+          transports?: string[] | null;
+          friendly_name?: string | null;
+          created_at?: string;
+          last_used_at?: string | null;
+        };
+        Relationships: [];
+      };
       case_audit_log: {
         Row: {
           action: string;
