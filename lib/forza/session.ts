@@ -4,12 +4,12 @@
  * a zlyhanie siete nesmie nechať zariadenie prihlásené.
  */
 import type { QueryClient } from "@tanstack/react-query";
-import { clearDevFreeEntry } from "@/lib/dev-auth";
-import { idbClear } from "@/lib/idb";
-import { beginIntentionalSignOut } from "@/lib/session-guard";
+import { clearDevFreeEntry } from "@/lib/forza/dev-auth";
+import { idbClear } from "@/lib/forza/idb";
+import { clearAuthCookies } from "@/lib/auth/cookies";
 
-/** Po úmyselnom odhlásení — welcome page (nie /auth). */
-export const POST_SIGN_OUT_ROUTE = "/" as const;
+/** Po úmyselnom odhlásení — smerujeme na prihlasovaciu obrazovku. */
+export const POST_SIGN_OUT_ROUTE = "/auth/login/" as const;
 
 /** Kľúče v localStorage, ktoré patria tejto aplikácii. */
 const APP_STORAGE_PREFIXES = ["forendo:", "forenx:", "malte:"];
@@ -99,6 +99,11 @@ export async function clearClientState(
     /* prázdne */
   }
   clearWebStorage();
+  try {
+    clearAuthCookies();
+  } catch {
+    /* prázdne */
+  }
 
   try {
     await idbClear();
@@ -136,7 +141,6 @@ export async function signOutEverywhere(
   queryClient?: QueryClient,
 ): Promise<{ networkSignOut: boolean }> {
   let networkSignOut = true;
-  beginIntentionalSignOut();
   try {
     await client.auth.signOut();
   } catch {

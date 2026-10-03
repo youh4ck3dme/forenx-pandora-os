@@ -26,15 +26,14 @@ export function isLocalDevEnvironment(): boolean {
 
 /**
  * Overí, či používateľ aktivoval lokálny vývojársky bezplatný vstup.
- * Na loopback / lokálnom hostiteľovi je dev vstup predvolene aktívny,
- * pokiaľ nebol výslovne zakázaný používateľom ("false").
- * Na akejkoľvek inej ako loopback doméne je vždy neaktívny.
+ * Vstup je opt-in a aktívny iba po výslovnom nastavení ("true") na loopback hostiteľovi.
+ * Predvolene je vždy neaktívny.
  */
 export function isDevFreeEntryActive(): boolean {
   if (typeof window === "undefined") return false;
   if (!isLocalDevEnvironment()) return false;
   const val = window.localStorage.getItem(DEV_FREE_ENTRY_KEY);
-  return val !== "false";
+  return val === "true";
 }
 
 /**

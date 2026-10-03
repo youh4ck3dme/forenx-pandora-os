@@ -10,7 +10,11 @@
  */
 
 import { NextRequest, NextResponse, NextMiddleware } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type Session, type User } from '@supabase/supabase-js';
+import {
+  PUBLIC_ROUTES,
+  matchRoutePattern,
+} from '@/lib/auth/route-policy';
 
 // ============================================================================
 // ROUTE CLASSIFICATION
@@ -21,12 +25,10 @@ import { createClient } from '@supabase/supabase-js';
  *
  * PUBLIC: Accessible without authentication
  * AUTHENTICATED: Requires valid Supabase session
- * PROJECT_REQUIRED: Requires authenticated user with case access
- * ROLE_REQUIRED: Requires specific role (admin, etc.)
  * SYSTEM: Internal system endpoints (machine-to-machine, cron, etc.)
  */
 
-export type RouteCategory = 'PUBLIC' | 'AUTHENTICATED' | 'PROJECT_REQUIRED' | 'ROLE_REQUIRED' | 'SYSTEM';
+export type RouteCategory = 'PUBLIC' | 'AUTHENTICATED' | 'SYSTEM';
 
 /**
  * Route configuration: path pattern -> category
@@ -36,27 +38,7 @@ export type RouteCategory = 'PUBLIC' | 'AUTHENTICATED' | 'PROJECT_REQUIRED' | 'R
  */
 
 // Helper to match path against pattern (supports exact, prefix, and wildcard)
-function matchPathPattern(pathname: string, pattern: string): boolean {
-  // Exact match
-  if (pathname === pattern) return true;
-
-  // Prefix match (pattern ends with /*)
-  if (pattern.endsWith('/*')) {
-    const prefix = pattern.slice(0, -2);
-    // Only match if pathname starts with prefix/ (not exact match to prefix)
-    return pathname.startsWith(`${prefix}/`);
-  }
-
-  // Wildcard segment match (pattern contains /[...])
-  if (pattern.includes('/[...')) {
-    // Replace [...anything] with .* to match any path segment
-    const regexPattern = pattern.replace(/\[...[^\]]*\]/g, '.*');
-    const regex = new RegExp(`^${regexPattern}$`);
-    return regex.test(pathname);
-  }
-
-  return false;
-}
+const matchPathPattern = matchRoutePattern;
 
 /**
  * Get the category for a given path.
@@ -67,23 +49,10 @@ function getRouteCategory(pathname: string): { category: RouteCategory; pattern:
     // ======================================================================
     // PUBLIC ROUTES - Accessible without authentication
     // ======================================================================
-    // Authentication entry points
-    { pattern: '/auth', category: 'PUBLIC' },
-    { pattern: '/auth/login', category: 'PUBLIC' },
-    { pattern: '/auth/register', category: 'PUBLIC' },
-
-    // Marketing/content
-    { pattern: '/', category: 'PUBLIC' },
-    { pattern: '/blog', category: 'PUBLIC' },
-    { pattern: '/blog/[...slug]', category: 'PUBLIC' },
-
-    // PUBLIC API ROUTES - No authentication required
-    // CSP reports: browsers send without credentials, write-only, rate-limited
-    { pattern: '/api/csp-report', category: 'PUBLIC' },
-    { pattern: '/api/csp-report/*', category: 'PUBLIC' },
-    // Health check: external monitoring tools need unauthenticated access
-    { pattern: '/api/healthz', category: 'PUBLIC' },
-    { pattern: '/api/healthz/*', category: 'PUBLIC' },
+    ...PUBLIC_ROUTES.map((pattern) => ({
+      pattern,
+      category: 'PUBLIC' as const,
+    })),
 
     // ======================================================================
     // SYSTEM ROUTES - Internal system endpoints
@@ -101,15 +70,11 @@ function getRouteCategory(pathname: string): { category: RouteCategory; pattern:
     { pattern: '/.well-known/*', category: 'SYSTEM' },
 
     // ======================================================================
-    // PROJECT_REQUIRED ROUTES - Requires authenticated user + case access
-    // ======================================================================
-    // Forza routes - main forensic application
-    { pattern: '/forza', category: 'PROJECT_REQUIRED' },
-    { pattern: '/forza/*', category: 'PROJECT_REQUIRED' },
-
-    // ======================================================================
     // AUTHENTICATED ROUTES - Requires valid session
     // ======================================================================
+    // Forza routes - main forensic application
+    { pattern: '/forza', category: 'AUTHENTICATED' },
+    { pattern: '/forza/*', category: 'AUTHENTICATED' },
     { pattern: '/browser', category: 'AUTHENTICATED' },
     { pattern: '/forge', category: 'AUTHENTICATED' },
     { pattern: '/forge/*', category: 'AUTHENTICATED' },
@@ -145,7 +110,7 @@ function getRouteCategory(pathname: string): { category: RouteCategory; pattern:
 // APPLICATION CONSTANTS
 // ============================================================================
 
-const SIGN_IN_ROUTE = '/auth';
+const SIGN_IN_ROUTE = '/auth/login/';
 const HOME_ROUTE = '/';
 
 /**
@@ -207,12 +172,11 @@ function isInternalPath(path: string): boolean {
 function validateRedirectTarget(next: string | null): string | null {
   if (!next) return null;
 
-  // Trim whitespace
-  const trimmed = next.trim();
+  let trimmed = next.trim();
   if (!trimmed) return null;
 
   // Check for encoded slashes or other dangerous characters in the raw input
-  if (trimmed.includes('%2F') || trimmed.includes('%5C') || trimmed.includes('%00')) {
+  if (trimmed.includes('%2F') || trimmed.includes('%5C') || trimmed.includes('\\') || trimmed.includes('%00')) {
     return null;
   }
 
@@ -260,11 +224,11 @@ function validateRedirectTarget(next: string | null): string | null {
 // SESSION VALIDATION
 // ============================================================================
 
-/**
- * Supabase client for middleware (server-side only).
- * Uses anon key - cannot access user data without valid session.
- */
+let _middlewareSupabase: ReturnType<typeof createClient> | null = null;
+
 function getSupabaseClient() {
+  if (_middlewareSupabase) return _middlewareSupabase;
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
 
@@ -273,35 +237,98 @@ function getSupabaseClient() {
     return null;
   }
 
-  return createClient(supabaseUrl, supabaseAnonKey);
+  _middlewareSupabase = createClient(supabaseUrl, supabaseAnonKey);
+  return _middlewareSupabase;
 }
 
 /**
- * Validate Supabase session from request cookies.
- * Next.js with Supabase SSR stores session in cookies.
+ * Validate Supabase session from request cookies or headers.
+ * Supports:
+ * 1. `sb-access-token` cookie
+ * 2. `Authorization: Bearer <token>` header
+ * 3. Standard Supabase SSR cookie (`sb-*-auth-token`)
+ * 4. Automatic token refresh if access token expired but `sb-refresh-token` is present
  */
-async function getSessionFromRequest(request: NextRequest) {
+async function getSessionFromRequest(request: NextRequest): Promise<{
+  user: User;
+  token: string;
+  refreshedSession?: Session;
+} | null> {
   const supabase = getSupabaseClient();
   if (!supabase) return null;
 
   try {
-    // Supabase session cookie name
-    const accessToken = request.cookies.get('sb-access-token')?.value;
+    // 1. Explicit Bearer token MUST have precedence (Blueprint line 61).
+    // If a Bearer token is provided, verify it. If invalid, FAIL IMMEDIATELY.
+    // Invariant: "ak je neplatný, požiadavka nesmie potichu prejsť cez inú identitu"
+    const authHeader = request.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      const bearerToken = authHeader.slice(7).trim();
+      if (!bearerToken) return null;
+
+      const cleanToken = decodeURIComponent(bearerToken);
+      const { data, error } = await supabase.auth.getUser(cleanToken);
+
+      if (!error && data?.user) {
+        return { user: data.user, token: cleanToken };
+      }
+
+      console.debug('[middleware] Invalid explicit Bearer token:', error?.message);
+      return null; // Do NOT fall back to cookies!
+    }
+
+    // 2. Check sb-access-token cookie
+    let accessToken = request.cookies.get('sb-access-token')?.value;
     const refreshToken = request.cookies.get('sb-refresh-token')?.value;
 
+    // 3. Check standard Supabase auth cookie (e.g. sb-<project-ref>-auth-token)
     if (!accessToken) {
-      return null;
+      for (const cookie of request.cookies.getAll()) {
+        if (cookie.name.startsWith('sb-') && cookie.name.endsWith('-auth-token')) {
+          try {
+            const raw = decodeURIComponent(cookie.value);
+            const parsed = raw.startsWith('base64-')
+              ? JSON.parse(Buffer.from(raw.slice(7), 'base64').toString('utf-8'))
+              : JSON.parse(raw);
+            if (parsed?.access_token) {
+              accessToken = parsed.access_token;
+              break;
+            }
+          } catch {
+            // ignore malformed cookie
+          }
+        }
+      }
     }
 
-    // Validate the token
-    const { data, error } = await supabase.auth.getUser(accessToken);
+    if (accessToken) {
+      const cleanToken = decodeURIComponent(accessToken);
+      const { data, error } = await supabase.auth.getUser(cleanToken);
 
-    if (error || !data.user) {
+      if (!error && data?.user) {
+        return { user: data.user, token: cleanToken };
+      }
       console.debug('[middleware] Invalid session:', error?.message);
-      return null;
     }
 
-    return { user: data.user, token: accessToken };
+    // 4. Token refresh fallback: if access token is expired or missing, try refresh token
+    if (refreshToken) {
+      const cleanRefreshToken = decodeURIComponent(refreshToken);
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession({
+        refresh_token: cleanRefreshToken,
+      });
+
+      if (!refreshError && refreshData?.session && refreshData?.user) {
+        return {
+          user: refreshData.user,
+          token: refreshData.session.access_token,
+          refreshedSession: refreshData.session,
+        };
+      }
+      console.debug('[middleware] Refresh session failed:', refreshError?.message);
+    }
+
+    return null;
   } catch (err) {
     console.error('[middleware] Session validation error:', err);
     return null;
@@ -313,7 +340,7 @@ async function getSessionFromRequest(request: NextRequest) {
  * In development, we allow more permissive behavior for local testing.
  */
 function isDevelopment(): boolean {
-  return process.env.NODE_ENV !== 'production';
+  return process.env.NODE_ENV === 'development';
 }
 
 /**
@@ -321,8 +348,8 @@ function isDevelopment(): boolean {
  * Only in development, without real evidence access, on loopback.
  */
 function devAuthBypassAllowed(request: NextRequest): boolean {
-  if (process.env.NODE_ENV === 'production') return false;
-  if (process.env.PANDORA_DEV_AUTH_BYPASS !== '1') return false;
+  if (process.env.NODE_ENV !== 'development') return false;
+  if (process.env.ALLOW_DEV_AUTH_BYPASS !== 'true') return false;
   if (process.env.VERCEL || process.env.VERCEL_ENV) return false;
 
   // Check for real evidence access keys
@@ -337,9 +364,26 @@ function devAuthBypassAllowed(request: NextRequest): boolean {
   if (hasRealAccess) return false;
 
   // Check if it's a loopback request
-  const hostname = request.headers.get('host') || '';
-  const loopbackHosts = ['localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0'];
-  return loopbackHosts.some(host => hostname.includes(host));
+  let hostname: string;
+  try {
+    hostname = new URL(request.url).hostname;
+  } catch {
+    return false;
+  }
+  if (!new Set(['localhost', '127.0.0.1', '::1']).has(hostname)) return false;
+
+  const forwardedHost = request.headers.get('x-forwarded-host')?.split(':')[0];
+  if (forwardedHost && !new Set(['localhost', '127.0.0.1', '::1']).has(forwardedHost)) {
+    return false;
+  }
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  if (forwardedFor) {
+    const loopbackIps = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+    if (!forwardedFor.split(',').map((hop) => hop.trim()).every((hop) => loopbackIps.has(hop))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // ============================================================================
@@ -360,20 +404,47 @@ function devAuthBypassAllowed(request: NextRequest): boolean {
  *    - If valid: allows through
  */
 
-export const middleware: NextMiddleware = async (request: NextRequest) => {
+export async function middleware(
+  request: NextRequest,
+  _event?: any
+): Promise<NextResponse> {
+  const correlationId = request.headers.get('x-correlation-id') || crypto.randomUUID();
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-correlation-id', correlationId);
+
+  const respond = (res: NextResponse): NextResponse => {
+    res.headers.set('x-correlation-id', correlationId);
+    return res;
+  };
+
+  const next = (): NextResponse => {
+    return respond(NextResponse.next({ request: { headers: requestHeaders } }));
+  };
+
   const pathname = request.nextUrl.pathname;
+
+  // 1. Root route: directed navigation according to blueprint invariant
+  // - Neprihlásený vstup na / smeruje na /auth/login/?next=%2Fbrowser%2F
+  // - Prihlásený vstup na / smeruje na /browser/
+  if (pathname === '/') {
+    const session = await getSessionFromRequest(request);
+    if (session) {
+      return respond(NextResponse.redirect(new URL('/browser/', request.nextUrl)));
+    }
+    return respond(NextResponse.redirect(new URL('/auth/login/?next=%2Fbrowser%2F', request.nextUrl)));
+  }
 
   // Get route category
   const { category } = getRouteCategory(pathname);
 
   // PUBLIC routes: allow through without authentication
   if (category === 'PUBLIC') {
-    return NextResponse.next();
+    return next();
   }
 
   // SYSTEM routes: allow through (they have their own auth mechanisms)
   if (category === 'SYSTEM') {
-    return NextResponse.next();
+    return next();
   }
 
   // PROTECTED ROUTES: Require authentication
@@ -381,15 +452,21 @@ export const middleware: NextMiddleware = async (request: NextRequest) => {
   const session = await getSessionFromRequest(request);
 
   if (!session) {
+    if (devAuthBypassAllowed(request)) {
+      return next();
+    }
+
     // Determine if this is an API route or page route
     const isApiRoute = pathname.startsWith('/api/');
 
     if (isApiRoute) {
       // API routes: return 401 JSON, never redirect to HTML login
       // This prevents open redirect vulnerabilities and provides clean API errors
-      return NextResponse.json(
-        { error: 'Unauthorized: Authentication required' },
-        { status: 401 }
+      return respond(
+        NextResponse.json(
+          { error: 'Unauthorized: Authentication required' },
+          { status: 401 }
+        )
       );
     }
 
@@ -417,9 +494,9 @@ export const middleware: NextMiddleware = async (request: NextRequest) => {
       ? `${SIGN_IN_ROUTE}?${searchParams.toString()}`
       : SIGN_IN_ROUTE;
 
-    // Special case: if we're already on the login page, don't redirect
-    if (pathname === SIGN_IN_ROUTE || pathname.startsWith(`${SIGN_IN_ROUTE}/`)) {
-      return NextResponse.next();
+    // Special case: if we're already on the login page or an auth page, don't redirect
+    if (pathname === '/auth' || pathname.startsWith('/auth/')) {
+      return next();
     }
 
     const response = NextResponse.redirect(new URL(redirectUrl, request.nextUrl));
@@ -427,28 +504,36 @@ export const middleware: NextMiddleware = async (request: NextRequest) => {
     // Clear any potentially stale auth cookies
     // Note: We don't clear the actual Supabase cookies as they're httpOnly
     // and the redirect to login will handle the auth flow
-    return response;
+    return respond(response);
   }
 
-  // Authenticated user - check if route requires project/case access
-  if (category === 'PROJECT_REQUIRED') {
-    // For now, we allow authenticated users through
-    // Case ownership verification should happen at the page/API level
-    // where the specific case ID is known
-    // This is consistent with the current vault-auth pattern
-    return NextResponse.next();
-  }
-
-  // ROLE_REQUIRED: Placeholder for future role checking
-  if (category === 'ROLE_REQUIRED') {
-    // For now, treat same as AUTHENTICATED
-    // Future: check user role from session
-    return NextResponse.next();
+  // If session was refreshed during validation, persist new tokens in response cookies
+  const refreshedSession = session.refreshedSession;
+  if (refreshedSession) {
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
+    const isProd = process.env.NODE_ENV === 'production' || request.url.startsWith('https:');
+    response.cookies.set('sb-access-token', refreshedSession.access_token, {
+      path: '/',
+      maxAge: refreshedSession.expires_in || 3600,
+      sameSite: 'lax',
+      secure: isProd,
+      httpOnly: true,
+    });
+    if (refreshedSession.refresh_token) {
+      response.cookies.set('sb-refresh-token', refreshedSession.refresh_token, {
+        path: '/',
+        maxAge: 60 * 60 * 24 * 30,
+        sameSite: 'lax',
+        secure: isProd,
+        httpOnly: true,
+      });
+    }
+    return respond(response);
   }
 
   // AUTHENTICATED routes with valid session
-  return NextResponse.next();
-};
+  return next();
+}
 
 // ============================================================================
 // MIDDLEWARE CONFIGURATION
@@ -479,3 +564,4 @@ export {
   isDevelopment,
   devAuthBypassAllowed,
 };
+

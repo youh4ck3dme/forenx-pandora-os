@@ -5,7 +5,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { adoptCloudSession } from "@/lib/session";
+import { adoptCloudSession } from "@/lib/forza/session";
+import { setAuthCookies, syncSessionWithServer } from "@/lib/auth/cookies";
 import { cn } from "@/lib/utils";
 
 const inputClass =
@@ -20,12 +21,14 @@ type Mode = "signin" | "signup" | "reset";
 export function AccountSignInForm({
   onSignedIn,
   dark = false,
+  initialMode = "signin",
 }: {
   onSignedIn?: () => void;
   dark?: boolean;
+  initialMode?: Mode;
 }) {
   const queryClient = useQueryClient();
-  const [mode, setMode] = useState<Mode>("signin");
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -71,6 +74,8 @@ export function AccountSignInForm({
           setMode("signin");
           return;
         }
+        setAuthCookies(data.session);
+        await syncSessionWithServer(data.session);
         adoptCloudSession(queryClient);
         setPassword("");
         toast.success("Účet je vytvorený — ste prihlásený.");
@@ -78,11 +83,15 @@ export function AccountSignInForm({
         return;
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: address,
         password,
       });
       if (error) throw new Error("Prihlásenie zlyhalo. Skontrolujte údaje.");
+      if (data.session) {
+        setAuthCookies(data.session);
+        await syncSessionWithServer(data.session);
+      }
       adoptCloudSession(queryClient);
       setPassword("");
       toast.success("Ste prihlásený — pracujete vo svojom účte.");

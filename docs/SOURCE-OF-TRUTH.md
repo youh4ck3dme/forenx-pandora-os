@@ -63,6 +63,85 @@ AI OUTPUT ≠ EVIDENCE
 
 AI môže vytvoriť hypotézu, klasifikáciu alebo nález, ale nesmie zmeniť pôvodný dôkaz, jeho hash, reťazec vlastníctva ani označiť neoverené tvrdenie za fakt.
 
+### 3.1 Autentifikácia a relácie (Auth Session Invariants)
+
+- **Klientske ukladanie vs. Serverový middleware:** Supabase JS ukladá reláciu na klientovi do `localStorage`. Next.js Edge Middleware (`middleware.ts`) a Server Components overujú reláciu server-side cez HTTP cookies (`sb-access-token`, `sb-refresh-token`) a `Authorization: Bearer <token>` header.
+- **Synchronizácia do cookies (`lib/auth/cookies.ts`):** Po úspešnom `signInWithPassword`, `signUp` alebo `TOKEN_REFRESHED` sa tokeny synchrónne zapisujú do `document.cookie` (`sb-access-token`, `sb-refresh-token` s parametrami `Path=/`, `SameSite=Lax`, `Secure` pri HTTPS).
+- **Globálny cookie sync (`components/core/providers/auth-cookie-sync.tsx`):** V pozadí počúva na `onAuthStateChange` a udržiava cookies v súlade s platným Supabase tokenom.
+- **Čistenie relácie:** Pri odhlásení cez `signOutEverywhere` / `clearClientState` sa cookies zneplatnia (`Max-Age=0`).
+- **Presmerovanie po prihlásení:** Pri neautentifikovanom prístupe k chráneným trasám middleware presmeruje priamo na `/auth/login?next=<sanitized_path>`, pričom cieľová cesta musí prejsť validáciou open-redirect ochrany (`lib/auth/redirect.ts`).
+
+### 3.2 Auth — stav pred zjednotením (2026-10-03)
+
+Zmapovaný a overený stav existujúcej autentifikačnej infraštruktúry pred konsolidáciou (každý súbor overený čítaním z disku):
+
+- **9 auth brán v repozitári, reálne strážia len 3:**
+  1. `middleware.ts` — kanonická brána na hrane (Edge). Kontroluje cookies (`sb-access-token`, `sb-*-auth-token`) alebo explicitný `Authorization: Bearer <token>` s prednosťou. Neautentifikované stránky presmeruje na `/auth/login`, API routes vracajú HTTP `401`. Anonymný vstup na `/` presmeruje na `/auth/login/?next=%2Fbrowser%2F`, prihlásený vstup na `/` presmeruje na `/browser/`. Trasy `/forza/*` sú označené kategóriou `PROJECT_REQUIRED`, no v middleware prepustia každého prihláseného bez kontroly prípadu.
+  2. `integrations/supabase/auth-middleware.ts` (`requireSupabaseAuth`) — serverový middleware pre TanStack server funkcie v `lib/forza/*.functions.ts`. Striktne vyžaduje `Authorization: Bearer <token>`, HTTP cookies ignoruje.
+  3. `lib/storage/vault-auth.ts` (`authenticateVaultRequest`) — autorizačná brána pre `app/api/vault/*`, `app/api/forenzx/start`, `app/api/forenzx/jobs/[jobId]/events` a `app/api/health/observe`. Overuje Bearer token vyšetrovateľa a vlastníctvo spisu.
+- **Mŕtve, rozbité a neodpojené auth mechanizmy:**
+  4. `lib/auth/page-guards.ts` — mŕtvy modul (`requirePageAuth`, `getPageSession`), žiadny komponent ani route v projekte ho neimportuje.
+  5. `lib/auth/server.ts` — `requireAuth` hádže `throw new NextResponse(...)` namiesto návratu (v Next.js runtime spôsobuje 500 chybu). Pomocné funkcie `withAuth` a `requireAuthentication` nie sú volané žiadnou živou route.
+  6. `lib/forza/session-guard.ts` — nepoužitý súbor, jediné volanie bolo chybne importované v `session.ts`, obsahuje oneskorený redirect (150ms) na starú cestu `/auth`.
+  7. `routes/_authenticated/sandbox.tsx` — opustený TanStack Router súbor s vlastnou auth logikou, ktorý Next.js App Router vôbec nemountuje (živý sandbox je `app/forza/sandbox/page.tsx`).
+  8. `app/auth/register/page.tsx` — falošná registrácia simulujúca WebAuthn a ukladajúca JSON objekt do `localStorage.setItem("pandora_user", ...)`, nevytvára žiadneho Supabase používateľa.
+  9. `app/forza/profil/page.tsx` — duplicitne embeduje `AccountSignInForm`, čím profil slúži ako druhá login obrazovka, ak stav používateľa nie je načítaný.
+- **Cookie most:**
+  - `app/api/auth/session/route.ts` (POST/DELETE s overením pôvodu `validateOrigin` a IP rate limiterom) + `components/core/providers/auth-cookie-sync.tsx` počúvajúci na `onAuthStateChange`.
+- **Zistené chyby v importoch a runtime (Bugs):**
+  - `components/malte/AccountSignInForm.tsx` importuje `adoptCloudSession` z `@/lib/session`, súbor na danej ceste neexistuje (reálny je `lib/forza/session.ts`), čo pri build/bundler rozlíšení zlyhá.
+  - Sign-out a session súbory importujú `@/lib/dev-auth`, `@/lib/session-guard`, `@/lib/session-expired`, `@/lib/idb` — súbory na koreňovom `@/lib/` neexistujú, reálne ležia v `lib/forza/`.
+  - Tri rôzne a protichodné ciele po logine/odhlásení: middleware smeruje prihláseného z `/` na `/browser/`, prihlasovací formulár `AccountSignInForm` a `LoginPage` predvolene posielajú na `/forza/pripady`, a odhlásenie `POST_SIGN_OUT_ROUTE` v `session.ts` posiela na `/`, čo middleware ako anonymného okamžite vráti na `/auth/login/?next=%2Fbrowser%2F` v slučke.
+- **Nekonzistencia trailingSlash a cookie flagov:**
+  - `next.config.mjs` má nastavené `trailingSlash: true`, takže `/auth/login/` je v middleware povolené len vďaka prefixovej podmienke `startsWith('/auth/')`, pretože `matchPathPattern('/auth/login/', '/auth/login')` vracia `false`.
+  - Cookie token refresh v `middleware.ts` zapisuje `sb-access-token` bez flagu `httpOnly: true`, zatiaľ čo `app/api/auth/session/route.ts` ho dôsledne zapisuje s `httpOnly: true`.
+- **Tri nejednotné dev bypassy:**
+  - `ALLOW_DEV_AUTH_BYPASS` kontrolovaný v `middleware.ts` a `integrations/supabase/auth-middleware.ts`.
+  - `PANDORA_DEV_AUTH_BYPASS` v `lib/storage/vault-auth.ts`, `lib/auth/page-guards.ts`, `lib/auth/server.ts`.
+  - `isDevFreeEntryActive()` v `lib/forza/dev-auth.ts`, ktorý je defaultne zapnutý pre akéhokoľvek klienta na localhost/LAN (`return val !== "false"`).
+- **PROJECT_REQUIRED a ROLE_REQUIRED:**
+  - V `middleware.ts` vetvy `category === 'PROJECT_REQUIRED'` a `category === 'ROLE_REQUIRED'` iba vracajú `next()`, nekontrolujú členstvo v spise ani používateľskú rolu.
+
+### 3.3 Auth — po zjednotení (2026-10-03)
+
+Výsledný stav po kompletnej konsolidácii a odstránení duplicitných mechanizmov:
+
+- **Jediná brána:**
+  - **Edge Middleware:** `middleware.ts` v kombinácii s `lib/auth/route-policy.ts` tvorí jedinú autoritatívnu bránu pre stránky a API endpointy. Všetky neautentifikované požiadavky na chránené stránky smerujú na `/auth/login/`, API vracajú striktných `401 Unauthorized`.
+  - **Jediná login obrazovka:** `app/auth/login/page.tsx` s komponentom `components/malte/AccountSignInForm.tsx`. Podporuje výhradne Supabase password autentifikáciu s prepínaním medzi prihlásením a registráciou (`mode=signup`). Passkey tab zostáva trvalo deaktivovaný (hard-disabled). Cesty `app/auth/page.tsx` a `app/auth/register/page.tsx` slúžia výhradne ako čisté HTTP/Next.js presmerovania na `/auth/login/`.
+  - **Jediný cookie most:** `POST /api/auth/session` a `DELETE /api/auth/session` v synchronizácii s klientskym `auth-cookie-sync.tsx` a `lib/forza/session.ts`.
+- **Serverové kontroly, ktoré ostali:**
+  - `requireSupabaseAuth` (`integrations/supabase/auth-middleware.ts`): Overuje Bearer token pre volania serverových funkcií (`lib/forza/*.functions.ts`). Pri neplatnom tokene vracia fail-closed chybu (401). Netvorí žiadnu druhú login stránku ani formulár.
+  - `authenticateVaultRequest` (`lib/storage/vault-auth.ts`): Overuje Bearer token vyšetrovateľa a vlastníctvo spisu pre citlivé endpointy (`/api/vault/*`, ForenZX joby, `/api/health/observe`). Pri zlyhaní vracia striktný HTTP `401` alebo `403`, nikdy nerobí klientske presmerovanie na login.
+- **Zmazané súbory a dôvod:**
+  - `lib/auth/page-guards.ts` — mŕtvy modul bez volaní.
+  - `lib/auth/server.ts` — rozbitý modul (`throw new NextResponse`), nepoužívaný žiadnou živou route.
+  - `lib/forza/session-guard.ts` — opustený kód s nežiaducim oneskoreným redirectom; nahradený čistým odhlásením v `lib/forza/session.ts`.
+  - `routes/_authenticated/sandbox.tsx` (a priečinok `routes/_authenticated/`) — nepoužívaný súbor TanStack Routera mimo Next.js stromu (živý sandbox je `app/forza/sandbox/page.tsx`).
+  - `components/malte/__tests__/sandbox-regression.test.tsx` — osirotený test naviazaný výlučne na zmazaný `routes/_authenticated/sandbox.tsx`.
+  - Odstránený duplicitný `AccountSignInForm` z `app/forza/profil/page.tsx` (profil používateľa už neslúži ako login formulár).
+  - Odstránená falošná registrácia s WebAuthn a `localStorage` z `app/auth/register/page.tsx`.
+- **Jediný dev bypass a jeho podmienky:**
+  - Zjednotené výhradne na premennú `ALLOW_DEV_AUTH_BYPASS === "true"`.
+  - Úplne zmazaný nepoužívaný bypass `PANDORA_DEV_AUTH_BYPASS`.
+  - Funkcia `isDevFreeEntryActive()` v `lib/forza/dev-auth.ts` je upravená na striktný opt-in (`val === "true"`, predvolene `false`).
+  - Podmienky bypassu: povolený len v development prostredí (`NODE_ENV === "development"`), výhradne na lokálnom loopbacku (`127.0.0.1`, `::1`, `localhost`). Nikdy nefunguje na Verceli, produkcii ani na verejných IP adresách.
+- **Post-login a sign-out cieľ:**
+  - Predvolený cieľ po úspešnom prihlásení: `/browser/` (jednotne nastavený v `middleware.ts`, `AccountSignInForm.tsx`, `app/auth/login/page.tsx` a `lib/auth/redirect.ts`).
+  - Cieľ po odhlásení: `/auth/login/` (v `lib/forza/session.ts` `POST_SIGN_OUT_ROUTE` a v profile). Tým je odstránená nekonečná slučka cez koreňovú trasu `/`.
+- **Cookie flagy:**
+  - Cookies `sb-access-token` a `sb-refresh-token` sú zapisované konzistentne s flagmi:
+    - `httpOnly: true` (rovnako v `app/api/auth/session/route.ts` aj pri refreshi v `middleware.ts`),
+    - `sameSite: 'lax'`,
+    - `path: '/'`,
+    - `secure: process.env.NODE_ENV === 'production'`.
+  - Session token sa nikdy nezapisuje do cookie čitateľnej klientskym JavaScriptom.
+- **PROJECT_REQUIRED a ROLE_REQUIRED po zmene:**
+  - Z `middleware.ts` a `lib/auth/index.ts` boli odstránené fiktívne vetvy, ktoré predstierali kontrolu spisu alebo roly na hrane aplikácie bez prístupu k dátovému kontextu.
+  - Všetky trasy `/forza` a `/forza/*` sú v `middleware.ts` klasifikované ako `AUTHENTICATED` (vyžadujú overenú session).
+  - Skutočná autorizácia k prípadom (case membership) a rolám je plne delegovaná do vrstiev s dátovým kontextom: PostgreSQL Row Level Security (RLS) v Supabase a `verifyCaseOwnership` vo `vault-auth.ts`.
+
+
 ## 4. Vlastníctvo dát
 
 | Dáta | Autoritatívne úložisko | Klientská cache |
@@ -94,6 +173,15 @@ Zakázané:
 - obísť `verified` stav iba zmenou v klientovi,
 - použiť neoverenú URL alebo neznámy hostname na download,
 - vymazať auditný záznam, aby sa skryl neúspešný pokus.
+
+### 5.1 Priamy upload do S3 a WORM Trezora (Blueprint P3)
+
+- **Pre-flight SHA-256 a presign:** Klient pred uploadom spočíta SHA-256 hash cez `crypto.subtle.digest`. Následne požiada server o presigned URL (`POST /api/vault/presign`) s overením existencie a vlastníctva `caseId` (striktne UUID).
+- **Fail-closed správanie pri uploade:** Pri HTTP 401/403 je proces uploadu okamžite zastavený s chybou prístupu. Je zakázané prepnúť na neoverený unauthenticated multipart fallback.
+- **Autorizovaný presigned download:** Endpoint `GET /api/vault?storageKey=...&action=presign` vydá presigned URL na stiahnutie iba v prípade, že `storageKey` existuje v `evidence_items` ledgeri a patrí autentifikovanému vyšetrovateľovi s prístupom k danému spisu (ochrana pred IDOR a neautorizovaným čítaním z bucketu).
+- **Podpora mobilného forenzného triage (ALEAPP, iLEAPP, Andriller):** Súbory z mobilných extrakcií (`.tar`, `.gz`, `.tgz`, `.ab`, `.zip`), databázy (`.sqlite`, `.db`, `.sqlite3`), auditné logy (`.log`, `.txt`), ako aj výstupy reportérov ALEAPP / iLEAPP / Andriller sú automaticky tagované a prijaté do úložiska s výpočtom SHA-256 integrity.
+- **Asynchrónna periodická verifikácia integrity (VPS cron):** Skript `deploy/vps/verify-cron.sh` (inštalovaný cez `deploy/vps/setup-verification-cron.sh`) beží v intervale `*/2 * * * *` a volá `/api/vault/verify?limit=25` autorizovaný cez tajomstvo `CRON_SECRET` (min. 32 znakov). Pri zistení nesúladu hashu prepne stav položky na `compromised`.
+- **Zákaz analýzy neoverených dôkazov v UI:** Tlačidlo „Odoslať na AI analýzu“ je v `evidence-vault-panel.tsx` povolené výhradne pre položky so stavom `integrityStatus === 'verified'`. Položky so stavom `checking` alebo `compromised` majú akciu zablokovanú (`AI OUTPUT ≠ EVIDENCE`).
 
 ## 6. AI a ForenZX kontrakt
 
@@ -132,6 +220,14 @@ verified evidence
   → findings + execution record
 ```
 
+### 6.1 Sprísnené AI schémy, oprava JSON, CSV a Export Manifest (Blueprint P4)
+
+- **Striktná typizácia schémy (`lib/forza/forensic-dossier.schema.ts`):** Všetky sub-schémy (`timeline`, `traces`, `attacks`, `evidence`, `paragraphs`, `analysisMeta`) sú prísne typované Zod schémami namiesto voľných `z.record(z.unknown())`. Neznáme alebo malformované štruktúry zlyhajú na validačnej bráne.
+- **Detekcia opraveného JSON (`wasRepaired`):** `parseForensicDossier` vracia `{ data, wasRepaired }`. Ak musel byť modelový JSON opravený (napr. doplnenie uzatváracích zátvoriek pre odseknutý výstup), výsledný chunk je transparentne označený ako `status: "repaired"` namiesto predstierania bezchybného pôvodného výstupu.
+- **Deduplikácia bankových CSV importov (`lib/forza/import.functions.ts`):** `commitImport` validátor pred zápisom overuje prítomnosť duplicitných riadkov s identickou päticou `(date, amount, currency, from_id, to_id)` a zlyhá fail-closed s jasným zoznamom duplicitných riadkov (`DUPLICATE_IMPORT_ROWS`), aby sa predišlo viacnásobnému započítaniu transakcií.
+- **Nezávislý export manifestu (`lib/forza/export-pdf.ts`):** Vyšetrovateľ si môže stiahnuť auditný balík reportu ako samostatný JSON (`downloadManifestJson`), ktorý obsahuje SHA-256 hash manifestu a stav všetkých overených dôkazov.
+- **Forenzný disclaimer manifestu:** Hash manifestu je kryptografický dôkaz integrity samotného exportu, nie potvrdenie pravdivosti alebo súdnej prípustnosti hypotéz (`AI OUTPUT ≠ EVIDENCE`).
+
 Kanonický webhook header je `x-forenzx-webhook-secret`. Edge Function musí overiť secret, evidence status, idempotency key a serverové údaje. Presigned download musí používať iba povolený hostname; HTTP, localhost, private IP, neoverené redirecty a nepovolené hosty sú odmietnuté.
 
 MCP kontrakt musí obsahovať nástroj `forenzx_analysis_start` s `download_url` a `download_filename`. Hash mismatch alebo bezpečnostné odmietnutie nesmie skončiť ako úspešný job.
@@ -139,6 +235,25 @@ MCP kontrakt musí obsahovať nástroj `forenzx_analysis_start` s `download_url`
 ## 7. UI, PWA a mobile pravidlá
 
 Mobile/PWA je klient rovnakého forenzného systému, nie samostatná databáza.
+
+Verejne dostupná je iba read-only stránka `/forza/stav`. Ostatné stránky pod
+`/forza` vyžadujú autentifikáciu a príslušný prístup k prípadu. Administrátorská
+health funkcia a citlivé systémové dáta zostávajú chránené serverovým
+oprávnením.
+
+Verejný live dashboard používa iba `/api/health/public`, ktorý vracia
+agregované metriky bez secrets, používateľských identifikátorov, obsahu logov,
+promptov a stack traces. Zápisové API a administrátorský health endpoint sa
+nesmú použiť ako verejný dátový zdroj.
+
+### 7.1 Pravdivý live stav a diagnostika (Blueprint P5)
+
+- **Kategorizácia a rozlíšenie úložísk:** Live stav pokrýva aplikačný server, databázu (dostupnosť, odozva, pripojenia, transakcie, zámky, veľkosť), evidenciu spisov, samostatné úložisko dokumentov Supabase, samostatný Hetzner S3 Trezor príloh, konfigurácie modelov Mistral (chat a analýza), telemetriu a úspešnosť AI, systémové chyby a lokálny PDF export. Úspešná kontrola jedného úložiska nesmie dokazovať dostupnosť druhého.
+- **Bezpečná a nezvrstvená cache:** Endpoint `/api/health/public` vracia `Cache-Control: public, max-age=15, no-transform` bez CDN `stale-while-revalidate` okna. Zlyhané meranie sa nikdy neukladá do cache ako platný stav.
+- **Čerstvosť meraní a varovanie pred zastaraním:** Každá položka obsahuje atribút `measuredAt`. UI automaticky obnovuje stav pri otvorení, každých 15 sekúnd a manuálne. Ak je meranie staršie ako 60 sekúnd, UI zobrazí varovanie o zastaranom stave. Pri chybe refreshu zostáva zobrazený posledný známy stav s jasným upozornením.
+- **Hodnotenie AI úspešnosti:** Hranica chybovosti 10 % sa vyhodnocuje pred zaokrúhlením. Pri nulovom počte AI volaní je hodnota transparentne „Bez meraní“ so stavom `unavailable`, nikdy nie falošných 100 % úspešnosti.
+- **Lokálny self-test PDF exportu:** Schopnosť exportu do PDF sa nehlási pevnou hodnotou `ok`, ale reálnym klientskym self-testom overujúcim `window.print` rozhranie a generovanie syntetického reportu s SHA-256 manifestom.
+- **Korelačné ID:** Middleware generuje alebo propaguje hlavičku `x-correlation-id` pre sledovateľnosť požiadaviek naprieč UI, API, S3 trezorom a workerom bez zaznamenávania citlivých údajov.
 
 Povinné UI stavy:
 
@@ -192,8 +307,6 @@ npm run typecheck
 npx vitest run
 ```
 
-Vitest beží v troch projektoch: `main` (jsdom, paralelný), `cleanroom` (node, PGlite/Docker PostgreSQL, serializovane `maxWorkers=1`) a `supabase-db` (node, PGlite, serializovane `maxWorkers=1`). Ťažké PGlite sady sa nesmú spúšťať paralelne v jednom workri s jsdom sadami — worker zomiera na OOM. `next build` vyžaduje `NODE_OPTIONS=--max-old-space-size=4096` (zabudované v `npm run build`).
-
 Podľa rozsahu zmeny:
 
 ```powershell
@@ -216,10 +329,19 @@ Negatívne testy musia overiť minimálne:
 ## 10. Deployment a zodpovednosť
 
 - `main` je zdrojový branch iba po úspešných relevantných kontrolách.
-- Staging a produkcia musia mať oddelené databázy, buckety, secrets, URL a testovacie UUID.
+- Východiskový verifikovaný commit je `86597c4cefbb71c6da29d53fe67a93b9f120dd34`.
+- Produkčný projekt Supabase je `tlmuvzrgighahnjkxoyw`. Staging a produkcia musia mať oddelené databázy, buckety, secrets, URL a testovacie UUID.
+- Produkčný VPS runtime: Porty 80/443 obsluhuje Apache/httpd ako reverzná proxy smerujúca na loopback `:3005`. Dôvera proxy hlavičkám (`x-forwarded-for`, `x-forwarded-proto`, `x-real-ip`) patrí výhradne lokálnemu Apache proxy (`127.0.0.1`). Získavanie klientskej IP adresy (`getTrustedClientIp` v `lib/security/client-ip.ts`) používa overenú hlavičku `x-real-ip` alebo poslednú pridanú hodnotu z `x-forwarded-for`, čím sa bráni podvrhnutiu klientskej identity v auditnom ledgeri a rate limiteri (N-06).
+- Bezpečnostné hlavičky a CSP: Next.js vynucuje striktnú `Content-Security-Policy` (`frame-ancestors 'self'`, `object-src 'none'`, `base-uri 'self'`) s reportingom na `/api/csp-report/`. Interné forenzné aplikácie sú vkladané výhradne same-origin v rámci jedného Pandora browser shellu.
+- Zálohy a obnova (Disaster Recovery): RPO je stanovené na najviac 15 minút (PostgreSQL PITR), RTO na najviac 4 hodiny. Databázová záloha Supabase neobsahuje S3 Storage objekty — Hetzner S3 Evidence Vault (`hel1.your-objectstorage.com`) je zálohovaný a zrkadlený nezávisle s Object Lock (WORM) ochranou (viď `docs/DISASTER_RECOVERY_RUNBOOK.md`).
+- Koordinovaná rotácia kľúčov: Pri podozrení na kompromitáciu secrets sa vykonáva postupná rotácia bez výpadku bežiacich uploadov (S3 kľúče s 15-minútovým prechodným oknom, následne Supabase service role, AI kľúče a webhook tokeny).
+- Kontajnerový runtime je zjednotený na **Node.js 22 LTS** (`docker/Dockerfile.production`).
+- Build prebieha deterministicky v Linux GitHub Actions, nie na produkčnom VPS. Runtime image sa publikuje do privátneho GHCR a nasadzuje striktne podľa digestu (`sha256:...`).
 - Žiadny regresný fixture nesmie používať produkčné dáta.
 - Deployment nie je dôkaz funkčnosti; po deploymente sa overia health endpointy, migrácie, MCP kontrakt a príslušný E2E test.
-- Rollback musí byť možný bez mazania dôkazov alebo auditnej histórie.
+- Rollback musí byť možný bez mazania dôkazov alebo auditnej histórie. Chránený rollback image `pandora-rollback:protected` sa nesmie zmazať pri čistení.
+- Monitoring a Alert Watchdog: Pravidelné vyhodnocovanie prevádzkových prahov (`deploy/vps/alert-watchdog.sh`, `scripts/test-alert-dispatch.mjs` a `/api/health/observe`) v zmysle `docs/ALERTING.md`. Alerty pokrývajú zaplnenie disku (80/90 %), 5xx chyby, výpadok DB/S3, zlyhanie verifikácie, AI timeouty > 60 s a chybovosť AI > 10 %.
+- Prijatie do pilotnej prevádzky: Formálny audit a udelenie statusu „GO PRE PILOT“ sa zaznamenáva v `docs/PILOT-GO-CHAIN-OF-CUSTODY-PROTOCOL.md` podľa podmienok z `docs/BLUEPRINT-PILOT-RELEASE.md` (časť 5.2).
 
 ## 11. Pravidlá pre AI agentov
 
@@ -239,6 +361,9 @@ Po úprave uveď zmenené súbory, spustené testy a presne čo zostalo neoveren
 - [Architektúra](ARCHITECTURE.md)
 - [Deployment runbook](DEPLOYMENT.md)
 - [Disaster recovery](DISASTER_RECOVERY_RUNBOOK.md)
+- [Alerting a operačný runbook](ALERTING.md)
+- [Protokol GO pre pilot](PILOT-GO-CHAIN-OF-CUSTODY-PROTOCOL.md)
 - [Backlog source of truth](BACKLOG-SOURCE-OF-TRUTH.md)
 - [Contributing](../CONTRIBUTING.md)
 - [Root agent instructions](../AGENTS.md)
+
