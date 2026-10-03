@@ -120,7 +120,6 @@ interface BrowserState {
 }
 
 export const useBrowserStore = create<BrowserState>()(
-  // @ts-ignore
   persist(
     (set, get): BrowserState => ({
       // Initial State
@@ -131,8 +130,9 @@ export const useBrowserStore = create<BrowserState>()(
       commandPaletteOpen: false,
       copilotOpen: false,
       copilotModel: 'mistral-large-latest',
-      mistralApiKey: typeof window !== 'undefined' ? (localStorage.getItem('pandora_mistral_key') || localStorage.getItem('pandora_openai_key')) : null,
-      openaiApiKey: typeof window !== 'undefined' ? (localStorage.getItem('pandora_mistral_key') || localStorage.getItem('pandora_openai_key')) : null,
+      // Keys are session-only: never persisted to localStorage to prevent XSS exfiltration.
+      mistralApiKey: null,
+      openaiApiKey: null,
       activeSpace: 'default',
       closedTabs: [],
       wallets: [],
@@ -218,28 +218,11 @@ export const useBrowserStore = create<BrowserState>()(
       }),
       toggleCopilot: () => set((state: BrowserState) => ({ copilotOpen: !state.copilotOpen })),
       setCopilotModel: (model: any) => set({ copilotModel: model }),
+      // Keys live in memory only; no localStorage to prevent XSS exfiltration.
       setMistralApiKey: (key: string | null) => {
-        if (typeof window !== 'undefined') {
-          if (key) {
-            localStorage.setItem('pandora_mistral_key', key)
-            localStorage.setItem('pandora_openai_key', key)
-          } else {
-            localStorage.removeItem('pandora_mistral_key')
-            localStorage.removeItem('pandora_openai_key')
-          }
-        }
         set({ mistralApiKey: key, openaiApiKey: key })
       },
       setOpenaiApiKey: (key: string | null) => {
-        if (typeof window !== 'undefined') {
-          if (key) {
-            localStorage.setItem('pandora_mistral_key', key)
-            localStorage.setItem('pandora_openai_key', key)
-          } else {
-            localStorage.removeItem('pandora_mistral_key')
-            localStorage.removeItem('pandora_openai_key')
-          }
-        }
         set({ mistralApiKey: key, openaiApiKey: key })
       },
       duplicateTab: (id: string) => set((state: BrowserState) => {

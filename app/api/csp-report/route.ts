@@ -118,7 +118,7 @@ async function handlePost(
 
   let body: unknown;
   try {
-    body = JSON.parse(raw);
+    body = await new Response(raw).json();
   } catch {
     return NextResponse.json({ error: "Report nie je platný JSON." }, { status: 400 });
   }

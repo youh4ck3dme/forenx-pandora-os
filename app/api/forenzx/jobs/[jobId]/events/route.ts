@@ -18,7 +18,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Neplatné ID úlohy." }, { status: 400 });
   }
 
-  const { data: job, error: lookupError } = await (supabaseAdmin as any)
+  const { data: job, error: lookupError } = await supabaseAdmin
     .from("forenzx_analysis_jobs")
     .select("hub_job_id")
     .eq("id", jobId)

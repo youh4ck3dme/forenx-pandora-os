@@ -41,11 +41,10 @@ export async function drainForenzxDispatchOutbox(
 
   const limit = options.limit ?? DEFAULT_LIMIT;
   const fetchTimeoutMs = options.fetchTimeoutMs ?? 25_000;
-  const admin = supabaseAdmin as any;
 
   const summary = await processDispatchBatch({
     listDue: async (now) => {
-      let query = admin
+      let query = supabaseAdmin
         .from("forenzx_dispatch_outbox")
         .select(SELECT_COLUMNS)
         .eq("status", "pending")
@@ -58,7 +57,7 @@ export async function drainForenzxDispatchOutbox(
       return (data ?? []) as OutboxRow[];
     },
     compareAndClaim: async (original, claimed) => {
-      const { data, error } = await admin
+      const { data, error } = await supabaseAdmin
         .from("forenzx_dispatch_outbox")
         .update({
           attempts: claimed.attempts,
@@ -74,7 +73,7 @@ export async function drainForenzxDispatchOutbox(
       return (data ?? null) as OutboxRow | null;
     },
     save: async (row) => {
-      const { error } = await admin
+      const { error } = await supabaseAdmin
         .from("forenzx_dispatch_outbox")
         .update({
           status: row.status,
