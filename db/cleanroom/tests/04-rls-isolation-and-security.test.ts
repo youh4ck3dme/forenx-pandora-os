@@ -8,6 +8,7 @@ import {
   createTestUser,
   createTestCase,
   createTestEvidence,
+  type DbSession,
 } from "./cleanroom-harness";
 
 describe("Regression Suite: 04 - RLS Multi-Tenant Isolation & Table Hardening", () => {
@@ -137,6 +138,56 @@ describe("Regression Suite: 04 - RLS Multi-Tenant Isolation & Table Hardening", 
     await expect(
       asServiceRole(db, (tx) => tx.query("DELETE FROM public.evidence_items WHERE id = $1", [evidenceId]))
     ).rejects.toThrow(/Direct DELETE of evidence_items is prohibited\. Use audited delete procedure\./);
+  }, 60_000);
+
+  it("rejects cross-tenant case_id on evidence_items INSERT via evidence_items_insert_guard", async () => {
+    const db = await createCleanroomDatabase();
+    const victim = await createTestUser(db, "victim@test.local");
+    const attacker = await createTestUser(db, "attacker@test.local");
+    const victimCase = await createTestCase(db, victim, "Victim Case", "draft");
+    const attackerCase = await createTestCase(db, attacker, "Attacker Case", "draft");
+
+    const insertEvidence = (tx: DbSession, investigator: string, caseId: string | null, key: string) =>
+      tx.query<{ id: string; case_id: string | null }>(
+        `INSERT INTO public.evidence_items (
+           investigator_id, case_id, case_name, file_name, file_size, mime_type,
+           s3_object_key, sha256_hash
+         ) VALUES (
+           $1, $2, 'Case Name', 'spoof.pdf', 2048, 'application/pdf',
+           $3, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+         ) RETURNING id, case_id`,
+        [investigator, caseId, key]
+      );
+
+    // Attacker passes RLS (investigator_id = own uid) but points case_id at victim's case -> rejected
+    await expect(
+      asAuthenticated(db, attacker, (tx) => insertEvidence(tx, attacker, victimCase, "s3://vault/spoof.pdf"))
+    ).rejects.toThrow(/case_id does not belong to the authenticated user/);
+
+    // Own case is accepted
+    await asAuthenticated(db, attacker, async (tx) => {
+      const res = await insertEvidence(tx, attacker, attackerCase, "s3://vault/own.pdf");
+      expect(res.rows[0]?.case_id).toBe(attackerCase);
+    });
+
+    // Legacy NULL case_id stays allowed
+    await asAuthenticated(db, attacker, async (tx) => {
+      const res = await insertEvidence(tx, attacker, null, "s3://vault/legacy.pdf");
+      expect(res.rows[0]?.case_id).toBeNull();
+    });
+
+    // Trusted server role bypasses the check (ownership verified in application logic)
+    await asServiceRole(db, async (tx) => {
+      const res = await insertEvidence(tx, victim, victimCase, "s3://vault/server.pdf");
+      expect(res.rows[0]?.case_id).toBe(victimCase);
+    });
+
+    // Victim's case received no evidence from the attacker
+    const leaked = await db.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM public.evidence_items WHERE case_id = $1 AND investigator_id = $2",
+      [victimCase, attacker]
+    );
+    expect(leaked.rows[0]?.n).toBe(0);
   }, 60_000);
 
   it("asserts RLS is enabled on 100% of public tables via assert_rls_enabled_on_all_tables()", async () => {

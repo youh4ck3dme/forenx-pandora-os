@@ -12,6 +12,7 @@ export const CLEANROOM_FILES = [
   "006_rate_limits.sql",
   "007_storage_contract.sql",
   "008_security_hardening.sql",
+  "009_evidence_case_id_ownership.sql",
 ] as const;
 
 export const DB_URL = process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:54322/postgres";

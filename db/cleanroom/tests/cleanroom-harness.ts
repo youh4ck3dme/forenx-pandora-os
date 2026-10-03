@@ -2,7 +2,7 @@
  * PANDORA / FORENX — Cleanroom Database Test Harness
  * 
  * Uses in-process PostgreSQL 17 (PGlite) to execute and test the cleanroom SQL files
- * (001_base.sql through 008_security_hardening.sql) against Supabase stubs.
+ * (frozen Baseline V1 001..008 plus forward migrations 009+) against Supabase stubs.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -19,6 +19,7 @@ export const CLEANROOM_FILES = [
   "006_rate_limits.sql",
   "007_storage_contract.sql",
   "008_security_hardening.sql",
+  "009_evidence_case_id_ownership.sql",
 ] as const;
 
 export const SUPABASE_RUNTIME_STUBS = `
