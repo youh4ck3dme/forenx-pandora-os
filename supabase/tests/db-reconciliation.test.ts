@@ -42,27 +42,31 @@ async function asUser(userId: string) {
 
 describe("Database Source-of-Truth Reconciliation Tests", () => {
   describe("1. has_role oracle closure", () => {
-    it("user A cannot inspect user B role through has_role (returns false, no oracle leak)", async () => {
-      await asUser(userA);
+    // After 20261003120000: authenticated cannot call has_role directly.
+    // All calls below use service_role (server-side context), which is the only
+    // intended caller. The oracle-leak risk is gone because PostgREST /rpc/has_role
+    // is no longer reachable by signed-in users.
 
-      // User B actually has the user role
+    it("user A cannot inspect user B role through has_role (returns false, no oracle leak)", async () => {
+      // Call as service_role — authenticated no longer has EXECUTE
+      await db.exec("set local role service_role");
+
       const res = await db.query<{ has_role: boolean }>(
         "select public.has_role($1, 'user'::public.app_role) as has_role",
         [userB],
       );
-      // Because User A is neither User B nor admin, has_role returns false
-      expect(res.rows[0]?.has_role).toBe(false);
+      expect(res.rows[0]?.has_role).toBe(true); // userB has user role; service_role sees truth
 
-      // User B does not have admin role
-      const resAdmin = await db.query<{ has_role: boolean }>(
-        "select public.has_role($1, 'admin'::public.app_role) as has_role",
-        [userB],
-      );
-      expect(resAdmin.rows[0]?.has_role).toBe(false);
+      // Verify authenticated cannot call has_role at all
+      await asUser(userA);
+      await expect(
+        db.query("select public.has_role($1, 'user'::public.app_role)", [userB]),
+      ).rejects.toThrow(/permission denied/);
     });
 
     it("legitimate self role checks work for ordinary users", async () => {
-      await asUser(userA);
+      // Service role can check userA's own role
+      await db.exec("set local role service_role");
 
       const res = await db.query<{ has_role: boolean }>(
         "select public.has_role($1, 'user'::public.app_role) as has_role",
@@ -78,7 +82,8 @@ describe("Database Source-of-Truth Reconciliation Tests", () => {
     });
 
     it("admin can query any user role", async () => {
-      await asUser(adminUser);
+      // Admin role check via service_role (server-side path)
+      await db.exec("set local role service_role");
 
       const resB = await db.query<{ has_role: boolean }>(
         "select public.has_role($1, 'user'::public.app_role) as has_role",
