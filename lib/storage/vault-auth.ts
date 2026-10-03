@@ -9,6 +9,7 @@
  */
 import type { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getTrustedClientIp } from "@/lib/security/client-ip";
 
 /** Právny základ prístupu vyšetrovateľa k spisu (§ 119 TP / GDPR). */
 export const VAULT_LEGAL_BASIS =
@@ -71,7 +72,7 @@ function hasRealEvidenceAccess(): boolean {
 /**
  * P0-08 (N-03): vývojársky obchvat autentifikácie je povolený iba:
  * - v unit testoch (`NODE_ENV=test`), alebo
- * - pri `next dev` s výslovným `PANDORA_DEV_AUTH_BYPASS=1`, mimo Vercelu, na
+ * - pri `next dev` s výslovným `ALLOW_DEV_AUTH_BYPASS=true`, mimo Vercelu, na
  *   loopback požiadavku a **bez prístupu k reálnym dôkazom** (bez S3 kľúčov a
  *   bez service role). Loopback sa v route nedá spoľahlivo overiť (hlavičky sú
  *   podvrhnuteľné), preto podvrhnutý obchvat nesmie mať čo získať: s reálnym
@@ -82,7 +83,7 @@ export function devAuthBypassAllowed(request: NextRequest): boolean {
   const env = process.env.NODE_ENV;
   if (env === "production") return false;
   if (env === "test") return true;
-  if (process.env.PANDORA_DEV_AUTH_BYPASS !== "1") return false;
+  if (process.env.ALLOW_DEV_AUTH_BYPASS !== "true") return false;
   if (process.env.VERCEL || process.env.VERCEL_ENV) return false;
   if (hasRealEvidenceAccess()) return false;
   return isLoopbackRequest(request);
@@ -212,10 +213,7 @@ export function accessContext(request: NextRequest): {
   userAgent: string;
 } {
   return {
-    sourceIp:
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      request.headers.get("x-real-ip") ||
-      "",
+    sourceIp: getTrustedClientIp(request, ""),
     userAgent: request.headers.get("user-agent") || "",
   };
 }

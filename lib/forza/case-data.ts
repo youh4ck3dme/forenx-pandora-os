@@ -2,7 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { ForensicCase } from "@/forensic";
 import { mapCaseRows } from "@/lib/case-mapper";
 import { shouldUseLocalCaseStore } from "@/lib/identity";
-import { SessionExpiredError } from "@/lib/session-expired";
+import { SessionExpiredError } from "@/lib/forza/session-expired";
 
 import {
   listDevCases,
@@ -235,7 +235,7 @@ export const updateCase = async (
   args: NonNullable<Parameters<typeof saveCase>[0]>,
 ) => {
   if (await shouldUseLocalCaseStore()) {
-    return updateDevCase((args as { data: any }).data as Parameters<typeof updateDevCase>[0]);
+    return updateDevCase((args as { data: unknown }).data as Parameters<typeof updateDevCase>[0]);
   }
   return saveCase(args);
 };
@@ -244,7 +244,7 @@ export const upsertEntity = async (
   args: NonNullable<Parameters<typeof saveEntity>[0]>,
 ) => {
   if (await shouldUseLocalCaseStore()) {
-    return upsertDevEntity((args as { data: any }).data as Record<string, unknown>);
+    return upsertDevEntity((args as { data: unknown }).data as Record<string, unknown>);
   }
   return saveEntity(args);
 };
@@ -253,7 +253,7 @@ export const upsertTransaction = async (
   args: NonNullable<Parameters<typeof saveTransaction>[0]>,
 ) => {
   if (await shouldUseLocalCaseStore()) {
-    return upsertDevTransaction((args as { data: any }).data as Record<string, unknown>);
+    return upsertDevTransaction((args as { data: unknown }).data as Record<string, unknown>);
   }
   return saveTransaction(args);
 };
@@ -262,7 +262,7 @@ export const upsertRelation = async (
   args: NonNullable<Parameters<typeof saveRelation>[0]>,
 ) => {
   if (await shouldUseLocalCaseStore()) {
-    return upsertDevRelation((args as { data: any }).data as Record<string, unknown>);
+    return upsertDevRelation((args as { data: unknown }).data as Record<string, unknown>);
   }
   return saveRelation(args);
 };
@@ -271,7 +271,7 @@ export const upsertWeapon = async (
   args: NonNullable<Parameters<typeof saveWeapon>[0]>,
 ) => {
   if (await shouldUseLocalCaseStore()) {
-    return upsertDevWeapon((args as { data: any }).data as Record<string, unknown>);
+    return upsertDevWeapon((args as { data: unknown }).data as Record<string, unknown>);
   }
   return saveWeapon(args);
 };
@@ -280,7 +280,7 @@ export const upsertEvent = async (
   args: NonNullable<Parameters<typeof saveEvent>[0]>,
 ) => {
   if (await shouldUseLocalCaseStore()) {
-    return upsertDevEvent((args as { data: any }).data as Record<string, unknown>);
+    return upsertDevEvent((args as { data: unknown }).data as Record<string, unknown>);
   }
   return saveEvent(args);
 };

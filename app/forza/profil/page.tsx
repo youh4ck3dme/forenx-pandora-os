@@ -15,7 +15,6 @@ import {
 } from "@/components/malte/Shell";
 import { Button } from "@/components/ui/button";
 import { StepProgress } from "@/components/malte/StepProgress";
-import { AccountSignInForm } from "@/components/malte/AccountSignInForm";
 import { AdminQuarantinePanel } from "@/components/malte/AdminQuarantinePanel";
 import { useAccountProfile } from "@/lib/hooks/useAccountProfile";
 import { supabase } from "@/integrations/supabase/client";
@@ -91,10 +90,12 @@ function ProfileScreen() {
 
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
+              <label htmlFor="profil-fullname" className="block text-xs font-medium text-muted-foreground mb-1">
                 Meno a priezvisko
               </label>
               <input
+                id="profil-fullname"
+                name="fullName"
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
@@ -103,10 +104,12 @@ function ProfileScreen() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
+              <label htmlFor="profil-role" className="block text-xs font-medium text-muted-foreground mb-1">
                 Funkcia / Pozícia
               </label>
               <input
+                id="profil-role"
+                name="role"
                 type="text"
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
@@ -153,9 +156,18 @@ function ProfileScreen() {
                 variant="outline"
                 className="w-full text-red-400 hover:text-red-300 hover:bg-red-500/10"
                 onClick={async () => {
-                  await signOutEverywhere(supabase, queryClient);
-                  setCurrentUser(null);
-                  toast.success("Boli ste odhlásený.");
+                  try {
+                    await signOutEverywhere(supabase, queryClient);
+                    setCurrentUser(null);
+                    toast.success("Boli ste odhlásený.");
+                    router.replace("/auth/login/");
+                  } catch (err) {
+                    toast.error(
+                      err instanceof Error
+                        ? err.message
+                        : "Zlyhalo odhlásenie. Skúste to znova.",
+                    );
+                  }
                 }}
               >
                 <LogOut className="mr-2 h-4 w-4" />
@@ -163,12 +175,8 @@ function ProfileScreen() {
               </Button>
             </div>
           ) : (
-            <div className="pt-1">
-              <AccountSignInForm
-                onSignedIn={() => {
-                  toast.success("Prihlásenie úspešné.");
-                }}
-              />
+            <div className="py-4 text-center text-xs text-muted-foreground">
+              Overujem prihlásenie k ForenX Cloud Účtu…
             </div>
           )}
         </Card>

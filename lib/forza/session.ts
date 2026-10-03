@@ -4,12 +4,12 @@
  * a zlyhanie siete nesmie nechať zariadenie prihlásené.
  */
 import type { QueryClient } from "@tanstack/react-query";
-import { clearDevFreeEntry } from "@/lib/dev-auth";
-import { idbClear } from "@/lib/idb";
-import { beginIntentionalSignOut } from "@/lib/session-guard";
+import { clearDevFreeEntry } from "@/lib/forza/dev-auth";
+import { idbClear } from "@/lib/forza/idb";
+import { clearAuthCookies } from "@/lib/auth/cookies";
 
-/** Po úmyselnom odhlásení — welcome page (nie /auth). */
-export const POST_SIGN_OUT_ROUTE = "/" as const;
+/** Po úmyselnom odhlásení — smerujeme na prihlasovaciu obrazovku. */
+export const POST_SIGN_OUT_ROUTE = "/auth/login/" as const;
 
 /** Kľúče v localStorage, ktoré patria tejto aplikácii. */
 const APP_STORAGE_PREFIXES = ["forendo:", "forenx:", "malte:"];
@@ -71,8 +71,8 @@ async function clearCaches(): Promise<void> {
  */
 export async function clearClientState(
   queryClient?: QueryClient,
-): Promise<void> {
-  if (typeof window === "undefined") return;
+): Promise<{ cookiesCleared: boolean }> {
+  if (typeof window === "undefined") return { cookiesCleared: false };
 
   if (queryClient) {
     try {
@@ -99,6 +99,12 @@ export async function clearClientState(
     /* prázdne */
   }
   clearWebStorage();
+  let cookiesCleared = false;
+  try {
+    cookiesCleared = await clearAuthCookies();
+  } catch {
+    cookiesCleared = false;
+  }
 
   try {
     await idbClear();
@@ -119,6 +125,8 @@ export async function clearClientState(
       /* prázdne */
     }
   }
+
+  return { cookiesCleared };
 }
 
 type SignOutClient = {
@@ -129,14 +137,14 @@ type SignOutClient = {
 
 /**
  * Jediný tok odhlásenia pre všetky obrazovky: najprv sieťové odhlásenie,
- * pri zlyhaní lokálne zneplatnenie relácie, a čistenie vždy v `finally`.
+ * pri zlyhaní lokálne zneplatnenie relácie, a čistenie serverových cookies.
+ * Ak zmazanie cookie zlyhá, odhlásenie nie je dokončené.
  */
 export async function signOutEverywhere(
   client: SignOutClient,
   queryClient?: QueryClient,
-): Promise<{ networkSignOut: boolean }> {
+): Promise<{ networkSignOut: boolean; cookiesCleared: boolean }> {
   let networkSignOut = true;
-  beginIntentionalSignOut();
   try {
     await client.auth.signOut();
   } catch {
@@ -147,10 +155,17 @@ export async function signOutEverywhere(
     } catch {
       /* prázdne */
     }
-  } finally {
-    await clearClientState(queryClient);
   }
-  return { networkSignOut };
+
+  const { cookiesCleared } = (await clearClientState(queryClient)) ?? {
+    cookiesCleared: false,
+  };
+
+  if (!cookiesCleared) {
+    throw new Error("Zlyhalo zmazanie autentifikačnej relácie zo servera.");
+  }
+
+  return { networkSignOut, cookiesCleared };
 }
 
 /**
