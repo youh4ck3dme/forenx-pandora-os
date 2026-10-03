@@ -31,6 +31,8 @@ PANDORA / ForenX je jedna aplikácia s viacerými runtime obalmi:
 
 Web, PWA, mobile a Electron nesmú implementovať rozdielne pravidlá pre vlastníctvo prípadu, integritu dôkazu alebo AI výstupy. Rozdiely medzi runtime patria do adaptérov, nie do dátového modelu.
 
+- **Electron runtime izolácia session a webových tabov**: Webové taby bežia výhradne v izolovanej perzistentnej partícii persist:pandora-web-tabs (getWebTabsSession() v lectron/browser-view-factory.ts). Proxy (proxy:set), adblocker / shield štatistiky, mazanie dát (session:clear-data), download listener (will-download) a správa rozšírení sú viazané na túto partíciu, čím zostáva session.defaultSession (hlavný shell aplikácie) nedotknutá. Navigácia tabov (cez IPC aj will-navigate) striktne povoľuje iba http: a https: protokoly; nepovolené protokoly (ile:, javascript:, data:, chrome:, bout:) sa odmietajú pred volaním loadURL.
+
 ## 3. Kanonický dátový tok
 
 ```text
@@ -223,6 +225,13 @@ verified evidence
   → COMPLETED / FAILED
   → findings + execution record
 ```
+
+#### Browser ForenZX spúšťanie (`/api/forenzx/start`)
+
+- **Klientsky kontrakt:** Browser posiela výhradne `evidenceId`, `packId` a `inputType`.
+- **Integritný ledger:** `caseId`, `s3ObjectKey`, `sha256` a `fileSize` sa načítavajú výhradne zo serverového ledgera `evidence_items` podľa `evidenceId` a prihláseného vyšetrovateľa (`investigator_id`). Prípadné klientske hodnoty `s3ObjectKey` alebo `sha256` sú striktne ignorované a do presignu a ForenZX nástroja putujú len dáta z DB riadku.
+- **Fail-closed overenie:** Dôkaz musí mať `hash_verification_status = 'verified'`. Akýkoľvek iný stav vracia HTTP `403`. Chýbajúci alebo cudzí dôkaz vracia HTTP `404`.
+- **Dostupnosť case_id:** Tabuľka `evidence_items` nemá cudzí kľúč `case_id`. Dočasne sa používa identifikátor z riadku (`case_id` ak je prítomné, inak extrahovaný z cesty `s3_object_key` alebo `case_name`) bez pridávania migrácie v tomto PR.
 
 ### 6.1 Sprísnené AI schémy, oprava JSON, CSV a Export Manifest (Blueprint P4)
 

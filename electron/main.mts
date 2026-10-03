@@ -12,7 +12,7 @@ import { streamText } from 'ai'
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 import type { AppUpdater } from 'electron-updater';
-import { configureWebTabsSession, createIsolatedBrowserView } from './browser-view-factory.js'
+import { configureWebTabsSession, createIsolatedBrowserView, getWebTabsSession, isValidWebTabUrl } from './browser-view-factory.js'
 import { openExternalRequestSchema, readEvidenceChunkRequestSchema, selectEvidenceRequestSchema } from './ipc-contract.js'
 import { validateExternalUrl } from './network-security.js'
 import { VaultTokenManager } from './vault-token-manager.js'
@@ -93,8 +93,8 @@ function categorizeBlockedUrl(url: string): 'ads' | 'trackers' | 'scripts' {
 async function setupAdBlocker() {
     try {
         adBlocker = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch)
-        if (session.defaultSession) {
-            adBlocker.enableBlockingInSession(session.defaultSession)
+        const webTabsSession = getWebTabsSession()
+        adBlocker.enableBlockingInSession(webTabsSession)
 
 
             adBlocker.on('request-blocked', (request: any) => {
@@ -119,7 +119,6 @@ async function setupAdBlocker() {
                     })
                 }
             })
-        }
     } catch (error) {
         console.error('Failed to enable AdBlocker:', error)
     }
@@ -127,14 +126,15 @@ async function setupAdBlocker() {
 
 // IPC for AdBlocker Control
 ipcMain.handle('shield:toggle', (_, enabled: boolean) => {
+    const webTabsSession = getWebTabsSession()
     if (enabled) {
-        if (adBlocker && session.defaultSession) {
-            adBlocker.enableBlockingInSession(session.defaultSession)
+        if (adBlocker) {
+            adBlocker.enableBlockingInSession(webTabsSession)
             return true
         }
     } else {
-        if (adBlocker && session.defaultSession) {
-            adBlocker.disableBlockingInSession(session.defaultSession)
+        if (adBlocker) {
+            adBlocker.disableBlockingInSession(webTabsSession)
             return false
         }
     }
@@ -167,10 +167,11 @@ ipcMain.handle('password:delete', async (_, id) => {
 // IPC Handlers for Session Data
 ipcMain.handle('session:clear-data', async () => {
     try {
-        await session.defaultSession.clearStorageData({
+        const webTabsSession = getWebTabsSession()
+        await webTabsSession.clearStorageData({
             storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage']
         })
-        await session.defaultSession.clearCache()
+        await webTabsSession.clearCache()
 
         return true
     } catch (e) {
@@ -471,12 +472,12 @@ function createWindow() {
 
     // IPC for Proxy
     ipcMain.on('proxy:set', async (_, config) => {
-
+        const webTabsSession = getWebTabsSession()
         if (!config || config.type === 'none') {
-            await session.defaultSession.setProxy({ mode: 'direct' })
+            await webTabsSession.setProxy({ mode: 'direct' })
         } else {
             const proxyRules = `${config.type}://${config.host}:${config.port}`
-            await session.defaultSession.setProxy({
+            await webTabsSession.setProxy({
                 proxyRules,
                 proxyBypassRules: 'localhost,127.0.0.1,::1'
             })
@@ -486,8 +487,8 @@ function createWindow() {
     // IPC for Extensions
     ipcMain.handle('extension:load', async (_, path) => {
         try {
-
-            const ext = await session.defaultSession.loadExtension(path)
+            const webTabsSession = getWebTabsSession()
+            const ext = await webTabsSession.loadExtension(path)
             return { id: ext.id, name: ext.name }
         } catch (e: any) {
             console.error('[PΛND0RΛ] Failed to load extension:', e)
@@ -496,7 +497,8 @@ function createWindow() {
     })
 
     ipcMain.handle('extension:list', () => {
-        return session.defaultSession.getAllExtensions().map(e => ({
+        const webTabsSession = getWebTabsSession()
+        return webTabsSession.getAllExtensions().map(e => ({
             id: e.id,
             name: e.name,
             version: e.version
@@ -764,9 +766,9 @@ function createWindow() {
         }
     })
 
-    // Download Handling
-    // Download Handling
-    session.defaultSession.on('will-download', (event, item, webContents) => {
+    // Download Handling on web tabs session
+    const webTabsSession = getWebTabsSession()
+    webTabsSession.on('will-download', (event, item, webContents) => {
         const id = Date.now().toString()
         const fileName = item.getFilename()
         const url = item.getURL()
@@ -809,6 +811,14 @@ function createWindow() {
 // BrowserView Management
 function createTab(id: string, url: string) {
     if (!mainWindow) return
+
+    if (url && url !== 'pandora://newtab') {
+        if (!isValidWebTabUrl(url)) {
+            console.warn('[PΛND0RΛ] Rejected tab creation with invalid URL protocol:', url)
+            mainWindow.webContents.send('tab:updated', { id, title: 'Blocked Protocol', url, isLoading: false })
+            return
+        }
+    }
 
     const view = createIsolatedBrowserView()
 
@@ -936,6 +946,11 @@ function updateTabUrl(id: string, url: string) {
     if (url === 'pandora://newtab' || url.includes('/forza/')) {
         if (mainWindow) mainWindow.removeBrowserView(tab.view)
     } else {
+        if (!isValidWebTabUrl(url)) {
+            console.warn('[PΛND0RΛ] Rejected navigation to invalid URL protocol:', url)
+            mainWindow?.webContents.send('tab:updated', { id, title: 'Blocked Protocol', url, isLoading: false })
+            return
+        }
         if (mainWindow && activeTabId === id) mainWindow.setBrowserView(tab.view)
         tab.view.webContents.loadURL(url)
     }
