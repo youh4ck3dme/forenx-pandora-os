@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { generateEvidencePresignedUrl } from "@/lib/forza/forenzx-evidence-presign.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
@@ -24,8 +25,6 @@ export const runtime = "nodejs";
  *  - URL is composed on the server strictly from the verified ledger row.
  *  - Foreign or unallowlisted download URLs are rejected (Cudzia URL = odmietnuť).
  */
-
-import { timingSafeEqual } from "node:crypto";
 
 const RequestSchema = z.object({
   s3_object_key: z.string().min(1).max(2048),

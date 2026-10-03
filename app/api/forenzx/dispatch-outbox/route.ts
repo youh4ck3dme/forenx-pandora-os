@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { drainForenzxDispatchOutbox } from "@/lib/forza/forenzx-dispatch-drain.server";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +19,6 @@ export const maxDuration = 60;
  * FORENZX_EVIDENCE_WEBHOOK_URL (absolute evidence-webhook URL).
  * Vercel Cron in vercel.json invokes GET on this path. Set CRON_SECRET.
  */
-
-import { timingSafeEqual } from "node:crypto";
 
 function safeCompare(a: string | null | undefined, b: string | null | undefined): boolean {
   if (!a || !b) return false;
