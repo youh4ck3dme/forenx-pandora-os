@@ -14,6 +14,8 @@ Poradie autority:
 4. implementácia,
 5. UI texty, README a pracovné návrhy.
 
+Tento dokument je zároveň **jediným backlogom a zdrojom stavu** (sekcia 13). Druhý backlog ani samostatný stavový dokument sa nevytvára.
+
 Každá zmena správania musí aktualizovať príslušný kontrakt, test a dokumentáciu v jednom commite. Dokumentácia nesmie tvrdiť, že je systém pripravený, ak chýba dôkaz z relevantného testu alebo deploymentu.
 
 ## 2. Produktový model
@@ -358,7 +360,7 @@ Negatívne testy musia overiť minimálne:
 - Produkčný projekt Supabase je `tlmuvzrgighahnjkxoyw`. Staging a produkcia musia mať oddelené databázy, buckety, secrets, URL a testovacie UUID.
 - Produkčný VPS runtime: Porty 80/443 obsluhuje Apache/httpd ako reverzná proxy smerujúca na loopback `:3005`. Dôvera proxy hlavičkám (`x-forwarded-for`, `x-forwarded-proto`, `x-real-ip`) patrí výhradne lokálnemu Apache proxy (`127.0.0.1`). Získavanie klientskej IP adresy (`getTrustedClientIp` v `lib/security/client-ip.ts`) používa overenú hlavičku `x-real-ip` alebo poslednú pridanú hodnotu z `x-forwarded-for`, čím sa bráni podvrhnutiu klientskej identity v auditnom ledgeri a rate limiteri (N-06).
 - Session bridge a reverzná proxy: Next.js `trailingSlash: true` vyžaduje volania session bridge na `/api/auth/session/` (zamedzenie 308 redirectu na POST); route overuje `origin` aj proti `x-forwarded-host`. AI consent dialóg vyžaduje explicitnú interakciu (zamedzený auto-dismiss na outside pointer down) a synchronizuje verziu súhlasu `2026.09-1`.
-- Bezpečnostné hlavičky a CSP: Next.js vynucuje striktnú `Content-Security-Policy` (`frame-ancestors 'self'`, `object-src 'none'`, `base-uri 'self'`) s reportingom na `/api/csp-report/`. Interné forenzné aplikácie sú vkladané výhradne same-origin v rámci jedného Pandora browser shellu.
+- Bezpečnostné hlavičky a CSP: Next.js posiela `Content-Security-Policy-Report-Only` (`frame-ancestors 'self'`, `object-src 'none'`, `base-uri 'self'`) s reportingom na `/api/csp-report/`. CSP zatiaľ **nie je vynútená** a `script-src` obsahuje `'unsafe-inline'` (otvorené P0, sekcia 13). Interné forenzné aplikácie sú vkladané výhradne same-origin v rámci jedného Pandora browser shellu.
 - Zálohy a obnova (Disaster Recovery): RPO je stanovené na najviac 15 minút (PostgreSQL PITR), RTO na najviac 4 hodiny. Databázová záloha Supabase neobsahuje S3 Storage objekty — Hetzner S3 Evidence Vault (`hel1.your-objectstorage.com`) je zálohovaný a zrkadlený nezávisle s Object Lock (WORM) ochranou (viď `docs/DISASTER_RECOVERY_RUNBOOK.md`).
 - Koordinovaná rotácia kľúčov: Pri podozrení na kompromitáciu secrets sa vykonáva postupná rotácia bez výpadku bežiacich uploadov (S3 kľúče s 15-minútovým prechodným oknom, následne Supabase service role, AI kľúče a webhook tokeny).
 - Kontajnerový runtime je zjednotený na **Node.js 22 LTS** (`docker/Dockerfile.production`).
@@ -389,7 +391,81 @@ Po úprave uveď zmenené súbory, spustené testy a presne čo zostalo neoveren
 - [Disaster recovery](DISASTER_RECOVERY_RUNBOOK.md)
 - [Alerting a operačný runbook](ALERTING.md)
 - [Protokol GO pre pilot](PILOT-GO-CHAIN-OF-CUSTODY-PROTOCOL.md)
-- [Backlog source of truth](BACKLOG-SOURCE-OF-TRUTH.md)
 - [Contributing](../CONTRIBUTING.md)
 - [Root agent instructions](../AGENTS.md)
 
+
+## 13. Backlog a stav
+
+> **Jediný zdroj** pre stav a prioritu otvorených úloh. Overené proti `main` @ `e2ff588` (2026-10-03).
+> Samostatný backlog dokument bol zrušený; jeho poslednú verziu nájdeš v gite na `e2ff588`.
+> Stav sa mení iba tu, v tom istom commite ako kód alebo prevádzkový dôkaz.
+
+**Pravidlo releasu:** Produkcia je zakázaná, kým je otvorená ktorákoľvek položka v 13.2 alebo 13.4.
+Úspešný lokálny build nedokazuje, že Vercel, Supabase, S3, DNS alebo VPS sú nakonfigurované.
+
+### 13.1 DONE (zmergované do `main`)
+
+| PR | Merge | Čo uzatvára |
+|---|---|---|
+| #51 | `e2ff588` | Staging hotfix: session bridge `/api/auth/session/` + Origin za proxy, AI consent bez auto-dismiss (`2026.09-1`), server-fn 403 namiesto 500, vault `caseId` UUID validácia a 503 banner, lokálny favicon. |
+| #50 | `133231f` | ForenZX: fail-closed identita prípadu v ledgeri, presign bucket, `forenzx_dispatch_outbox` + drain pri verify a Vercel cron `/api/forenzx/dispatch-outbox`. |
+| #49 | `4b9281b` | Cleanroom `010`: WORM guard `evidence_items` chráni aj `case_id`. |
+| #47 | `df63099` | INSERT guard: cudzí `case_id` v `evidence_items` je odmietnutý (live migrácia `20261003110000` + cleanroom `009`). |
+| #46 | `66d9f84` | `evidence_items.case_id` zosúladený s cleanroom schémou, WORM guardy, typy. |
+| #44 | `2770e93` | Second Brain `history-index.json` šifrovaný at-rest + IPC sender gate. |
+| #43 | `36f96ef` | Password IPC: sender gate, bez bulk plaintextu. |
+| #42 | `fd32c09` | Auth middleware hardening (R-1/R-2/R-3/R-5). |
+| #41 | `8cef553` | ForenZX webhook berie download URL z ledgera, cudzie URL odmieta. |
+| #40 | `0812c05` | ForenZX SSE upstream používa `hub_job_id`. |
+| #39 | `19df8ba` | Electron: izolovaná session webových tabov, navigácia len `http:`/`https:`. |
+| #38 | `cf5efd8` | ForenZX start: validácia ledgera a overenie hashu. |
+| #37 | `d9a0861` | Jediná auth brána, odstránené mŕtve mechanizmy. |
+| #30 | `9dd74f0` | AI právne úlohy čítajú overený register dôkazov. |
+| #29 | `02a616d` | Kanonický ForenZX webhook kontrakt (`x-forenzx-webhook-secret`). |
+| #27 | `ce38a82` | P0 auth gate lockdown, regresná suite, ForenZX joby. |
+| #24 | `9abb776` | Zdieľané rate limity v Postgrese (N-04); pamäťový register dôkazov len pre dev. |
+| #23 | `32bd60c` | Dev auth bypass iba pri výslovnom lokálnom vývoji (N-03). |
+| #21 | `0cf0396` | `POST /api/vault`: auth, vlastníctvo, audit, ledger (N-01). |
+| #18 | `cbe2c78` | Server funkcie sa vykonávajú iba v `/api/fn/[...id]`. |
+| #17 | `f0f1aa4` | Odpovede ÚBOK, záver o financovaní a zákonné znaky viazané na dôkaz. |
+
+Staršie hotové oblasti (prípustnosť a TP, legal hold a `destroy_case`, prístupnosť WCAG 2.1 AA, terminológia „Prípad“, hranica Web/Electron, odstránenie `xlsx`) sú overené testami uvedenými v sekciách 3–9.
+
+### 13.2 OPEN P0 — kód
+
+| Položka | Dôkaz na `main` | Ďalší krok |
+|---|---|---|
+| `authenticated` vie cez RPC zisťovať roly (`has_role`, `health_metrics`) | otvorený PR #48 (`fix/revoke-secdef-authenticated`), vetva je za `main` | Aktualizovať z `main`, CI zelené, merge; migráciu potom aplikovať podľa 13.4. |
+| CSP iba Report-Only so `script-src 'unsafe-inline'` a `connect-src https: wss:` | `next.config.mjs:86–87` | Nonce CSP v `middleware.ts`, bez `'unsafe-inline'` v `script-src`, `connect-src` allowlist; až potom vynútiť. |
+| BYOK kľúč v `localStorage` (`pandora_mistral_key`, `pandora_openai_key`) | `lib/store/browser-store.ts:134–135, 224–227` | Session-scoped úložisko s TTL alebo serverová proxy; migrácia a zmazanie starých kľúčov. |
+
+### 13.3 OPEN P1 — kód
+
+| Položka | Dôkaz na `main` | Ďalší krok |
+|---|---|---|
+| Porovnanie tajomstiev cez `===` | `app/api/forenzx/dispatch-outbox/route.ts:31–33`, `app/api/forenzx/presign-for-hub/route.ts:39` | `crypto.timingSafeEqual` nad rovnako dlhými buffermi + test. |
+| Chýbajúca webhook konfigurácia nechá outbox `pending` bez `last_error` | `lib/forza/forenzx-dispatch-drain.server.ts:33–40` (vráti `skipped`, riadky nezmení) | Zapísať `last_error` na due riadky alebo alertovať, aby výpadok konfigurácie nebol tichý. |
+| Outbox cron nie je zdokumentovaný v DEPLOYMENT | `vercel.json` `crons`: `/api/forenzx/dispatch-outbox` `*/5 * * * *`; `docs/DEPLOYMENT.md` ho neuvádza | Doplniť: na Vercel Hobby beží cron najviac raz denne, `*/5` platí len na Pro alebo cez VPS cron s `CRON_SECRET`. |
+| Electron screenshot mimo ledgera | `electron/main.mts:591–593` (`capturePage` → PNG na disk) | Buď výslovne označiť ako nie-dôkaz, alebo zapisovať do WORM ledgera so SHA-256. |
+| `extension:load` načíta ľubovoľnú cestu | `electron/main.mts:507–512` (len sender gate) | Allowlist adresárov/ID rozšírení + test. |
+| `ICO_ATLAS_API_URL` cez `http://` na surovú IP (N-07) | `.env.production.example:94` | `https://` placeholder; `scripts/vercel-preflight.mjs` má odmietnuť ne-https externé URL a chýbajúci `CRON_SECRET`. |
+| CI brány príliš mäkké (N-05, N-08) | `production-verification.yml:42` `--audit-level=critical`; `next.config.mjs:16` `ignoreDuringBuilds: true`; `ci:guard` len `lib/ai` | `--audit-level=high`, lint v builde, `ast-guard` aj na `app/api/**`, Playwright E2E v CI. |
+| IP v audite z prvej hodnoty `x-forwarded-for` (N-06) | `app/api/audit/access/route.ts:80` | IP pridaná platformou + test so spoofovanou hlavičkou. |
+| `images.remotePatterns` `hostname: "**"` (N-10) | `next.config.mjs:21` | Zúžiť na známe hosty. |
+| Dev bypass reťazce v produkčnom kóde (P0-08 zvyšok) | `lib/storage/vault-auth.ts:135–136` | Dev-only modul vynechaný z buildu + test, že `.next` neobsahuje `x-dev-user-id`/`dev-investigator-001`. |
+
+P2: nič ďalšie overené ako otvorené.
+
+### 13.4 OPS-ONLY (nie kódový backlog)
+
+Tieto kroky nemenia repozitár; dôkaz o vykonaní sa zapisuje sem (dátum, kto, výstup).
+
+- [ ] **Produkčná DB `tlmuvzrgighahnjkxoyw`:** aplikovať `20261003100000_evidence_items_case_id`, `20261003110000_evidence_case_id_ownership`, `20261003120000_forenzx_dispatch_outbox` (dnes chýba `evidence_items.case_id` aj `forenzx_dispatch_outbox`); po merge PR #48 aj jeho migráciu.
+- [ ] **Runtime env:** doplniť `CRON_SECRET`, `FORENZX_WEBHOOK_SECRET`, `FORENZX_EVIDENCE_WEBHOOK_URL`, `FORENZX_MCP_URL`, `FORENZX_MCP_API_KEY`; overiť `npm run verify:vercel-env -- --strict` (hodnoty iba `SET`/`MISSING`).
+- [ ] **Staging VPS:** prebuildovať na `e2ff588` a overiť health endpointy, migrácie a MCP kontrakt.
+- [ ] **Rotácia tajomstiev** pred produkciou (service role, S3, AI kľúče, webhook tokeny).
+- [ ] **Záloha a obnova:** zapnúť Supabase PITR, S3 versioning + Object Lock, vykonať a zapísať DR drill (`docs/DISASTER_RECOVERY_RUNBOOK.md`).
+- [ ] **Doména, TLS, WebAuthn** na `pandora.whoiswho.at` z verejného internetu.
+- [ ] **Monitoring:** Sentry alebo ekvivalent a end-to-end test alertu (`docs/ALERTING.md`).
+- [ ] **Desktop:** Windows code-signing a macOS notarizácia (`scripts/desktop/sign-and-notarize.mjs`).
