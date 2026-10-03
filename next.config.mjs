@@ -2,6 +2,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { withWorkflow } from "workflow/next";
 
+// When running in standalone/Docker mode the /app filesystem is read-only after
+// build. Redirect Local World data to /tmp so dev or misconfigured envs don't
+// crash with ENOENT on /app/.workflow-data.
+// On Vercel/production WORKFLOW_TARGET_WORLD=vercel bypasses this entirely.
+if (!process.env.WORKFLOW_LOCAL_DATA_DIR && !process.env.WORKFLOW_TARGET_WORLD) {
+  process.env.WORKFLOW_LOCAL_DATA_DIR = "/tmp/.workflow-data";
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
