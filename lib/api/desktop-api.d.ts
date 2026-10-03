@@ -27,6 +27,7 @@ export type DesktopInvokeChannel =
   | "extension:list"
   | "extension:load"
   | "password:get"
+  | "password:reveal"
   | "password:save"
   | "password:delete";
 

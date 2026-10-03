@@ -91,11 +91,12 @@ interface BrowserState {
   addDownload: (item: any) => void
   updateDownload: (id: string, updates: any) => void
 
-  // Passwords
+  // Passwords (metadata only — no plaintext; use revealPassword for single-entry decrypt)
   passwords: any[]
   loadPasswords: () => Promise<void>
   addPassword: (entry: any) => Promise<void>
   deletePassword: (id: string) => Promise<void>
+  revealPassword: (id: string) => Promise<{ id: string; url: string; username: string; password: string; updatedAt: number } | null>
 
   // History (IDB-backed)
   history: HistoryItem[]
@@ -296,6 +297,7 @@ export const useBrowserStore = create<BrowserState>()(
       loadPasswords: async () => { if (!isElectron()) return; const passwords = await electron.invoke('password:get'); if (Array.isArray(passwords)) set({ passwords }) },
       addPassword: async (entry: any) => { if (!isElectron()) throw new Error('Password storage is available only in the desktop application.'); await electron.invoke('password:save', entry); const passwords = await electron.invoke('password:get'); if (Array.isArray(passwords)) set({ passwords }) },
       deletePassword: async (id: string) => { if (!isElectron()) throw new Error('Password storage is available only in the desktop application.'); await electron.invoke('password:delete', id); const passwords = await electron.invoke('password:get'); if (Array.isArray(passwords)) set({ passwords }) },
+      revealPassword: async (id: string) => { if (!isElectron()) return null; const result = await electron.invoke('password:reveal', id) as any; return (result?.ok && result.entry) ? result.entry : null },
       loadHistory: async () => { if (get().historyLoaded) return; try { const history = await getHistoryIDB(); set({ history, historyLoaded: true }) } catch (e) { console.error(e) } },
       addHistoryItem: async (url: string, title: string, fav?: string) => { await addHistoryItemIDB(url, title, fav); const history = await getHistoryIDB(); set({ history }) },
       deleteHistoryItem: async (id: string) => { await deleteHistoryItemIDB(id); set((state) => ({ history: state.history.filter(h => h.id !== id) })) },

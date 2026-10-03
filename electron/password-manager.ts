@@ -33,25 +33,27 @@ export class PasswordManager {
         return id
     }
 
-    getPasswords() {
-        if (!safeStorage.isEncryptionAvailable()) return []
+    listMasked(): { id: string; url: string; username: string; updatedAt: number }[] {
+        return Array.from(this.accounts.values()).map(doc => ({
+            id: doc.id,
+            url: doc.url,
+            username: doc.username,
+            updatedAt: doc.updatedAt,
+        }))
+    }
 
-        return Array.from(this.accounts.values()).map(doc => {
-            try {
-                const decryptedBuffer = Buffer.from(doc.password, 'base64')
-                const decryptedPassword = safeStorage.decryptString(decryptedBuffer)
-                return {
-                    id: doc.id,
-                    url: doc.url,
-                    username: doc.username,
-                    password: decryptedPassword, // Be careful sending this to UI, maybe mask it?
-                    updatedAt: doc.updatedAt
-                }
-            } catch (e) {
-                console.error('Failed to decrypt password', e)
-                return null
-            }
-        }).filter(Boolean)
+    revealPassword(id: string): { id: string; url: string; username: string; password: string; updatedAt: number } | null {
+        if (!safeStorage.isEncryptionAvailable()) return null
+        const doc = this.accounts.get(id)
+        if (!doc) return null
+        try {
+            const decryptedBuffer = Buffer.from(doc.password, 'base64')
+            const decryptedPassword = safeStorage.decryptString(decryptedBuffer)
+            return { id: doc.id, url: doc.url, username: doc.username, password: decryptedPassword, updatedAt: doc.updatedAt }
+        } catch (e) {
+            console.error('Failed to decrypt password', e)
+            return null
+        }
     }
 
     deletePassword(id: string) {
