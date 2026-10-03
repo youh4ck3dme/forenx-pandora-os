@@ -389,7 +389,60 @@ Po úprave uveď zmenené súbory, spustené testy a presne čo zostalo neoveren
 - [Disaster recovery](DISASTER_RECOVERY_RUNBOOK.md)
 - [Alerting a operačný runbook](ALERTING.md)
 - [Protokol GO pre pilot](PILOT-GO-CHAIN-OF-CUSTODY-PROTOCOL.md)
-- [Backlog source of truth](BACKLOG-SOURCE-OF-TRUTH.md)
 - [Contributing](../CONTRIBUTING.md)
 - [Root agent instructions](../AGENTS.md)
+
+## 13. Backlog a stav
+
+Tento oddiel je jediný backlog. `docs/BACKLOG-SOURCE-OF-TRUTH.md` je zmazaný a odkazov naňho sa treba vyhnúť.
+
+### 13.1 DONE — kód (overené commitom alebo PR)
+
+| Položka | Stav | Dôkaz |
+|---|---|---|
+| Auth gate lockdown, regression suite, ForenZX job integrations | ✅ DONE | PR #ac1d92e `feat(auth,forenzx)` |
+| S3 Trezor direct upload, mobile forensic triage, cron verifikácia | ✅ DONE | PR #4b99826 `feat(vault)` |
+| Strict AI schemas, oprava JSON, CSV deduplication, manifest export | ✅ DONE | PR #d2c0c29 `feat(ai-csv-export)` |
+| Truthful live health, S3 vault separation, correlation ID, alerting matrix | ✅ DONE | PR #435d813 `feat(diagnostics)` |
+| DR backup, trusted proxy headers, enforced CSP | ✅ DONE | PR #2205df8 `feat(p6)` |
+| E2E routing integrity & access control suite — 7/7 green | ✅ DONE | commit `311c5d7` |
+| CSP zmenená z Report-Only na `Content-Security-Policy` (vynútená) | ✅ DONE | PR #53 / commit `8c2141c` |
+| BYOK kľúče (Mistral/OpenAI) odstránené z `localStorage` | ✅ DONE | PR #53 / commit `f94cb06` |
+| Supabase TypeScript typy pre `forenzx_analysis_jobs`, `forenzx_dispatch_outbox`, `forensic_workflow_runs` | ✅ DONE | PR #53 / commit `f94cb06` |
+| `timingSafeEqual` pre webhook secret comparison (presign-for-hub, dispatch-outbox) | ✅ DONE | commit `8c2141c` |
+| Nonce-based CSP v middleware (`buildCsp`), `x-nonce` header, `unsafe-inline` eliminovaný | ✅ DONE | commit `afacad8` |
+| E2E CI job (voliteľný, `E2E_BASE_URL`) | ✅ DONE | commit `afacad8` |
+| 12 auth/security testov pre `presign-for-hub` a `dispatch-outbox` | ✅ DONE | commit `6c4d2dc` |
+| Operational monitoring, alert watchdog, test alert dispatch | ✅ DONE | commit `902c0dd` |
+| Staging deploy na VPS `66.29.139.59`, smoke tests zelené | ✅ DONE | 2026-10-02 |
+| GO PRE PILOT protokol podpísaný | ✅ DONE | `docs/PILOT-GO-CHAIN-OF-CUSTODY-PROTOCOL.md` |
+
+### 13.2 OPEN — kód (PR otvorený alebo nespustený)
+
+| Položka | Stav | Odkaz |
+|---|---|---|
+| PR #36 `docs/release-runbooks` (DEPLOYMENT-REVIEW-PLAN.md) | OPEN MERGEABLE | `gh pr merge 36 --admin` |
+| PR #52 `docs/unify-source-of-truth` (draft — §13 tento oddiel supercedes) | OPEN DRAFT | zavrieť po merge tohto commitu |
+
+### 13.3 OPEN — kód (identifikované, neopravené)
+
+| Položka | Súbor:riadok | Priorita |
+|---|---|---|
+| Outbox drain bez `last_error` pri chýbajúcej webhook konfigurácii | `lib/forza/forenzx-dispatch-drain.server.ts` | P1 |
+| `ICO_ATLAS_API_URL` HTTPS enforce — preflight neodmieta `http://` | `scripts/deploy/env.mjs` | P1 |
+| `extension:load` allowlist nie je definovaný | `app/api` | P2 |
+| Electron screenshot — nie je označený ako nie-dôkaz ani nezapisuje do ledgera | `electron/` | P2 |
+
+### 13.4 BLOCKED — výhradne externé OPS akcie
+
+Tieto položky nevyžadujú zmenu kódu. Sú blokované absenciou externých prístupov:
+
+| Položka | Blocker |
+|---|---|
+| Rotácia secrets (`SUPABASE_SERVICE_ROLE_KEY`, S3, Mistral, Gemini, webhook) | Vyžaduje konzoly Hetzner, Supabase, Vercel |
+| Supabase migrácie na remote `tlmuvzrgighahnjkxoyw` | Vyžaduje `supabase link` + access token |
+| DNS / TLS / WebAuthn overenie na `pandora.whoiswho.at` | Vyžaduje prehliadač + FIDO2 kľúč |
+| PITR zapnutie + S3 Object Lock + DR drill | Vyžaduje Supabase Dashboard + Hetzner Storage Console |
+| Sentry nasadenie (`NEXT_PUBLIC_SENTRY_DSN`) | Vyžaduje Sentry projekt + VPS deploy |
+| Desktop code-signing (Windows cert + macOS notarization) | Vyžaduje certifikáty + GitHub Secrets |
 
