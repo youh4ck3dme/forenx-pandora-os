@@ -43,6 +43,42 @@ jobs:
       # env/key/DB file would be packaged.
       - run: node scripts/release/package.mjs HEAD dist/release
 
+  e2e:
+    name: E2E smoke tests (routing & auth)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Runs only when a live deployment URL is available: set BASE_URL as a
+    # repository secret or pass it via workflow_dispatch input.
+    # Skip silently if the secret is absent so PRs without a deploy are not blocked.
+    if: ${{ vars.E2E_BASE_URL != '' || secrets.E2E_BASE_URL != '' }}
+    needs: verify
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Playwright browsers (Chromium only)
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E smoke tests
+        env:
+          BASE_URL: ${{ vars.E2E_BASE_URL || secrets.E2E_BASE_URL }}
+          PLAYWRIGHT_TEST_BASE_URL: ${{ vars.E2E_BASE_URL || secrets.E2E_BASE_URL }}
+        run: npx playwright test --project=chromium
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
   secret-scan:
     name: Secret scan (gitleaks, full history)
     runs-on: ubuntu-latest

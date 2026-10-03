@@ -288,16 +288,67 @@ function devAuthBypassAllowed(request: NextRequest): boolean {
  *    - If valid: allows through
  */
 
+// Build a nonce-based CSP string. Called once per request in middleware so the
+// nonce is fresh and unpredictable for every document response.
+function buildCsp(nonce: string, isDev: boolean): string {
+  const supabaseHost = (
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.SUPABASE_URL ||
+    ''
+  ).replace(/\/$/, '');
+
+  const connectSrc = [
+    "'self'",
+    'https:',
+    'wss:',
+    ...(supabaseHost ? [supabaseHost] : []),
+  ].join(' ');
+
+  const scriptSrc = [
+    "'self'",
+    `'nonce-${nonce}'`,
+    ...(isDev ? ["'unsafe-eval'"] : []),
+  ].join(' ');
+
+  return [
+    "default-src 'self'",
+    `script-src ${scriptSrc}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    `connect-src ${connectSrc}`,
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'self'",
+    "report-uri /api/csp-report/",
+  ].join('; ');
+}
+
 export async function middleware(
   request: NextRequest,
   _event?: any
 ): Promise<NextResponse> {
   const correlationId = request.headers.get('x-correlation-id') || crypto.randomUUID();
+  // Nonce for CSP: base64url of 16 random bytes — fresh per document request.
+  const nonceBytes = new Uint8Array(16);
+  crypto.getRandomValues(nonceBytes);
+  const nonce = Buffer.from(nonceBytes).toString('base64url');
+
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-correlation-id', correlationId);
+  // Make nonce available to server components (e.g. layout) via request header.
+  requestHeaders.set('x-nonce', nonce);
+
+  const isDev = process.env.NODE_ENV === 'development';
+  const csp = buildCsp(nonce, isDev);
 
   const respond = (res: NextResponse): NextResponse => {
     res.headers.set('x-correlation-id', correlationId);
+    // Only set CSP on document responses (HTML), not on API/static assets.
+    const pathname = res.headers.get('content-type') ?? '';
+    res.headers.set('Content-Security-Policy', csp);
     return res;
   };
 

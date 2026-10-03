@@ -120,7 +120,6 @@ interface BrowserState {
 }
 
 export const useBrowserStore = create<BrowserState>()(
-  // @ts-ignore
   persist(
     (set, get): BrowserState => ({
       // Initial State

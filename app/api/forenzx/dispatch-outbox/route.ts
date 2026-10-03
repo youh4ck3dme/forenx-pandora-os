@@ -19,6 +19,15 @@ export const maxDuration = 60;
  * Vercel Cron in vercel.json invokes GET on this path. Set CRON_SECRET.
  */
 
+import { timingSafeEqual } from "node:crypto";
+
+function safeCompare(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
+}
+
 function bearer(request: NextRequest): string {
   const header = request.headers.get("authorization") ?? "";
   return header.startsWith("Bearer ") ? header.slice(7).trim() : "";
@@ -28,9 +37,10 @@ function isAuthorized(request: NextRequest): boolean {
   const webhookSecret = process.env.FORENZX_WEBHOOK_SECRET?.trim();
   const cronSecret = process.env.CRON_SECRET?.trim();
   const token = bearer(request);
-  if (webhookSecret && token && token === webhookSecret) return true;
-  if (webhookSecret && request.headers.get("x-forenzx-webhook-secret") === webhookSecret) return true;
-  if (cronSecret && token && token === cronSecret) return true;
+  const customHeader = request.headers.get("x-forenzx-webhook-secret");
+  if (webhookSecret && token && safeCompare(token, webhookSecret)) return true;
+  if (webhookSecret && customHeader && safeCompare(customHeader, webhookSecret)) return true;
+  if (cronSecret && token && safeCompare(token, cronSecret)) return true;
   return false;
 }
 

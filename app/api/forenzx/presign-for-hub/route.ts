@@ -25,18 +25,28 @@ export const runtime = "nodejs";
  *  - Foreign or unallowlisted download URLs are rejected (Cudzia URL = odmietnuť).
  */
 
+import { timingSafeEqual } from "node:crypto";
+
 const RequestSchema = z.object({
   s3_object_key: z.string().min(1).max(2048),
 });
+
+function safeCompare(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
+}
 
 function isAuthorized(request: NextRequest): boolean {
   const secret = process.env.FORENZX_WEBHOOK_SECRET?.trim();
   if (!secret) return false;
 
   const authHeader = request.headers.get("authorization") ?? "";
-  if (authHeader.startsWith("Bearer ") && authHeader.slice(7) === secret) return true;
+  if (authHeader.startsWith("Bearer ") && safeCompare(authHeader.slice(7), secret)) return true;
 
-  if (request.headers.get("x-forenzx-webhook-secret") === secret) return true;
+  const customHeader = request.headers.get("x-forenzx-webhook-secret");
+  if (customHeader && safeCompare(customHeader, secret)) return true;
 
   return false;
 }
