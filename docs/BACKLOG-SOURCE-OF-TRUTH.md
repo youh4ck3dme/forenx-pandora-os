@@ -46,7 +46,7 @@ alebo podpisovanie desktopu je nakonfigurované.
 | 5  | Doména, TLS, WebAuthn na produkcii                             | `BLOCKED`           | P0-01         |
 | 6  | Migrácie na hostovanom Supabase                                | `BLOCKED`           | P0-03         |
 | 7  | Záloha a obnova (PITR, Object Lock, drill)                     | `BLOCKED`           | P0-06         |
-| 8  | CSP len Report-Only + API kľúč v localStorage (N-02, N-09)     | `IN PROGRESS` (CSP enforced, localStorage odstránený; nonce TODO) | P0-05 |
+| 8  | CSP len Report-Only + API kľúč v localStorage (N-02, N-09)     | `DONE` (CSP enforced, nonce injection v middleware, localStorage odstránený) | P0-05 |
 | 9  | Rate limity v pamäti na serverless (N-04)                      | `IN PROGRESS`       | P0-09         |
 | 10 | Merge do `main` blokuje branch protection (§ 4)                | `BLOCKED`           | § 4           |
 
@@ -62,7 +62,7 @@ alebo podpisovanie desktopu je nakonfigurované.
 | Next produkčný build                   | `DONE`        | `npm run build` (30/30 routes, predchádzajúca verzia).                                                             |
 | Audit závislostí                       | `RED`         | N-05: 3 high + 13 moderate; CI zmenená na `--audit-level=high` (2026-10-03) — zraniteľnosti samotné ostávajú. Pozri P1-06.  |
 | Secret scan (gitleaks, celá história)  | `DONE`        | V CI beží. Falošné poplachy z `fix/gate-remaining-ai-text` sú od merge #19 v `.gitleaksignore`.                   |
-| E2E (Playwright)                       | `TODO`        | Testy existujú (`e2e/`), ale CI ich nespúšťa.                                                                       |
+| E2E (Playwright)                       | `IN PROGRESS` | Testy existujú (`e2e/`); CI job pridaný (voliteľný, beží keď `E2E_BASE_URL` je nastavená). (2026-10-03)             |
 | AST guard (`ci:guard`)                 | `TODO`        | Pokrýva iba `lib/ai` a CI ho nespúšťa (N-08).                                                                       |
 | Migrácie Supabase                      | `BLOCKED`     | Lokálne `npx supabase db reset` prešiel (2026-09-27). Remote: chýba access token, nakonfigurovaný je len produkčný projekt. V repozitári je teraz 26 migrácií, lokálne overených bolo 24. |
 | VPS / Docker runtime                   | `IN PROGRESS` | Manifesty a Nginx konfigurácia existujú; nasadenie na VPS neoverené.                                               |
@@ -136,7 +136,7 @@ alebo podpisovanie desktopu je nakonfigurované.
 - [x] **N-02 (PARTIAL):** CSP zmenená z `Content-Security-Policy-Report-Only` na `Content-Security-Policy` (`next.config.mjs`). Hlavička je teraz vynútená. `script-src` stále obsahuje `unsafe-inline` — vyžaduje nonce injection v middleware (TODO).
 - [x] **N-09:** BYOK kľúč Mistral/OpenAI odstránený z `localStorage` (`lib/store/browser-store.ts`). Kľúče teraz žijú iba v pamäti Zustand stavu (session-only); po refreshe stránky je potrebné znovu zadať. (2026-10-03)
 - [x] **N-10:** `images.remotePatterns` zúžené z `hostname: "**"` na konkrétne hosty (Supabase, Hetzner S3, GitHub avatars, Google avatars) (`next.config.mjs`). (2026-10-03)
-- [ ] **N-02 (TODO):** Implementovať nonce injection v `middleware.ts`, nahradiť `unsafe-inline` nonce-om v `script-src`, zúžiť `connect-src` na allowlist.
+- [x] **N-02 (DONE):** Nonce injection implementovaný v `middleware.ts` (`buildCsp()`), per-request nonce cez `x-nonce` header, `app/layout.tsx` číta nonce a aplikuje na inline `<script>`. `unsafe-inline` eliminovaný z `script-src`. Statická CSP v `next.config.mjs` odstránená. (2026-10-03)
 - [ ] Nasadiť Nginx šablónu a overiť `nginx -t` na VPS.
 - [ ] Rozhodnúť o HSTS `preload` pre rodičovskú doménu; až potom predĺžiť max-age.
 
