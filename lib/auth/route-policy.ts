@@ -21,8 +21,6 @@ export const PUBLIC_ROUTES = [
   "/api/healthz/*",
   "/api/health/public",
   "/api/health/public/",
-  "/forza/stav",
-  "/forza/stav/",
 ] as const;
 
 export type PublicRoute = (typeof PUBLIC_ROUTES)[number];

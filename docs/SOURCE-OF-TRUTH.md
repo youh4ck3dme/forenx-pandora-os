@@ -128,7 +128,11 @@ Výsledný stav po kompletnej konsolidácii a odstránení duplicitných mechani
   - Podmienky bypassu: povolený len v development prostredí (`NODE_ENV === "development"`), výhradne na lokálnom loopbacku (`127.0.0.1`, `::1`, `localhost`). Nikdy nefunguje na Verceli, produkcii ani na verejných IP adresách.
 - **Post-login a sign-out cieľ:**
   - Predvolený cieľ po úspešnom prihlásení: `/browser/` (jednotne nastavený v `middleware.ts`, `AccountSignInForm.tsx`, `app/auth/login/page.tsx` a `lib/auth/redirect.ts`).
+  - Prihlásenie a registrácia: vykonáva presne jeden volací request na session bridge (`await setAuthCookies(data.session)`). Ak server vráti `false`, klient ostáva na formulári, zobrazí chybu a nespustí presmerovanie.
   - Cieľ po odhlásení: `/auth/login/` (v `lib/forza/session.ts` `POST_SIGN_OUT_ROUTE` a v profile). Tým je odstránená nekonečná slučka cez koreňovú trasu `/`.
+  - Odhlásenie: `signOutEverywhere` v `lib/forza/session.ts` čaká (`await`) na zmazanie serverových cookies cez `DELETE /api/auth/session`. Ak vyčistenie cookie zlyhá, odhlásenie skončí chybou a úspech sa nevyhlási.
+- **Klientska IP a ochrana pred spoofingom (`client-ip.ts`):**
+  - Vyberá výhradne posledný hop z hlavičky `x-forwarded-for` (doplnený Apache reverznou proxy). Ak je posledný hop neplatný, okamžite vracia bezpečný fallback (`127.0.0.1`) — skoršie hopy sa nepoužijú.
 - **Cookie flagy:**
   - Cookies `sb-access-token` a `sb-refresh-token` sú zapisované konzistentne s flagmi:
     - `httpOnly: true` (rovnako v `app/api/auth/session/route.ts` aj pri refreshi v `middleware.ts`),
@@ -138,7 +142,7 @@ Výsledný stav po kompletnej konsolidácii a odstránení duplicitných mechani
   - Session token sa nikdy nezapisuje do cookie čitateľnej klientskym JavaScriptom.
 - **PROJECT_REQUIRED a ROLE_REQUIRED po zmene:**
   - Z `middleware.ts` a `lib/auth/index.ts` boli odstránené fiktívne vetvy, ktoré predstierali kontrolu spisu alebo roly na hrane aplikácie bez prístupu k dátovému kontextu.
-  - Všetky trasy `/forza` a `/forza/*` sú v `middleware.ts` klasifikované ako `AUTHENTICATED` (vyžadujú overenú session).
+  - Všetky trasy `/forza` a `/forza/*` (vrátane `/forza/stav`) sú v `middleware.ts` a `route-policy.ts` klasifikované ako `AUTHENTICATED` (vyžadujú overenú session).
   - Skutočná autorizácia k prípadom (case membership) a rolám je plne delegovaná do vrstiev s dátovým kontextom: PostgreSQL Row Level Security (RLS) v Supabase a `verifyCaseOwnership` vo `vault-auth.ts`.
 
 
@@ -236,10 +240,10 @@ MCP kontrakt musí obsahovať nástroj `forenzx_analysis_start` s `download_url`
 
 Mobile/PWA je klient rovnakého forenzného systému, nie samostatná databáza.
 
-Verejne dostupná je iba read-only stránka `/forza/stav`. Ostatné stránky pod
-`/forza` vyžadujú autentifikáciu a príslušný prístup k prípadu. Administrátorská
-health funkcia a citlivé systémové dáta zostávajú chránené serverovým
-oprávnením.
+Všetky stránky pod `/forza` (vrátane `/forza/stav`) vyžadujú autentifikáciu
+a príslušný prístup k prípadu. Pre verejný bezstavový monitoring slúži výhradne
+endpoint `/api/health/public`. Administrátorská health funkcia a citlivé systémové
+dáta zostávajú chránené serverovým oprávnením.
 
 Verejný live dashboard používa iba `/api/health/public`, ktorý vracia
 agregované metriky bez secrets, používateľských identifikátorov, obsahu logov,

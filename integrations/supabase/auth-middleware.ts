@@ -63,15 +63,16 @@ function getDevSupabaseClient(url: string, key: string) {
 export const requireSupabaseAuth = createMiddleware({
   type: "function",
 }).server(async ({ next }) => {
-  const isDev = process.env["NODE_ENV"] !== "production";
+  const request = getRequest();
+  const allowDevAuthBypass = request ? devAuthBypassAllowed(request) : false;
   const SUPABASE_URL =
     process.env["SUPABASE_URL"] ||
     process.env["NEXT_PUBLIC_SUPABASE_URL"] ||
-    (isDev ? "https://placeholder-project.supabase.co" : undefined);
+    (allowDevAuthBypass ? "https://placeholder-project.supabase.co" : undefined);
   const SUPABASE_PUBLISHABLE_KEY =
     process.env["SUPABASE_PUBLISHABLE_KEY"] ||
     process.env["NEXT_PUBLIC_SUPABASE_ANON_KEY"] ||
-    (isDev ? "placeholder-publishable-key" : undefined);
+    (allowDevAuthBypass ? "placeholder-publishable-key" : undefined);
 
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
     const missing = [
@@ -83,29 +84,14 @@ export const requireSupabaseAuth = createMiddleware({
     throw new Error(message);
   }
 
-  const request = getRequest();
-
   if (!request?.headers) {
-    if (isDev) {
-      const supabase = getDevSupabaseClient(
-        SUPABASE_URL!,
-        SUPABASE_PUBLISHABLE_KEY!,
-      );
-      return next({
-        context: {
-          supabase,
-          userId: "dev-user-id",
-          claims: DEV_CLAIMS,
-        },
-      });
-    }
     throw new Error("Unauthorized: No request headers available");
   }
 
   const authHeader = request.headers.get("authorization");
 
   // Lokálny vývojársky bypass — nikdy nie v produkcii a len ak chýba token.
-  if (isDev && !authHeader) {
+  if (allowDevAuthBypass && !authHeader) {
     const supabase = getDevSupabaseClient(
       SUPABASE_URL!,
       SUPABASE_PUBLISHABLE_KEY!,
@@ -133,19 +119,6 @@ export const requireSupabaseAuth = createMiddleware({
   }
 
   if (token.split(".").length !== 3) {
-    if (isDev) {
-      const supabase = getDevSupabaseClient(
-        SUPABASE_URL!,
-        SUPABASE_PUBLISHABLE_KEY!,
-      );
-      return next({
-        context: {
-          supabase,
-          userId: "dev-user-id",
-          claims: DEV_CLAIMS,
-        },
-      });
-    }
     throw new Error("Unauthorized: Invalid token");
   }
 
@@ -184,3 +157,41 @@ export const requireSupabaseAuth = createMiddleware({
     },
   });
 });
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+const LOOPBACK_IPS = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+
+/**
+ * The local bypass is opt-in and proves loopback from the request URL plus
+ * proxy headers. NODE_ENV by itself is never an authorization decision.
+ */
+export function devAuthBypassAllowed(request: { headers: Headers; url?: string }): boolean {
+  if (process.env["NODE_ENV"] !== "development") return false;
+  if (process.env["ALLOW_DEV_AUTH_BYPASS"] !== "true") return false;
+  if (process.env["VERCEL"] || process.env["VERCEL_ENV"]) return false;
+
+  let hostname: string;
+  try {
+    if (!request.url) return false;
+    hostname = new URL(request.url).hostname;
+  } catch {
+    return false;
+  }
+  if (!LOOPBACK_HOSTS.has(hostname)) return false;
+
+  const forwardedHost = request.headers.get("x-forwarded-host")?.split(":")[0];
+  if (forwardedHost && !LOOPBACK_HOSTS.has(forwardedHost)) return false;
+
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (
+    forwardedFor &&
+    !forwardedFor
+      .split(",")
+      .map((hop) => hop.trim())
+      .every((hop) => LOOPBACK_IPS.has(hop))
+  ) {
+    return false;
+  }
+
+  return true;
+}

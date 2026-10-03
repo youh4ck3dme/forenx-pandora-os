@@ -71,8 +71,8 @@ async function clearCaches(): Promise<void> {
  */
 export async function clearClientState(
   queryClient?: QueryClient,
-): Promise<void> {
-  if (typeof window === "undefined") return;
+): Promise<{ cookiesCleared: boolean }> {
+  if (typeof window === "undefined") return { cookiesCleared: false };
 
   if (queryClient) {
     try {
@@ -99,10 +99,11 @@ export async function clearClientState(
     /* prázdne */
   }
   clearWebStorage();
+  let cookiesCleared = false;
   try {
-    clearAuthCookies();
+    cookiesCleared = await clearAuthCookies();
   } catch {
-    /* prázdne */
+    cookiesCleared = false;
   }
 
   try {
@@ -124,6 +125,8 @@ export async function clearClientState(
       /* prázdne */
     }
   }
+
+  return { cookiesCleared };
 }
 
 type SignOutClient = {
@@ -134,12 +137,13 @@ type SignOutClient = {
 
 /**
  * Jediný tok odhlásenia pre všetky obrazovky: najprv sieťové odhlásenie,
- * pri zlyhaní lokálne zneplatnenie relácie, a čistenie vždy v `finally`.
+ * pri zlyhaní lokálne zneplatnenie relácie, a čistenie serverových cookies.
+ * Ak zmazanie cookie zlyhá, odhlásenie nie je dokončené.
  */
 export async function signOutEverywhere(
   client: SignOutClient,
   queryClient?: QueryClient,
-): Promise<{ networkSignOut: boolean }> {
+): Promise<{ networkSignOut: boolean; cookiesCleared: boolean }> {
   let networkSignOut = true;
   try {
     await client.auth.signOut();
@@ -151,10 +155,17 @@ export async function signOutEverywhere(
     } catch {
       /* prázdne */
     }
-  } finally {
-    await clearClientState(queryClient);
   }
-  return { networkSignOut };
+
+  const { cookiesCleared } = (await clearClientState(queryClient)) ?? {
+    cookiesCleared: false,
+  };
+
+  if (!cookiesCleared) {
+    throw new Error("Zlyhalo zmazanie autentifikačnej relácie zo servera.");
+  }
+
+  return { networkSignOut, cookiesCleared };
 }
 
 /**

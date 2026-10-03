@@ -16,7 +16,7 @@ import Link from "next/link";
 import { PandoraLogo } from "@/components/ui/branding/pandora-logo";
 import { getSafeRedirectTarget } from "@/lib/auth/redirect";
 import { supabase } from "@/integrations/supabase/client";
-import { setAuthCookies, syncSessionWithServer } from "@/lib/auth/cookies";
+import { setAuthCookies } from "@/lib/auth/cookies";
 
 // ssr: false — AccountSignInForm uses useQueryClient() which requires
 // QueryClientProvider; disabling SSR avoids prerender crash at build time.
@@ -48,11 +48,12 @@ export default function LoginPage() {
     // If user already has an active Supabase session, sync cookies and redirect forward
     supabase.auth.getSession().then(async ({ data }: { data: { session: any } }) => {
       if (data?.session) {
-        setAuthCookies(data.session);
-        await syncSessionWithServer(data.session);
-        const nextParam = searchParams.get("next");
-        const next = getSafeRedirectTarget(nextParam, "/browser/") ?? "/browser/";
-        router.replace(next);
+        const bridgeOk = await setAuthCookies(data.session);
+        if (bridgeOk) {
+          const nextParam = searchParams.get("next");
+          const next = getSafeRedirectTarget(nextParam, "/browser/") ?? "/browser/";
+          router.replace(next);
+        }
       }
     });
   }, [router]);

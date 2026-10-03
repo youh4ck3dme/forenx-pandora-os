@@ -137,7 +137,6 @@ describe('Middleware - Public Page Routes Pass Through', () => {
     '/auth/login',
     '/auth/register',
     '/blog',
-    '/forza/stav',
   ])('allows %s without session', async (path) => {
     const request = new NextRequest(`http://localhost${path}`, {
       method: 'GET',

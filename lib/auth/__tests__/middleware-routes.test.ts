@@ -45,7 +45,6 @@ describe('Route Classification Logic', () => {
       '/auth/register',
       '/blog',
       '/blog/[...slug]',
-      '/forza/stav',
       // PUBLIC API routes
       '/api/csp-report',
       '/api/healthz',
@@ -61,9 +60,9 @@ describe('Route Classification Logic', () => {
     });
   });
 
-  it('keeps other Forza routes protected', () => {
-    expect(getRouteCategory('/forza/stav').category).toBe('PUBLIC');
-    expect(getRouteCategory('/forza/stav/').category).toBe('PUBLIC');
+  it('keeps Forza routes protected (AUTHENTICATED)', () => {
+    expect(getRouteCategory('/forza/stav').category).toBe('AUTHENTICATED');
+    expect(getRouteCategory('/forza/stav/').category).toBe('AUTHENTICATED');
     expect(getRouteCategory('/forza/pripady').category).toBe('AUTHENTICATED');
   });
 

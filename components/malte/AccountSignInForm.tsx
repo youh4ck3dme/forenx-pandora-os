@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { adoptCloudSession } from "@/lib/forza/session";
-import { setAuthCookies, syncSessionWithServer } from "@/lib/auth/cookies";
+import { setAuthCookies } from "@/lib/auth/cookies";
 import { cn } from "@/lib/utils";
 
 const inputClass =
@@ -74,8 +74,10 @@ export function AccountSignInForm({
           setMode("signin");
           return;
         }
-        setAuthCookies(data.session);
-        await syncSessionWithServer(data.session);
+        const bridgeOk = await setAuthCookies(data.session);
+        if (!bridgeOk) {
+          throw new Error("Nepodarilo sa vytvoriť zabezpečenú reláciu na serveri.");
+        }
         adoptCloudSession(queryClient);
         setPassword("");
         toast.success("Účet je vytvorený — ste prihlásený.");
@@ -89,8 +91,12 @@ export function AccountSignInForm({
       });
       if (error) throw new Error("Prihlásenie zlyhalo. Skontrolujte údaje.");
       if (data.session) {
-        setAuthCookies(data.session);
-        await syncSessionWithServer(data.session);
+        const bridgeOk = await setAuthCookies(data.session);
+        if (!bridgeOk) {
+          throw new Error("Nepodarilo sa vytvoriť zabezpečenú reláciu na serveri.");
+        }
+      } else {
+        throw new Error("Prihlásenie neposkytlo platnú reláciu.");
       }
       adoptCloudSession(queryClient);
       setPassword("");

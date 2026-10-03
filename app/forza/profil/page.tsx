@@ -156,10 +156,18 @@ function ProfileScreen() {
                 variant="outline"
                 className="w-full text-red-400 hover:text-red-300 hover:bg-red-500/10"
                 onClick={async () => {
-                  await signOutEverywhere(supabase, queryClient);
-                  setCurrentUser(null);
-                  toast.success("Boli ste odhlásený.");
-                  router.replace("/auth/login/");
+                  try {
+                    await signOutEverywhere(supabase, queryClient);
+                    setCurrentUser(null);
+                    toast.success("Boli ste odhlásený.");
+                    router.replace("/auth/login/");
+                  } catch (err) {
+                    toast.error(
+                      err instanceof Error
+                        ? err.message
+                        : "Zlyhalo odhlásenie. Skúste to znova.",
+                    );
+                  }
                 }}
               >
                 <LogOut className="mr-2 h-4 w-4" />

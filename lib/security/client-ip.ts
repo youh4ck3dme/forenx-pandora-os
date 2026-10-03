@@ -71,7 +71,9 @@ export function getTrustedClientIp(
     }
   }
 
-  // 2. X-Forwarded-For: výber POSLEDNEJ validnej IP adresy v reťazci (najbližšej k Apache proxy)
+  // 2. X-Forwarded-For: overenie výhradne POSLEDNÉHO hopu v reťazci (pridaného Apache proxy).
+  // Ak je posledný hop neplatný, vrátime fallback — skorší hop sa nesmie použiť,
+  // pretože predchádzajúce hopy môžu byť podvrhnuté klientom.
   const forwardedFor = getHeaderValue(headers, "x-forwarded-for");
   if (forwardedFor) {
     const hops = forwardedFor
@@ -79,13 +81,11 @@ export function getTrustedClientIp(
       .map((h) => h.trim())
       .filter(Boolean);
 
-    // Hľadáme od konca zoznamu (posledný hop pridaný Apache proxy)
-    for (let i = hops.length - 1; i >= 0; i--) {
-      const hop = hops[i];
-      if (isValidIp(hop)) {
-        return normalizeIp(hop);
-      }
+    const lastHop = hops[hops.length - 1];
+    if (lastHop && isValidIp(lastHop)) {
+      return normalizeIp(lastHop);
     }
+    return fallback;
   }
 
   return fallback;

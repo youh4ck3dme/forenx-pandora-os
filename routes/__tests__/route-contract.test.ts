@@ -16,7 +16,6 @@ describe('Route Classification Contract & Middleware Authorization', () => {
       '/auth/register',
       '/blog',
       '/blog/forensic-guide',
-      '/forza/stav',
       '/api/csp-report',
       '/api/csp-report/ingest',
       '/api/healthz',
@@ -58,6 +57,7 @@ describe('Route Classification Contract & Middleware Authorization', () => {
       '/forza/sandbox',
       '/forza/profil',
       '/forza/predplatne',
+      '/forza/stav',
     ];
 
     for (const route of projectRoutes) {

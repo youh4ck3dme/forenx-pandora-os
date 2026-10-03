@@ -25,11 +25,21 @@ export function AccountMenu({ className }: { className?: string }) {
   const avatarUrl = profile.data?.avatarUrl?.trim() || "";
 
   async function handleSignOut() {
-    const { networkSignOut } = await signOutEverywhere(supabase, queryClient);
-    if (!networkSignOut) {
-      toast.message("Odhlásené na tomto zariadení — sieť neodpovedala.");
+    try {
+      const { networkSignOut } = await signOutEverywhere(supabase, queryClient);
+      if (!networkSignOut) {
+        toast.message("Odhlásené na tomto zariadení — sieť neodpovedala.");
+      } else {
+        toast.success("Boli ste odhlásený.");
+      }
+      router.replace(POST_SIGN_OUT_ROUTE || "/forza/prehlad");
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Zlyhalo odhlásenie. Skúste to znova.",
+      );
     }
-    router.replace(POST_SIGN_OUT_ROUTE || "/forza/prehlad");
   }
 
   return (

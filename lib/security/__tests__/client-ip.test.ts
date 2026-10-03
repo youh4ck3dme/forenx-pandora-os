@@ -60,11 +60,11 @@ describe("lib/security/client-ip", () => {
       expect(getTrustedClientIp({ headers })).toBe("198.51.100.5");
     });
 
-    it("odmietne neplatný posledný hop a vráti predchádzajúci platný", () => {
+    it("odmietne neplatný posledný hop a vráti fallback (skorší hop nepoužije)", () => {
       const headers = new Headers({
         "x-forwarded-for": "203.0.113.50, invalid-ip-injection",
       });
-      expect(getTrustedClientIp({ headers })).toBe("203.0.113.50");
+      expect(getTrustedClientIp({ headers }, "127.0.0.1")).toBe("127.0.0.1");
     });
 
     it("použije fallback ak sú všetky hlavičky neplatné alebo prázdne", () => {
