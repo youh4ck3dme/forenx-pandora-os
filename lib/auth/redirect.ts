@@ -117,7 +117,7 @@ export function validateRedirectTarget(next: string | null | undefined): string 
     return null;
   }
 
-  // Remove any query parameters or fragments
+  // Parse path and preserve query parameters and fragments if the pathname is an internal path
   try {
     const url = new URL(trimmed, 'http://dummy.example');
     const path = url.pathname + (url.search ? url.search : '') + (url.hash ? url.hash : '');
