@@ -55,6 +55,19 @@ export class FaviconService {
                 return "";
             }
 
+            // Vlastná doména aplikácie alebo subdoména: vracia priamo interný favicon (/favicon.svg)
+            const currentHost =
+                typeof window !== "undefined" && window.location?.hostname
+                    ? window.location.hostname.toLowerCase()
+                    : "";
+            if (
+                domain === "pandora.whoiswho.at" ||
+                domain.endsWith(".whoiswho.at") ||
+                (currentHost && currentHost !== "localhost" && currentHost !== "127.0.0.1" && domain === currentHost)
+            ) {
+                return "/favicon.svg";
+            }
+
             // Primary: Google S2 Converter
             return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=${size}`;
         } catch {

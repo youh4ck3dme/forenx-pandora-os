@@ -2,7 +2,7 @@
  * PANDORA / FORENX — Cleanroom Database Test Harness
  * 
  * Uses in-process PostgreSQL 17 (PGlite) to execute and test the cleanroom SQL files
- * (001_base.sql through 008_security_hardening.sql) against Supabase stubs.
+ * (frozen Baseline V1 001..008 plus forward migrations 009+) against Supabase stubs.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -19,6 +19,8 @@ export const CLEANROOM_FILES = [
   "006_rate_limits.sql",
   "007_storage_contract.sql",
   "008_security_hardening.sql",
+  "009_evidence_case_id_ownership.sql",
+  "010_evidence_worm_case_id.sql",
 ] as const;
 
 export const SUPABASE_RUNTIME_STUBS = `
@@ -79,6 +81,7 @@ export interface DbSession {
   query<T = any>(sql: string, params?: any[]): Promise<{ rows: T[] }>;
   exec?(sql: string): Promise<void>;
   transaction<T>(fn: (tx: DbSession) => Promise<T>): Promise<T>;
+  close(): Promise<void>;
 }
 
 class DockerSession implements DbSession {
@@ -104,18 +107,42 @@ class DockerSession implements DbSession {
       throw err;
     }
   }
+
+  async close(): Promise<void> {
+    await this.client.end();
+  }
 }
 
 /**
  * Boots a clean database instance. Uses Docker PostgreSQL 17 when USE_DOCKER=true,
  * otherwise boots an in-process PGlite instance.
  */
+const openSessions = new Set<DbSession>();
+
+async function closeAllOpenSessions(): Promise<void> {
+  await Promise.all(
+    Array.from(openSessions).map(async (session) => {
+      try {
+        await session.close();
+      } finally {
+        openSessions.delete(session);
+      }
+    }),
+  );
+}
+
+const vitestAfterAll = (globalThis as { afterAll?: (fn: () => Promise<void>) => void }).afterAll;
+if (typeof vitestAfterAll === "function") {
+  vitestAfterAll(closeAllOpenSessions);
+}
+
 export async function createCleanroomDatabase(): Promise<DbSession> {
   if (process.env.USE_DOCKER === "true") {
     const dbUrl = process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
     const client = new PgClient({ connectionString: dbUrl });
     await client.connect();
     const session = new DockerSession(client);
+    openSessions.add(session);
     return session;
   }
 
@@ -136,7 +163,14 @@ export async function createCleanroomDatabase(): Promise<DbSession> {
     }
   }
 
-  return db as unknown as DbSession;
+  const session = {
+    query: (sql: string, params?: any[]) => db.query(sql, params),
+    exec: (sql: string) => db.exec(sql),
+    transaction: (fn: (tx: DbSession) => Promise<any>) => db.transaction(fn as any),
+    close: () => db.close(),
+  } as unknown as DbSession;
+  openSessions.add(session);
+  return session;
 }
 
 /**

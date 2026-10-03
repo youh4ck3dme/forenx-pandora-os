@@ -7,6 +7,7 @@ import {
   pendingVerificationFilter,
   sha256OfStream,
   verifyEvidenceItem,
+  verifyAndDrain,
   type ObjectSource,
   type VerificationResult,
 } from "../storage/evidence-verify";
@@ -111,5 +112,37 @@ describe("isAuthorizedCronRequest", () => {
   it("is closed without a strong configured secret", () => {
     expect(isAuthorizedCronRequest("Bearer ", undefined)).toBe(false);
     expect(isAuthorizedCronRequest("Bearer short", "short")).toBe(false);
+  });
+});
+
+describe("verifyAndDrain", () => {
+  const okObject: ObjectSource = async () => ({ ok: true, body: streamOf(CONTENT) });
+
+  it("invokes the outbox drain after a successful verify", async () => {
+    const drained: string[] = [];
+    const results = await verifyAndDrain([item], {
+      openObject: okObject,
+      record: async () => {},
+      drainVerified: async (evidenceId) => {
+        drained.push(evidenceId);
+      },
+    });
+    expect(results.map((r) => r.status)).toEqual(["verified"]);
+    expect(drained).toEqual(["e1"]);
+  });
+
+  it("does not drain a mismatch and keeps verified when the drain throws", async () => {
+    const drained: string[] = [];
+    const tampered = { ...item, id: "e2", sha256_hash: "f".repeat(64) };
+    const results = await verifyAndDrain([tampered, item], {
+      openObject: okObject,
+      record: async () => {},
+      drainVerified: async (evidenceId) => {
+        drained.push(evidenceId);
+        throw new Error("webhook down");
+      },
+    });
+    expect(results.map((r) => r.status)).toEqual(["mismatch", "verified"]);
+    expect(drained).toEqual(["e1"]);
   });
 });

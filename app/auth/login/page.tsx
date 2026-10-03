@@ -15,6 +15,8 @@ import {
 import Link from "next/link";
 import { PandoraLogo } from "@/components/ui/branding/pandora-logo";
 import { getSafeRedirectTarget } from "@/lib/auth/redirect";
+import { supabase } from "@/integrations/supabase/client";
+import { setAuthCookies } from "@/lib/auth/cookies";
 
 // ssr: false — AccountSignInForm uses useQueryClient() which requires
 // QueryClientProvider; disabling SSR avoids prerender crash at build time.
@@ -28,77 +30,36 @@ export default function LoginPage() {
   const [method, setMethod] = useState<"cloud" | "biometric">("cloud");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [savedUser, setSavedUser] = useState<{
-    username: string;
-    webAuthn?: boolean;
-  } | null>(null);
+  const [initialMode, setInitialMode] = useState<"signin" | "signup" | "reset">("signin");
 
   useEffect(() => {
-    const userData = localStorage.getItem("pandora_user");
-    if (userData) {
-      try {
-        setSavedUser(JSON.parse(userData));
-      } catch {
-        // Invalid data
-      }
+    // Break out of iframes if opened inside a frame
+    if (typeof window !== 'undefined' && window.top && window.top !== window.self) {
+      window.top.location.href = window.location.href;
+      return;
     }
-  }, []);
 
-  const handleBiometricLogin = async () => {
-    setIsLoading(true);
-    setError(null);
+    const searchParams = new URLSearchParams(window.location.search);
+    const modeParam = searchParams.get("mode");
+    if (modeParam === "signup" || modeParam === "reset" || modeParam === "signin") {
+      setInitialMode(modeParam);
+    }
 
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      let webAuthnSuccess = false;
-
-      if (window.PublicKeyCredential && savedUser?.webAuthn) {
-        try {
-          const challenge = new Uint8Array(32);
-          crypto.getRandomValues(challenge);
-
-          const effectiveRpId =
-            process.env.NEXT_PUBLIC_RP_ID ||
-            (window.location.hostname.endsWith("whoiswho.at")
-              ? "whoiswho.at"
-              : window.location.hostname);
-
-          const getOptions: PublicKeyCredentialRequestOptions = {
-            challenge,
-            timeout: 60000,
-            userVerification: "required",
-            rpId: effectiveRpId,
-          };
-
-          const credential = await navigator.credentials.get({
-            publicKey: getOptions,
-          });
-
-          if (credential) {
-            webAuthnSuccess = true;
-          }
-        } catch {
-          // WebAuthn not available, use simulation
+    // If user already has an active Supabase session, sync cookies and redirect forward
+    supabase.auth.getSession().then(async ({ data }: { data: { session: any } }) => {
+      if (data?.session) {
+        const bridgeOk = await setAuthCookies(data.session);
+        if (bridgeOk) {
+          const nextParam = searchParams.get("next");
+          const next = getSafeRedirectTarget(nextParam, "/browser/") ?? "/browser/";
+          router.replace(next);
         }
       }
+    });
+  }, [router]);
 
-      if (savedUser || webAuthnSuccess) {
-        const nextParam =
-          typeof window !== "undefined"
-            ? new URLSearchParams(window.location.search).get("next")
-            : null;
-        const next = getSafeRedirectTarget(nextParam, "/forza/pripady") ?? "/forza/pripady";
-        router.push(next);
-      } else {
-        setError("No account found. Please register first or use Cloud Account.");
-      }
-    } catch (err) {
-      console.error("Login error:", err);
-      setError("Failed to authenticate. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
+  const handleBiometricLogin = () => {
+    setError("Passkey prihlásenie vyžaduje kompletné serverové overenie a v pilotnej fáze je dočasne vypnuté. Prihláste sa pomocou ForenX Účtu.");
   };
 
   return (
@@ -176,95 +137,38 @@ export default function LoginPage() {
               <div className="pt-1">
                 <AccountSignInForm
                   dark={true}
+                  initialMode={initialMode}
                   onSignedIn={() => {
-                    const nextParam =
-                      typeof window !== "undefined"
-                        ? new URLSearchParams(window.location.search).get("next")
-                        : null;
-                    const next = getSafeRedirectTarget(nextParam, "/forza/pripady") ?? "/forza/pripady";
+                    const searchParams = typeof window !== "undefined"
+                      ? new URLSearchParams(window.location.search)
+                      : null;
+                    const nextParam = searchParams?.get("next");
+                    const next = getSafeRedirectTarget(nextParam, "/browser/") ?? "/browser/";
                     router.push(next);
+                    router.refresh();
                   }}
                 />
               </div>
             ) : (
-              <>
-                {savedUser && (
-                  <div className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/10 mb-6 group/user transition-colors hover:bg-white/10">
-                    <div className="w-10 h-10 rounded-full bg-linear-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center ring-1 ring-white/10 group-hover/user:ring-purple-500/50 transition-all">
-                      <User className="w-5 h-5 text-purple-400" />
-                    </div>
-                    <div>
-                      <p className="text-gray-200 font-medium text-sm">
-                        {savedUser.username}
-                      </p>
-                      <p className="text-gray-500 text-xs">
-                        {savedUser.webAuthn ? "Passkey available" : "Demo mode"}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex flex-col items-center py-3">
-                  <div className="relative mb-6 group/bio">
-                    <div className="absolute -inset-4 bg-purple-500/20 rounded-full blur-xl opacity-0 group-hover/bio:opacity-100 transition-opacity duration-500" />
-                    <button
-                      onClick={handleBiometricLogin}
-                      disabled={isLoading}
-                      className="relative w-24 h-24 rounded-full bg-linear-to-b from-white/10 to-white/5 border border-white/10 flex items-center justify-center transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 group-hover/bio:border-purple-500/50"
-                    >
-                      <div className="absolute inset-0 rounded-full bg-purple-500/5 animate-pulse" />
-                      {isLoading ? (
-                        <Loader2 className="w-10 h-10 text-purple-400 animate-spin" />
-                      ) : (
-                        <Fingerprint className="w-10 h-10 text-purple-400 drop-shadow-[0_0_15px_rgba(168,85,247,0.5)] transition-all group-hover/bio:text-purple-300" />
-                      )}
-                    </button>
-                  </div>
-
-                  <p className="text-foreground/60 text-center text-xs mb-3">
-                    {isLoading
-                      ? "Verifying your identity..."
-                      : "Tap to authenticate with biometrics"}
-                  </p>
-
-                  {error && (
-                    <div className="flex items-center gap-2 text-red-400 text-sm mb-4">
-                      <AlertCircle className="w-4 h-4" />
-                      {error}
-                    </div>
-                  )}
-
-                  <button
-                    onClick={handleBiometricLogin}
-                    disabled={isLoading}
-                    className="w-full py-3.5 bg-linear-to-r from-purple-600 via-blue-600 to-cyan-500 text-white font-bold text-sm rounded-xl hover:shadow-[0_0_20px_rgba(147,51,234,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2 relative overflow-hidden"
-                  >
-                    <div className="absolute inset-0 bg-white/20 translate-y-full hover:translate-y-0 transition-transform duration-300" />
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin relative z-10" />
-                        <span className="relative z-10">Authenticating...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Fingerprint className="w-5 h-5 relative z-10" />
-                        <span className="relative z-10">Sign In with Passkey</span>
-                      </>
-                    )}
-                  </button>
+              <div className="flex flex-col items-center py-4 text-center">
+                <div className="w-14 h-14 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center justify-center mb-3">
+                  <Fingerprint className="w-7 h-7 text-purple-400/80" />
                 </div>
-              </>
+                <h3 className="text-sm font-semibold text-foreground mb-1.5">
+                  Passkey vstup dočasne vypnutý
+                </h3>
+                <p className="text-foreground/60 text-xs max-w-xs mb-5 leading-relaxed">
+                  Podľa bezpečnostných pravidiel pilota (P2) je simulovaný passkey vstup vypnutý, kým nebude nasadené kompletné serverové WebAuthn overenie.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setMethod("cloud")}
+                  className="w-full py-3 bg-linear-to-r from-purple-600 via-blue-600 to-cyan-500 text-white font-bold text-xs rounded-xl hover:scale-[1.02] active:scale-[0.98] transition-all"
+                >
+                  Prepnúť na ForenX Cloud Účet
+                </button>
+              </div>
             )}
-
-            <p className="text-center text-foreground/40 text-xs mt-5">
-              Don't have an account?{" "}
-              <Link
-                href="/auth/register"
-                className="text-purple-400 hover:underline"
-              >
-                Create one
-              </Link>
-            </p>
           </div>
 
           <div className="flex items-center justify-center gap-2 mt-6 text-foreground/40 text-xs">
@@ -276,3 +180,4 @@ export default function LoginPage() {
     </div>
   );
 }
+

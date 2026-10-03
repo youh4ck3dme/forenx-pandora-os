@@ -6,6 +6,7 @@ import "./globals.css";
 import { ServiceWorkerRegistration } from "@/components/core/providers/service-worker-registration";
 import { ObservabilityReporter } from "@/components/forza/ObservabilityReporter";
 import { QueryProvider } from "@/components/core/providers/query-provider";
+import { AuthCookieSync } from "@/components/core/providers/auth-cookie-sync";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,8 +37,16 @@ export const metadata: Metadata = {
   authors: [{ name: "PΛND0RΛ Team" }],
   manifest: "/manifest.json",
   icons: {
-    icon: "/favicon.svg",
-    apple: "/icons/icon.svg",
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "32x32" },
+      { url: "/icon-dark-32x32.png", sizes: "32x32", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: [
+      { url: "/apple-icon.png", sizes: "180x180", type: "image/png" },
+      { url: "/icons/icon.svg", type: "image/svg+xml" },
+    ],
   },
   appleWebApp: {
     capable: true,
@@ -97,6 +106,7 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <QueryProvider>
+          <AuthCookieSync />
           <ObservabilityReporter />
           {children}
           <Toaster richColors position="top-right" />

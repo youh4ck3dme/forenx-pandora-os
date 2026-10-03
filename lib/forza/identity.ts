@@ -6,8 +6,8 @@
  * a nie je jedinečný).
  */
 import { supabase } from "@/integrations/supabase/client";
-import { isDevFreeEntryActive, isLocalDevEnvironment } from "@/lib/dev-auth";
-import { SessionExpiredError } from "@/lib/session-expired";
+import { isDevFreeEntryActive, isLocalDevEnvironment } from "@/lib/forza/dev-auth";
+import { SessionExpiredError } from "@/lib/forza/session-expired";
 
 export type Identity =
   | { mode: "cloud"; userId: string; key: string; email: string }

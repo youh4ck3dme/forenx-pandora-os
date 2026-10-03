@@ -20,8 +20,6 @@
  *   FORENZX_REGRESSION_INPUT_TYPE
  *   FORENZX_REGRESSION_PACK_ID
  *   FORENZX_REGRESSION_SHA256
- *   FORENZX_REGRESSION_DOWNLOAD_URL
- *   FORENZX_REGRESSION_DOWNLOAD_FILENAME
  *   FORENZX_REGRESSION_SUPABASE_URL
  *   FORENZX_REGRESSION_SUPABASE_SERVICE_ROLE_KEY
  */
@@ -122,8 +120,6 @@ async function main(): Promise<void> {
   const inputType = required("FORENZX_REGRESSION_INPUT_TYPE");
   const packId = required("FORENZX_REGRESSION_PACK_ID");
   const sha256 = required("FORENZX_REGRESSION_SHA256");
-  const downloadUrl = requireHttps("FORENZX_REGRESSION_DOWNLOAD_URL");
-  const downloadFilename = required("FORENZX_REGRESSION_DOWNLOAD_FILENAME");
   const supabaseUrl = required("FORENZX_REGRESSION_SUPABASE_URL");
   const serviceRoleKey = required("FORENZX_REGRESSION_SUPABASE_SERVICE_ROLE_KEY");
 
@@ -147,13 +143,11 @@ async function main(): Promise<void> {
       packId,
       claimedSha256: sha256,
       idempotencyKey,
-      downloadUrl,
-      downloadFilename,
       record: {
         id: evidenceId,
         investigator_id: userId,
-        file_name: downloadFilename,
-        s3_object_key: `cases/${caseId}/evidence/${downloadFilename}`,
+        file_name: "evidence.bin",
+        s3_object_key: `cases/${caseId}/evidence/evidence.bin`,
         sha256_hash: sha256,
         hash_verification_status: "verified",
       },

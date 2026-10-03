@@ -102,6 +102,7 @@ export function TimelinePrintModal({
                 {/* Vizuál kapitoly */}
                 <div className="relative aspect-video rounded-lg overflow-hidden border border-border bg-black">
                   {ep.comicImage && !brokenImages[ep.id] ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
                     <img
                       src={ep.comicImage}
                       alt={ep.title}

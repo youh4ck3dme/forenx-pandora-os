@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { beforeAll, describe, expect, it } from "vitest";
 import type { PGlite, Transaction } from "@electric-sql/pglite";
-import { createUser, freshDatabase } from "./harness";
+import { createCase, createUser, freshDatabase } from "./harness";
 
 let db: PGlite;
 const HASH_A = "a".repeat(64);
@@ -312,4 +312,80 @@ describe("evidence ledger: review hardening", () => {
     });
     expect((await evidence(String(id)))?.hash_verification_status).toBe("mismatch");
   });
+
+  describe("evidence ledger: case_id relational integrity and WORM protection", () => {
+    it("successfully links evidence to an existing case and records case_id in audit log", async () => {
+      const user = await createUser(db, "case-owner@test.local");
+      const caseId = await createCase(db, user);
+
+      const id = await insertEvidence(user, {
+        case_id: caseId,
+        s3_object_key: `cases/${caseId}/evidence/${Math.random().toString(36).slice(2)}.pdf`,
+      });
+
+      const row = await evidence(id);
+      expect(row?.case_id).toBe(caseId);
+
+      // Verify case_audit_log captured case_id
+      const auditRes = await db.query<{ case_id: string }>(
+        "select case_id from public.case_audit_log where record_id = $1 and action = 'evidence_registered'",
+        [id],
+      );
+      expect(auditRes.rows[0]?.case_id).toBe(caseId);
+    });
+
+    it("rejects insert with non-existent case_id foreign key", async () => {
+      const user = await createUser(db, "fk-test@test.local");
+      const nonExistentCaseId = "00000000-0000-4000-8000-000000009999";
+
+      await expect(
+        insertEvidence(user, {
+          case_id: nonExistentCaseId,
+        }),
+      ).rejects.toThrow();
+    });
+
+    it("enforces WORM write-once immutability on case_id (cannot be modified via update)", async () => {
+      const user = await createUser(db, "worm-case@test.local");
+      const case1 = await createCase(db, user);
+      const case2 = await createCase(db, user);
+
+      const id = await insertEvidence(user, {
+        case_id: case1,
+      });
+
+      // Modifying case_id must throw WORM violation error
+      await expect(
+        asUser(user, (tx) =>
+          tx.query("update public.evidence_items set case_id = $1 where id = $2", [case2, id]),
+        ),
+      ).rejects.toThrow(/write-once \(WORM\)/);
+
+      const row = await evidence(id);
+      expect(row?.case_id).toBe(case1);
+    });
+
+    it("rejects insert when case_id belongs to a different investigator (cross-tenant spoof)", async () => {
+      const owner = await createUser(db, "case-owner-ct@test.local");
+      const attacker = await createUser(db, "attacker-ct@test.local");
+      const ownerCase = await createCase(db, owner);
+
+      // attacker tries to insert evidence attributed to ownerCase — must be rejected
+      await expect(
+        insertEvidence(attacker, {
+          case_id: ownerCase,
+          s3_object_key: `cases/${ownerCase}/evidence/stolen.pdf`,
+        }),
+      ).rejects.toThrow(/does not belong to the authenticated user/);
+    });
+
+    it("allows NULL case_id insert (legacy orphan rows)", async () => {
+      const user = await createUser(db, "null-case-ct@test.local");
+      // NULL case_id must not trigger the ownership check
+      const id = await insertEvidence(user, { case_id: null });
+      const row = await evidence(id);
+      expect(row?.case_id).toBeNull();
+    });
+  });
 });
+

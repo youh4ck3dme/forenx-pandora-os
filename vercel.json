@@ -3,7 +3,9 @@
   "framework": "nextjs",
   "installCommand": "npm ci",
   "buildCommand": "npm run verify:vercel-deploy",
-  "regions": ["fra1"],
+  "regions": [
+    "fra1"
+  ],
   "functions": {
     "app/api/vault/route.ts": {
       "maxDuration": 300
@@ -33,6 +35,12 @@
           "value": "camera=(), microphone=(), geolocation=()"
         }
       ]
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/forenzx/dispatch-outbox",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

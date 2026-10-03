@@ -42,6 +42,7 @@ export type LedgerStatus = "pending" | "verified" | "mismatch" | "object_missing
 
 export type LedgerRow = {
   id: string;
+  case_id: string | null;
   case_name: string;
   file_name: string;
   file_size: number;
@@ -62,6 +63,7 @@ export type LedgerDeps = {
   /** Insert s právami používateľa (RLS + triggery). */
   insert: (row: {
     investigator_id: string;
+    case_id?: string | null;
     case_name: string;
     file_name: string;
     file_size: number;
@@ -103,6 +105,7 @@ export async function registerEvidence(
   try {
     row = await deps.insert({
       investigator_id: userId,
+      case_id: input.caseId,
       case_name: owner.name,
       file_name: input.fileName,
       file_size: input.fileSizeBytes,
@@ -136,7 +139,7 @@ export function ledgerRowToItem(
   const name = row.file_name.toLowerCase();
   return {
     id: row.id as ForensicEvidenceItem["id"],
-    caseId: caseId as ForensicEvidenceItem["caseId"],
+    caseId: (row.case_id || caseId) as ForensicEvidenceItem["caseId"],
     fileName: row.file_name,
     fileSizeBytes: row.file_size,
     mimeType: row.mime_type,
@@ -152,7 +155,7 @@ export function ledgerRowToItem(
 }
 
 const LEDGER_COLUMNS =
-  "id, case_name, file_name, file_size, mime_type, s3_object_key, sha256_hash, hash_verification_status, created_at";
+  "id, case_id, case_name, file_name, file_size, mime_type, s3_object_key, sha256_hash, hash_verification_status, created_at";
 
 async function userClient(token: string) {
   const { createClient } = await import("@supabase/supabase-js");
@@ -220,7 +223,7 @@ export async function listLedgerEvidence(token: string, caseId: string): Promise
   const { data, error } = await client
     .from("evidence_items")
     .select(LEDGER_COLUMNS)
-    .like("s3_object_key", `cases/${escapeLike(caseId)}/evidence/%`)
+    .or(`case_id.eq.${caseId},s3_object_key.like.cases/${escapeLike(caseId)}/evidence/%`)
     .order("created_at", { ascending: false })
     .limit(500);
   if (error) throw new Error(`ledger_read_failed:${error.code}`);

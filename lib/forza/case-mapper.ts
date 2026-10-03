@@ -8,7 +8,6 @@ import type {
   Weapon,
 } from "@/forensic";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 type Row = any;
 
 /** Poskladá riadky z databázy do tvaru, ktorý očakáva forenzné jadro. */

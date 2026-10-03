@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createCleanroomDatabase, CLEANROOM_FILES } from "./cleanroom-harness";
 
 describe("Regression Suite: 01 - Migration Order & Execution", () => {
-  it("executes all 8 cleanroom files from an empty database in exact sequence without errors", async () => {
+  it("executes all cleanroom files from an empty database in exact sequence without errors", async () => {
     const db = await createCleanroomDatabase();
     expect(db).toBeDefined();
 

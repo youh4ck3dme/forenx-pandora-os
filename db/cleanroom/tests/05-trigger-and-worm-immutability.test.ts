@@ -112,6 +112,41 @@ describe("Regression Suite: 05 - Trigger Logic & WORM Immutability", () => {
     ).rejects.toThrow(/evidence_items identity and forensic columns are write-once \(WORM violation\)/);
   }, 60_000);
 
+  it("enforces WORM immutability on evidence_items.case_id (write-once after insert)", async () => {
+    const db = await createCleanroomDatabase();
+    const investigator = await createTestUser(db, "worm-caseid@test.local");
+    const case1 = await createTestCase(db, investigator, "Case One", "draft");
+    const case2 = await createTestCase(db, investigator, "Case Two", "draft");
+
+    const evidenceId = await asAuthenticated(db, investigator, async (tx) => {
+      const res = await tx.query<{ id: string }>(
+        `INSERT INTO public.evidence_items (
+           investigator_id, case_id, case_name, file_name, file_size, mime_type,
+           s3_object_key, sha256_hash
+         ) VALUES (
+           $1, $2, 'Case One', 'exhibit.pdf', 512, 'application/pdf',
+           $3, $4
+         ) RETURNING id`,
+        [investigator, case1, `cases/${case1}/evidence/exhibit.pdf`, fixtureSha256("exhibit")]
+      );
+      return res.rows[0]?.id!;
+    });
+
+    // Attempting to change case_id to another valid case must raise WORM violation
+    await expect(
+      asAuthenticated(db, investigator, (tx) =>
+        tx.query("UPDATE public.evidence_items SET case_id = $1 WHERE id = $2", [case2, evidenceId])
+      )
+    ).rejects.toThrow(/evidence_items identity and forensic columns are write-once \(WORM violation\)/);
+
+    // Verify case_id is unchanged
+    const row = await db.query<{ case_id: string }>(
+      "SELECT case_id FROM public.evidence_items WHERE id = $1",
+      [evidenceId]
+    );
+    expect(row.rows[0]?.case_id).toBe(case1);
+  }, 60_000);
+
   it("normalizes and sanitizes evidence_items inserts via evidence_items_insert_guard", async () => {
     const db = await createCleanroomDatabase();
     const investigator = await createTestUser(db, "investigator@test.local");

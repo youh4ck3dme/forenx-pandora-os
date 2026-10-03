@@ -1,10 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
-  getRouteCategory,
-  matchPathPattern,
-  isInternalPath,
-  validateRedirectTarget,
-  type RouteCategory,
+    getRouteCategory,
+    isInternalPath,
+    matchPathPattern,
+    validateRedirectTarget,
+    type RouteCategory,
 } from '../../middleware';
 
 describe('Route Classification Contract & Middleware Authorization', () => {
@@ -46,7 +46,7 @@ describe('Route Classification Contract & Middleware Authorization', () => {
     }
   });
 
-  describe('PROJECT_REQUIRED Route Classification', () => {
+  describe('Forza Protected Route Classification (AUTHENTICATED)', () => {
     const projectRoutes = [
       '/forza',
       '/forza/prehlad',
@@ -55,15 +55,15 @@ describe('Route Classification Contract & Middleware Authorization', () => {
       '/forza/siet',
       '/forza/pripady',
       '/forza/sandbox',
-      '/forza/stav',
       '/forza/profil',
       '/forza/predplatne',
+      '/forza/stav',
     ];
 
     for (const route of projectRoutes) {
-      it(`correctly classifies ${route} as PROJECT_REQUIRED`, () => {
+      it(`correctly classifies ${route} as AUTHENTICATED`, () => {
         const { category } = getRouteCategory(route);
-        expect(category).toBe<RouteCategory>('PROJECT_REQUIRED');
+        expect(category).toBe<RouteCategory>('AUTHENTICATED');
       });
     }
   });

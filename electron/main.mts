@@ -5,14 +5,14 @@ import { fileURLToPath } from 'url'
 import { ElectronBlocker } from '@ghostery/adblocker-electron'
 import fetch from 'cross-fetch'
 import { HistoryManager } from './history-manager.js'
-import { PasswordManager } from './password-manager.js'
+import { PasswordManager, createPasswordIpcHandlers } from './password-manager.js'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { streamText } from 'ai'
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 import type { AppUpdater } from 'electron-updater';
-import { configureWebTabsSession, createIsolatedBrowserView } from './browser-view-factory.js'
+import { configureWebTabsSession, createIsolatedBrowserView, getWebTabsSession, isValidWebTabUrl } from './browser-view-factory.js'
 import { openExternalRequestSchema, readEvidenceChunkRequestSchema, selectEvidenceRequestSchema } from './ipc-contract.js'
 import { validateExternalUrl } from './network-security.js'
 import { VaultTokenManager } from './vault-token-manager.js'
@@ -93,8 +93,8 @@ function categorizeBlockedUrl(url: string): 'ads' | 'trackers' | 'scripts' {
 async function setupAdBlocker() {
     try {
         adBlocker = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch)
-        if (session.defaultSession) {
-            adBlocker.enableBlockingInSession(session.defaultSession)
+        const webTabsSession = getWebTabsSession()
+        adBlocker.enableBlockingInSession(webTabsSession)
 
 
             adBlocker.on('request-blocked', (request: any) => {
@@ -119,22 +119,23 @@ async function setupAdBlocker() {
                     })
                 }
             })
-        }
     } catch (error) {
         console.error('Failed to enable AdBlocker:', error)
     }
 }
 
 // IPC for AdBlocker Control
-ipcMain.handle('shield:toggle', (_, enabled: boolean) => {
+ipcMain.handle('shield:toggle', (event, enabled: boolean) => {
+    if (!isMainWindowSender(event)) return false
+    const webTabsSession = getWebTabsSession()
     if (enabled) {
-        if (adBlocker && session.defaultSession) {
-            adBlocker.enableBlockingInSession(session.defaultSession)
+        if (adBlocker) {
+            adBlocker.enableBlockingInSession(webTabsSession)
             return true
         }
     } else {
-        if (adBlocker && session.defaultSession) {
-            adBlocker.disableBlockingInSession(session.defaultSession)
+        if (adBlocker) {
+            adBlocker.disableBlockingInSession(webTabsSession)
             return false
         }
     }
@@ -142,35 +143,51 @@ ipcMain.handle('shield:toggle', (_, enabled: boolean) => {
 })
 
 // IPC for Shield Stats
-ipcMain.handle('shield:getStats', () => {
+ipcMain.handle('shield:getStats', (event) => {
+    if (!isMainWindowSender(event)) return null
     return { ...shieldStats }
 })
 
-ipcMain.handle('shield:getLogs', () => {
+ipcMain.handle('shield:getLogs', (event) => {
+    if (!isMainWindowSender(event)) return []
     return [...shieldLogs]
 })
 
 // IPC Handlers for Password Manager
-ipcMain.handle('password:save', async (_, entry) => {
-    return passwordManager?.savePassword(entry)
+function isMainWindowSender(event: Electron.IpcMainInvokeEvent): boolean {
+    return !!mainWindow && event.sender.id === mainWindow.webContents.id
+}
+
+const passwordIpcHandlers = createPasswordIpcHandlers(
+    () => passwordManager,
+    isMainWindowSender
+)
+
+ipcMain.handle('password:get', async (event) => {
+    return passwordIpcHandlers.handleGet(event)
 })
 
-ipcMain.handle('password:get', async () => {
-    return passwordManager?.getPasswords()
+ipcMain.handle('password:reveal', async (event, id: unknown) => {
+    return passwordIpcHandlers.handleReveal(event, id)
 })
 
-ipcMain.handle('password:delete', async (_, id) => {
-    return passwordManager?.deletePassword(id)
+ipcMain.handle('password:save', async (event, entry) => {
+    return passwordIpcHandlers.handleSave(event, entry)
 })
 
+ipcMain.handle('password:delete', async (event, id) => {
+    return passwordIpcHandlers.handleDelete(event, id)
+})
 
 // IPC Handlers for Session Data
-ipcMain.handle('session:clear-data', async () => {
+ipcMain.handle('session:clear-data', async (event) => {
+    if (!isMainWindowSender(event)) return false
     try {
-        await session.defaultSession.clearStorageData({
+        const webTabsSession = getWebTabsSession()
+        await webTabsSession.clearStorageData({
             storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage']
         })
-        await session.defaultSession.clearCache()
+        await webTabsSession.clearCache()
 
         return true
     } catch (e) {
@@ -414,15 +431,17 @@ function createWindow() {
         updateTabUrl(id, url)
     })
 
-    // IPC for History Search
-    ipcMain.handle('history:search', (_, query) => {
+    // IPC for History Search & Second Brain
+    ipcMain.handle('history:search', (event, query) => {
+        if (!isMainWindowSender(event)) return []
+        if (typeof query !== 'string') return []
         return historyManager?.search(query) || []
     })
 
-    ipcMain.handle('history:getContent', (_, url) => {
-        // Find doc by URL in history
-        const docs = Array.from((historyManager as any).docs.values())
-        return docs.find((d: any) => d.url === url)
+    ipcMain.handle('history:getContent', (event, url) => {
+        if (!isMainWindowSender(event)) return null
+        if (typeof url !== 'string') return null
+        return historyManager?.getContent(url) || null
     })
 
     ipcMain.handle('search:suggestions', async (_, query) => {
@@ -470,13 +489,14 @@ function createWindow() {
     })
 
     // IPC for Proxy
-    ipcMain.on('proxy:set', async (_, config) => {
-
+    ipcMain.on('proxy:set', async (event, config) => {
+        if (!isMainWindowSender(event as Electron.IpcMainInvokeEvent)) return
+        const webTabsSession = getWebTabsSession()
         if (!config || config.type === 'none') {
-            await session.defaultSession.setProxy({ mode: 'direct' })
+            await webTabsSession.setProxy({ mode: 'direct' })
         } else {
             const proxyRules = `${config.type}://${config.host}:${config.port}`
-            await session.defaultSession.setProxy({
+            await webTabsSession.setProxy({
                 proxyRules,
                 proxyBypassRules: 'localhost,127.0.0.1,::1'
             })
@@ -484,10 +504,11 @@ function createWindow() {
     })
 
     // IPC for Extensions
-    ipcMain.handle('extension:load', async (_, path) => {
+    ipcMain.handle('extension:load', async (event, path) => {
+        if (!isMainWindowSender(event)) return { ok: false, code: 'FORBIDDEN' }
         try {
-
-            const ext = await session.defaultSession.loadExtension(path)
+            const webTabsSession = getWebTabsSession()
+            const ext = await webTabsSession.loadExtension(path)
             return { id: ext.id, name: ext.name }
         } catch (e: any) {
             console.error('[PΛND0RΛ] Failed to load extension:', e)
@@ -496,7 +517,8 @@ function createWindow() {
     })
 
     ipcMain.handle('extension:list', () => {
-        return session.defaultSession.getAllExtensions().map(e => ({
+        const webTabsSession = getWebTabsSession()
+        return webTabsSession.getAllExtensions().map(e => ({
             id: e.id,
             name: e.name,
             version: e.version
@@ -559,7 +581,8 @@ function createWindow() {
         }
     })
 
-    ipcMain.handle('capture:page', async () => {
+    ipcMain.handle('capture:page', async (event) => {
+        if (!isMainWindowSender(event)) return null
         if (!mainWindow || !activeTabId) return null
         const tab = tabs.find(t => t.id === activeTabId)
         if (!tab?.view) return null
@@ -582,7 +605,8 @@ function createWindow() {
     })
 
     // Native File Dialogs (Forensic Files & Dossiers)
-    ipcMain.handle('dialog:openFile', async (_, options?: { title?: string; filters?: { name: string; extensions: string[] }[] }) => {
+    ipcMain.handle('dialog:openFile', async (event, options?: { title?: string; filters?: { name: string; extensions: string[] }[] }) => {
+        if (!isMainWindowSender(event)) return null
         if (!mainWindow) return null
 
         const defaultFilters = [
@@ -648,7 +672,8 @@ function createWindow() {
         )
     })
 
-    ipcMain.handle('dialog:saveFile', async (_, options?: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => {
+    ipcMain.handle('dialog:saveFile', async (event, options?: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => {
+        if (!isMainWindowSender(event)) return null
         if (!mainWindow) return null
 
         const result = await dialog.showSaveDialog(mainWindow, {
@@ -764,9 +789,9 @@ function createWindow() {
         }
     })
 
-    // Download Handling
-    // Download Handling
-    session.defaultSession.on('will-download', (event, item, webContents) => {
+    // Download Handling on web tabs session
+    const webTabsSession = getWebTabsSession()
+    webTabsSession.on('will-download', (event, item, webContents) => {
         const id = Date.now().toString()
         const fileName = item.getFilename()
         const url = item.getURL()
@@ -809,6 +834,14 @@ function createWindow() {
 // BrowserView Management
 function createTab(id: string, url: string) {
     if (!mainWindow) return
+
+    if (url && url !== 'pandora://newtab') {
+        if (!isValidWebTabUrl(url)) {
+            console.warn('[PΛND0RΛ] Rejected tab creation with invalid URL protocol:', url)
+            mainWindow.webContents.send('tab:updated', { id, title: 'Blocked Protocol', url, isLoading: false })
+            return
+        }
+    }
 
     const view = createIsolatedBrowserView()
 
@@ -936,6 +969,11 @@ function updateTabUrl(id: string, url: string) {
     if (url === 'pandora://newtab' || url.includes('/forza/')) {
         if (mainWindow) mainWindow.removeBrowserView(tab.view)
     } else {
+        if (!isValidWebTabUrl(url)) {
+            console.warn('[PΛND0RΛ] Rejected navigation to invalid URL protocol:', url)
+            mainWindow?.webContents.send('tab:updated', { id, title: 'Blocked Protocol', url, isLoading: false })
+            return
+        }
         if (mainWindow && activeTabId === id) mainWindow.setBrowserView(tab.view)
         tab.view.webContents.loadURL(url)
     }

@@ -39,7 +39,19 @@ export function AiConsentDialog({
         if (!next) onDecision(false);
       }}
     >
-      <DialogContent className="max-w-lg">
+      <DialogContent
+        className="max-w-lg"
+        onPointerDownOutside={(e) => {
+          e.preventDefault();
+        }}
+        onInteractOutside={(e) => {
+          e.preventDefault();
+        }}
+        onEscapeKeyDown={(e) => {
+          e.preventDefault();
+          onDecision(false);
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <ShieldAlert className="h-4 w-4 text-risk-medium" aria-hidden />

@@ -40,16 +40,16 @@ vi.mock("@/integrations/supabase/client.server", () => ({
   },
 }));
 
-vi.mock("@/lib/storage/s3-vault", () => ({
+vi.mock("../storage/s3-vault", () => ({
   isS3Configured: () => true,
   getPresignedDossierUrl: vi.fn(async () => "https://s3.example.test/signed-url"),
   getPresignedUploadUrl: vi.fn(async () => "https://s3.example.test/upload-url"),
   uploadCaseDocument: vi.fn(),
 }));
 
-import { authenticateVaultRequest, devAuthBypassAllowed } from "@/lib/storage/vault-auth";
-import { GET } from "@/app/api/vault/route";
-import { POST as PRESIGN } from "@/app/api/vault/presign/route";
+import { authenticateVaultRequest, devAuthBypassAllowed } from "../storage/vault-auth";
+import { GET } from "../../app/api/vault/route";
+import { POST as PRESIGN } from "../../app/api/vault/presign/route";
 
 function req(
   url = "http://localhost:3000/api/vault",
@@ -63,7 +63,7 @@ beforeEach(() => {
   rpcSpy = vi.fn<RpcFn>().mockResolvedValue({ error: null });
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://supabase.test");
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon-key");
-  vi.stubEnv("PANDORA_DEV_AUTH_BYPASS", "");
+  vi.stubEnv("ALLOW_DEV_AUTH_BYPASS", "");
   vi.stubEnv("VERCEL", "");
   vi.stubEnv("VERCEL_ENV", "");
   for (const key of ["S3_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY", "SUPABASE_SERVICE_ROLE_KEY"]) {
@@ -78,7 +78,7 @@ afterEach(() => {
 describe("devAuthBypassAllowed", () => {
   it("nikdy v produkcii, ani so zapnutým flagom a loopbackom", () => {
     vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("PANDORA_DEV_AUTH_BYPASS", "1");
+    vi.stubEnv("ALLOW_DEV_AUTH_BYPASS", "true");
     expect(devAuthBypassAllowed(req())).toBe(false);
   });
 
@@ -87,14 +87,14 @@ describe("devAuthBypassAllowed", () => {
     expect(devAuthBypassAllowed(req())).toBe(true);
   });
 
-  it("development bez výslovného PANDORA_DEV_AUTH_BYPASS=1 nie (staging/preview)", () => {
+  it("development bez výslovného ALLOW_DEV_AUTH_BYPASS=true nie (staging/preview)", () => {
     vi.stubEnv("NODE_ENV", "development");
     expect(devAuthBypassAllowed(req())).toBe(false);
   });
 
   it("development + flag + loopback áno", () => {
     vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("PANDORA_DEV_AUTH_BYPASS", "1");
+    vi.stubEnv("ALLOW_DEV_AUTH_BYPASS", "true");
     expect(devAuthBypassAllowed(req())).toBe(true);
     expect(devAuthBypassAllowed(req("http://127.0.0.1:3000/api/vault"))).toBe(true);
     expect(
@@ -104,7 +104,7 @@ describe("devAuthBypassAllowed", () => {
 
   it("development + flag, ale vzdialený host alebo proxy z inej adresy nie", () => {
     vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("PANDORA_DEV_AUTH_BYPASS", "1");
+    vi.stubEnv("ALLOW_DEV_AUTH_BYPASS", "true");
     expect(devAuthBypassAllowed(req("http://100.70.1.16:3000/api/vault"))).toBe(false);
     expect(devAuthBypassAllowed(req("https://pandora.whoiswho.at/api/vault"))).toBe(false);
     expect(
@@ -122,7 +122,7 @@ describe("devAuthBypassAllowed", () => {
 
   it("development + flag + loopback, ale s prístupom k reálnym dôkazom nie (S3 alebo service rola)", () => {
     vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("PANDORA_DEV_AUTH_BYPASS", "1");
+    vi.stubEnv("ALLOW_DEV_AUTH_BYPASS", "true");
     vi.stubEnv("S3_ACCESS_KEY_ID", "AKIA-test");
     expect(devAuthBypassAllowed(req())).toBe(false);
     vi.stubEnv("S3_ACCESS_KEY_ID", "");
@@ -132,7 +132,7 @@ describe("devAuthBypassAllowed", () => {
 
   it("development + flag na Verceli (preview) nie", () => {
     vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("PANDORA_DEV_AUTH_BYPASS", "1");
+    vi.stubEnv("ALLOW_DEV_AUTH_BYPASS", "true");
     vi.stubEnv("VERCEL_ENV", "preview");
     expect(devAuthBypassAllowed(req())).toBe(false);
   });
@@ -162,21 +162,21 @@ describe("authenticateVaultRequest", () => {
 
   it("lokálny obchvat (flag + loopback) → dev identita s devBypass: true", async () => {
     vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("PANDORA_DEV_AUTH_BYPASS", "1");
+    vi.stubEnv("ALLOW_DEV_AUTH_BYPASS", "true");
     const auth = await authenticateVaultRequest(req());
     expect(auth).toMatchObject({ userId: "dev-investigator-001", devBypass: true });
   });
 
   it("v next dev obchvat ignoruje x-dev-user-id — identita je pevná", async () => {
     vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("PANDORA_DEV_AUTH_BYPASS", "1");
+    vi.stubEnv("ALLOW_DEV_AUTH_BYPASS", "true");
     const auth = await authenticateVaultRequest(req(undefined, { "x-dev-user-id": STRANGER_ID }));
     expect(auth).toMatchObject({ userId: "dev-investigator-001", devBypass: true });
   });
 
   it("platný token → identita z tokenu s devBypass: false, aj v developmente", async () => {
     vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("PANDORA_DEV_AUTH_BYPASS", "1");
+    vi.stubEnv("ALLOW_DEV_AUTH_BYPASS", "true");
     const auth = await authenticateVaultRequest(req(undefined, { authorization: `Bearer ${TOKEN}` }));
     expect(auth).toMatchObject({ userId: OWNER_ID, devBypass: false });
   });
@@ -250,10 +250,10 @@ describe("POST /api/vault/presign mimo produkcie so skutočným tokenom", () => 
 describe("P0-09 — pamäťový register dôkazov len pre dev obchvat", () => {
   it("položku nahratú cez obchvat nevidí požiadavka so skutočným tokenom", async () => {
     vi.stubEnv("NODE_ENV", "test");
-    const { uploadCaseDocument } = await import("@/lib/storage/s3-vault");
-    const { evidenceStorageKey } = await import("@/lib/storage/evidence-ledger");
-    const { POST } = await import("@/app/api/vault/route");
-    vi.mocked(uploadCaseDocument).mockImplementation(async (caseId, file) =>
+    const { uploadCaseDocument } = await import("../storage/s3-vault");
+    const { evidenceStorageKey } = await import("../storage/evidence-ledger");
+    const { POST } = await import("../../app/api/vault/route");
+    vi.mocked(uploadCaseDocument).mockImplementation(async (caseId: string, file: any) =>
       evidenceStorageKey(caseId, file.sha256, file.name),
     );
     const { createHash } = await import("node:crypto");

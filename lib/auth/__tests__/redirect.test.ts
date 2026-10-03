@@ -40,9 +40,13 @@ describe('isInternalPath', () => {
     expect(isInternalPath('//evil.com/path')).toBe(false);
   });
 
-  it('returns false for external paths', () => {
+  it('returns false for unknown top-level paths', () => {
     expect(isInternalPath('/external')).toBe(false);
-    expect(isInternalPath('/api/external')).toBe(false);
+  });
+
+  it('returns true for /api/* paths (all api routes are internal)', () => {
+    expect(isInternalPath('/api/external')).toBe(true);
+    expect(isInternalPath('/api/vault')).toBe(true);
   });
 
   it('returns false for null and undefined', () => {

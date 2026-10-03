@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { z } from "zod";
+import { MAX_PASSWORD_ID_LENGTH } from "./ipc-contract.js";
 
 const tabId = z.string().min(1).max(128);
 const url = z.string().url().max(2048);
@@ -53,12 +54,13 @@ const invokeSchemas = {
   "extension:list": z.undefined(),
   "extension:load": z.string().min(1).max(1024),
   "password:get": z.undefined(),
+  "password:reveal": z.string().min(1).max(MAX_PASSWORD_ID_LENGTH),
   "password:save": z.object({
     url,
     username: z.string().trim().min(1).max(320),
     password: z.string().min(1).max(1_024),
   }),
-  "password:delete": z.string().min(1).max(128),
+  "password:delete": z.string().min(1).max(MAX_PASSWORD_ID_LENGTH),
 } as const;
 
 const eventChannels = new Set([

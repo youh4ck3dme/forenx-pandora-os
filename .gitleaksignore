@@ -40,3 +40,7 @@ dc1502f588b83ffae832547e48900b651732d807:db/cleanroom/tests/08-supabase-docker-i
 3d097d91152c52d8f89079f154605c8f6c03ff3f:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:54
 3d097d91152c52d8f89079f154605c8f6c03ff3f:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:105
 3d097d91152c52d8f89079f154605c8f6c03ff3f:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:107
+
+# Historical Docker build-arg in a deleted revision of the production-verification
+# workflow: empty-payload JWT placeholder (not a Supabase key). Line no longer exists.
+4b99826bfeb335883ffa024d0c916a35d6207e67:.github/workflows/production-verification.yml:generic-api-key:112

@@ -22,6 +22,12 @@ describe("Focused Regression: Production Fixes", () => {
       expect(FaviconService.getFaviconUrl("https://192.168.1.1")).toBe("");
     });
 
+    it("returns local /favicon.svg for internal and own pandora domains without external query", () => {
+      expect(FaviconService.getFaviconUrl("https://pandora.whoiswho.at")).toBe("/favicon.svg");
+      expect(FaviconService.getFaviconUrl("http://pandora.whoiswho.at/forza/")).toBe("/favicon.svg");
+      expect(FaviconService.getFaviconUrl("https://auth.whoiswho.at")).toBe("/favicon.svg");
+    });
+
     it("allows valid public http and https URLs", () => {
       const url1 = FaviconService.getFaviconUrl("https://example.com");
       expect(url1).toContain("https://www.google.com/s2/favicons?domain=example.com");

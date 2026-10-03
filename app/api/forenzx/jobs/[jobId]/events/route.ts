@@ -21,11 +21,11 @@ export async function GET(request: NextRequest, { params }: Params) {
   const { data: job, error: lookupError } = await (supabaseAdmin as any)
     .from("forenzx_analysis_jobs")
     .select("hub_job_id")
-    .eq("hub_job_id", jobId)
+    .eq("id", jobId)
     .eq("user_id", auth.userId)
     .maybeSingle();
   if (lookupError) return NextResponse.json({ error: "Stav úlohy sa nepodarilo overiť." }, { status: 503 });
-  if (!job) return NextResponse.json({ error: "Úloha nebola nájdená." }, { status: 404 });
+  if (!job?.hub_job_id) return NextResponse.json({ error: "Úloha nebola nájdená." }, { status: 404 });
 
   const baseUrl = process.env.FORENZX_MCP_URL?.trim().replace(/\/$/, "");
   const apiKey = process.env.FORENZX_MCP_API_KEY?.trim();
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "ForenZX MCP nie je nakonfigurovaný." }, { status: 503 });
   }
 
-  const upstream = await fetch(`${baseUrl}/api/v1/jobs/${encodeURIComponent(jobId)}/events`, {
+  const upstream = await fetch(`${baseUrl}/api/v1/jobs/${encodeURIComponent(job.hub_job_id)}/events`, {
     headers: { accept: "text/event-stream", "x-api-key": apiKey },
     cache: "no-store",
   });

@@ -1,14 +1,14 @@
 /**
  * PANDORA / ForenX - Authentication Library
- * 
+ *
  * Centralized authentication utilities for the application.
- * 
+ *
  * This library provides:
  * - Session validation helpers
  * - Route classification
  * - Authorization guards
  * - Open redirect protection
- * 
+ *
  * Security Principles:
  * 1. Never trust client-side state for authorization
  * 2. Always validate authentication server-side
@@ -16,14 +16,21 @@
  * 4. Fail closed - deny access on any uncertainty
  */
 
+export * from './cookies';
 export * from './redirect';
+export {
+    PUBLIC_ROUTES,
+    isPublicRoutePattern,
+    matchRoutePattern
+} from './route-policy';
+export type { PublicRoute } from './route-policy';
 
-export type { RouteCategory } from '@/middleware';
+export type { RouteCategory } from './route-policy';
 
 /**
- * Re-export route classification from middleware for use in other contexts
+ * Re-export route classification from route-policy for use in other contexts
  */
-import type { RouteCategory } from '@/middleware';
+import type { RouteCategory } from './route-policy';
 
 /**
  * User session information extracted from Supabase JWT
@@ -61,82 +68,22 @@ export const FORBIDDEN_RESPONSE = {
  * Public routes that don't require authentication.
  * These are explicitly allowed without a session.
  */
-export const PUBLIC_ROUTES = [
-  '/',
-  '/auth',
-  '/auth/login',
-  '/auth/register',
-  '/blog',
-  '/blog/[...slug]',
-  '/healthz',
-  '/api/healthz',
-  '/api/health/observe',
-] as const;
+import {
+    PUBLIC_ROUTES,
+    matchRoutePattern,
+} from './route-policy';
 
 /**
  * Check if a path is in the public routes list
  */
 export function isPublicRoute(path: string): boolean {
-  return PUBLIC_ROUTES.some(route => {
-    if (route === path) return true;
-    if (route.endsWith('/*')) {
-      const prefix = route.slice(0, -2);
-      return path === prefix || path.startsWith(`${prefix}/`);
-    }
-    if (route.includes('[...')) {
-      // Convert route pattern to regex
-      const pattern = route.replace(/\/\[\.\.\.\]/g, '/.*');
-      const regex = new RegExp(`^${pattern}$`);
-      return regex.test(path);
-    }
-    return false;
-  });
+  return PUBLIC_ROUTES.some((route) => matchRoutePattern(path, route));
 }
-
-/**
- * Routes that require project/case access
- */
-export const PROJECT_REQUIRED_ROUTES = [
-  '/forza',
-  '/forza/*',
-  '/api/vault',
-  '/api/vault/*',
-  '/api/audit/access',
-] as const;
-
-/**
- * Check if a path requires project/case access
- */
-export function isProjectRequiredRoute(path: string): boolean {
-  return PROJECT_REQUIRED_ROUTES.some(route => {
-    if (route === path) return true;
-    if (route.endsWith('/*')) {
-      const prefix = route.slice(0, -2);
-      return path === prefix || path.startsWith(`${prefix}/`);
-    }
-    if (route.includes('[...')) {
-      const pattern = route.replace(/\/\[\.\.\.\]/g, '/.*');
-      const regex = new RegExp(`^${pattern}$`);
-      return regex.test(path);
-    }
-    return false;
-  });
-}
-
-/**
- * Routes that require specific roles
- */
-export const ROLE_REQUIRED_ROUTES: Record<string, string[]> = {
-  // Format: path -> [required roles]
-  // Currently none defined, but structure is in place for future use
-};
 
 /**
  * Get the appropriate auth level for a route
  */
 export function getRouteAuthLevel(path: string): RouteCategory {
   if (isPublicRoute(path)) return 'PUBLIC';
-  if (isProjectRequiredRoute(path)) return 'PROJECT_REQUIRED';
-  if (ROLE_REQUIRED_ROUTES[path]) return 'ROLE_REQUIRED';
   return 'AUTHENTICATED';
 }

@@ -2,21 +2,14 @@
 
 import { useCallback, useRef, useState } from "react";
 import { AiConsentDialog } from "@/components/malte/AiConsentDialog";
+import {
+  AI_CONSENT_VERSION,
+  hasAiConsent,
+  grantAiConsent,
+  AI_CONSENT_PREVIEW_FAILED_MESSAGE,
+} from "@/lib/ai-consent";
 
-const AI_CONSENT_VERSION = "1.0";
-const CONSENT_KEY_PREFIX = "forza-ai-consent-";
-
-function hasAiConsent(userId: string, caseId: string): boolean {
-  if (typeof window === "undefined") return false;
-  return localStorage.getItem(`${CONSENT_KEY_PREFIX}${userId}-${caseId}`) === AI_CONSENT_VERSION;
-}
-
-function grantAiConsent(userId: string, caseId: string): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(`${CONSENT_KEY_PREFIX}${userId}-${caseId}`, AI_CONSENT_VERSION);
-}
-
-type PendingState = { preview: string } | null;
+type PendingState = { preview: string; userId: string; caseId: string } | null;
 
 /**
  * Súhlas pred prvým odoslaním údajov prípadu do AI.
@@ -30,23 +23,23 @@ export function useAiConsent() {
     async (
       caseId: string,
       buildPreview: () => string | Promise<string>,
+      userId = "local",
     ): Promise<string | null> => {
-      const userId = "local";
       if (hasAiConsent(userId, caseId)) return AI_CONSENT_VERSION;
 
       let preview = "";
       try {
         preview = await buildPreview();
       } catch {
-        throw new Error("Nepodarilo sa zostaviť náhľad dát pre AI.");
+        throw new Error(AI_CONSENT_PREVIEW_FAILED_MESSAGE);
       }
       if (!preview.trim()) {
-        throw new Error("Nepodarilo sa zostaviť náhľad dát pre AI.");
+        throw new Error(AI_CONSENT_PREVIEW_FAILED_MESSAGE);
       }
 
       const confirmed = await new Promise<boolean>((resolve) => {
         decide.current = resolve;
-        setPending({ preview });
+        setPending({ preview, userId, caseId });
       });
       decide.current = null;
       setPending(null);

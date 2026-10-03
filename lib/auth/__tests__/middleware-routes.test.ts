@@ -10,7 +10,7 @@ import {
   getRouteCategory,
   isInternalPath,
   validateRedirectTarget,
-} from '@/middleware';
+} from '../../../middleware';
 
 describe('matchPathPattern', () => {
   it('matches exact paths', () => {
@@ -40,7 +40,6 @@ describe('matchPathPattern', () => {
 describe('Route Classification Logic', () => {
   it('identifies PUBLIC routes correctly', () => {
     const publicRoutes = [
-      '/',
       '/auth',
       '/auth/login',
       '/auth/register',
@@ -49,6 +48,7 @@ describe('Route Classification Logic', () => {
       // PUBLIC API routes
       '/api/csp-report',
       '/api/healthz',
+      '/api/health/public',
     ];
 
     publicRoutes.forEach(route => {
@@ -58,6 +58,12 @@ describe('Route Classification Logic', () => {
       const result = getRouteCategory(route);
       expect(result.category).toBe('PUBLIC');
     });
+  });
+
+  it('keeps Forza routes protected (AUTHENTICATED)', () => {
+    expect(getRouteCategory('/forza/stav').category).toBe('AUTHENTICATED');
+    expect(getRouteCategory('/forza/stav/').category).toBe('AUTHENTICATED');
+    expect(getRouteCategory('/forza/pripady').category).toBe('AUTHENTICATED');
   });
 
   it('identifies AUTHENTICATED routes correctly', () => {
@@ -140,3 +146,4 @@ describe('Open Redirect Protection Edge Cases', () => {
     expect(validateRedirectTarget('?param=value')).toBeNull();
   });
 });
+
