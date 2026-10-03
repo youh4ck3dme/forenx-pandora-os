@@ -121,14 +121,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Fail-closed: bucket must be configured before any presigned URL can be issued
-  if (!process.env.FORENZX_S3_BUCKET?.trim()) {
-    return NextResponse.json(
-      { error: "FORENZX_S3_BUCKET is not configured — presign-for-hub route is unavailable" },
-      { status: 500 },
-    );
-  }
-
   try {
     const presigned = await generateEvidencePresignedUrl(s3_object_key);
 
