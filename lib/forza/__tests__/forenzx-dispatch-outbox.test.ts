@@ -98,6 +98,20 @@ describe("forenzx dispatch outbox", () => {
     expect(saved[0].last_error).toBeNull();
   });
 
+  it("vercel cron targets the dispatch-outbox route", () => {
+    const vercel = JSON.parse(readFileSync("vercel.json", "utf8")) as {
+      crons?: Array<{ path: string; schedule: string }>;
+    };
+    const cron = vercel.crons?.find((entry) => entry.path === "/api/forenzx/dispatch-outbox");
+    expect(cron?.schedule).toBe("*/5 * * * *");
+    const route = readFileSync("app/api/forenzx/dispatch-outbox/route.ts", "utf8");
+    expect(route).toContain("export const GET = handle");
+    expect(route).toContain("export const POST = handle");
+    expect(route).toContain("drainForenzxDispatchOutbox");
+    const verify = readFileSync("lib/storage/evidence-verify.ts", "utf8");
+    expect(verify).toContain("drainForenzxDispatchOutbox");
+  });
+
   it("does not drop a row that has exhausted retries", () => {
     const claimed = claimForDispatch(
       pendingRow({ attempts: MAX_DISPATCH_ATTEMPTS - 1 }),
