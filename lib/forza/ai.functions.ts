@@ -966,10 +966,12 @@ export async function startForensicCaseAnalysisRun(
   }
 
   try {
-    const [{ start }, { forensicCaseAnalysisWorkflow }] = await Promise.all([
+    const [{ ensureWorkflowStorageDir }, { start }, { forensicCaseAnalysisWorkflow }] = await Promise.all([
+      import("./workflow-storage.server"),
       import("workflow/api"),
       import("./forensic-case-analysis.workflow"),
     ]);
+    await ensureWorkflowStorageDir();
     const run = await start(forensicCaseAnalysisWorkflow, [
       {
         ...data,

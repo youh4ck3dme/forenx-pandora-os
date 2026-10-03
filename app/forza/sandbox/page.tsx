@@ -208,6 +208,23 @@ function Sandbox() {
 
   const processFileList = async (fileList: File[]) => {
     if (fileList.length === 0) return;
+
+    // Fail-closed: bez potvrdeného súhlasu sa údaje do AI neodosielajú.
+    let consentVersion: string | null = null;
+    try {
+      consentVersion = await ensureConsent(activeCase.id, () =>
+        buildFilesPreview(fileList.map((f) => ({ name: f.name, size: f.size }))),
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : AI_CONSENT_PREVIEW_FAILED_MESSAGE,
+      );
+      return;
+    }
+    if (!consentVersion) return;
+
     setProcessing(true);
     setProcessingStage("uploading");
 
@@ -222,7 +239,7 @@ function Sandbox() {
       // Po jednom súbore: všetky naraz by prekročili limit tela požiadavky (Vercel ~4.5 MB).
       const result: { results: Awaited<ReturnType<typeof extractBulkFilesText>>["results"] } = { results: [] };
       for (const payload of payloads) {
-        const single = await extractBulkFilesText({ data: { files: [payload] } });
+        const single = await extractBulkFilesText({ data: { files: [payload], consentVersion } });
         result.results.push(...single.results);
       }
       let combined = "";
@@ -243,7 +260,7 @@ function Sandbox() {
       setExtractedText(combined);
 
       const parsed = await parseUploadedCaseDocument({
-        data: { text: combined, caseId: activeCase.id },
+        data: { text: combined, caseId: activeCase.id, consentVersion },
       });
 
       if (parsed.entities) {
@@ -304,7 +321,7 @@ function Sandbox() {
                   disabled={processing}
                 >
                   <Upload className="mr-1.5 h-4 w-4" />
-                  Nahrata spisy
+                  Nahrať spisy
                 </Button>
                 <input
                   ref={fileInput}
@@ -370,12 +387,30 @@ function Sandbox() {
                     className="w-full mt-2"
                     disabled={checkBusy === chk.task}
                     onClick={async () => {
+                      let consentVersion: string | null = null;
+                      try {
+                        consentVersion = await ensureConsent(activeCase.id, () =>
+                          Promise.resolve(
+                            `Spustenie kontroly: ${chk.label}\n${chk.detail}`,
+                          ),
+                        );
+                      } catch (err: any) {
+                        toast.error(
+                          err instanceof Error
+                            ? err.message
+                            : "Príprava súhlasu zlyhala.",
+                        );
+                        return;
+                      }
+                      if (!consentVersion) return;
+
                       setCheckBusy(chk.task);
                       try {
                         const res = await runAiTask({
                           data: {
                             caseId: activeCase.id,
                             task: chk.task,
+                            consentVersion,
                           },
                         });
                         setCheckResults((prev: any) => ({

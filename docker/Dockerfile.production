@@ -57,6 +57,9 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# Ensure persistent workflow data storage is writable by nextjs
+RUN mkdir -p /app/.workflow-data/runs && chown -R nextjs:nodejs /app/.workflow-data
+
 USER nextjs
 
 EXPOSE 3005

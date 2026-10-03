@@ -76,21 +76,24 @@ export function ProcessingOverlay({
 
   return (
     <div
-      className="processing-overlay fixed inset-0 z-100 flex items-center justify-center overflow-hidden px-5 py-8"
+      className="processing-overlay fixed inset-0 z-50 flex items-center justify-center overflow-y-auto px-4 py-8"
       role="dialog"
       aria-modal="true"
       aria-labelledby="processing-title"
       aria-describedby="processing-detail"
     >
-      <div className="processing-mist" aria-hidden />
-      <div className="processing-panel w-full max-w-sm overflow-hidden rounded-2xl border border-border p-6 shadow-elevated sm:p-8">
+      <div
+        className="processing-mist fixed inset-0 bg-black/85 backdrop-blur-md transition-opacity animate-in fade-in duration-200"
+        aria-hidden
+      />
+      <div className="processing-panel relative z-10 w-full max-w-sm sm:max-w-md overflow-hidden rounded-2xl border border-border bg-card/98 text-card-foreground p-6 shadow-2xl backdrop-blur-xl sm:p-8 animate-in zoom-in-95 duration-200">
         <div
-          className="processing-hourglass mx-auto mb-6 flex h-28 w-28 items-center justify-center rounded-full"
+          className="processing-hourglass relative mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-primary/10 border border-primary/25"
           aria-hidden
         >
-          <span className="processing-hourglass-ring absolute inset-0 rounded-full" />
+          <span className="processing-hourglass-ring absolute inset-0 rounded-full border border-primary/30 animate-ping opacity-30" />
           <Hourglass
-            className="processing-hourglass-icon relative h-12 w-12 text-primary"
+            className="processing-hourglass-icon relative h-10 w-10 text-primary animate-pulse"
             strokeWidth={1.5}
           />
           <span className="processing-grain processing-grain-one" />
@@ -117,7 +120,7 @@ export function ProcessingOverlay({
         </div>
 
         <div className="mt-6 grid grid-cols-2 gap-3">
-          <div className="rounded-lg border border-border bg-background/45 p-3 text-center">
+          <div className="rounded-lg border border-border bg-secondary/40 p-3 text-center">
             <p className="text-label">Uplynulo</p>
             <p
               className="mt-1 text-sm font-bold text-foreground tnum"
@@ -126,7 +129,7 @@ export function ProcessingOverlay({
               {formatElapsed(elapsed)}
             </p>
           </div>
-          <div className="rounded-lg border border-border bg-background/45 p-3 text-center">
+          <div className="rounded-lg border border-border bg-secondary/40 p-3 text-center">
             <p className="text-label">Aktuálny čas</p>
             <p
               className="mt-1 text-sm font-bold text-foreground tnum"
@@ -203,7 +206,7 @@ export function ProcessingOverlay({
           </div>
         </div>
 
-        <div className="mt-5 min-w-0 rounded-lg bg-muted/60 px-3 py-2 text-center">
+        <div className="mt-5 min-w-0 rounded-lg border border-border/50 bg-secondary/50 px-3 py-2 text-center">
           <p className="truncate text-xs font-medium text-foreground">
             {fileName || "Spracúvam pripravené dokumenty"}
           </p>
