@@ -40,7 +40,7 @@ describe("POST /api/forenzx/presign-for-hub — auth", () => {
   });
 
   it("returns 401 with no auth", async () => {
-    const { POST } = await import("../../app/api/forenzx/presign-for-hub/route");
+    const { POST } = await import("@/app/api/forenzx/presign-for-hub/route");
     const req = new NextRequest("http://localhost/api/forenzx/presign-for-hub", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -51,7 +51,7 @@ describe("POST /api/forenzx/presign-for-hub — auth", () => {
   });
 
   it("returns 401 with wrong Bearer token", async () => {
-    const { POST } = await import("../../app/api/forenzx/presign-for-hub/route");
+    const { POST } = await import("@/app/api/forenzx/presign-for-hub/route");
     const req = new NextRequest("http://localhost/api/forenzx/presign-for-hub", {
       method: "POST",
       headers: {
@@ -65,7 +65,7 @@ describe("POST /api/forenzx/presign-for-hub — auth", () => {
   });
 
   it("returns 401 with wrong x-forenzx-webhook-secret", async () => {
-    const { POST } = await import("../../app/api/forenzx/presign-for-hub/route");
+    const { POST } = await import("@/app/api/forenzx/presign-for-hub/route");
     const req = new NextRequest("http://localhost/api/forenzx/presign-for-hub", {
       method: "POST",
       headers: {
@@ -79,7 +79,7 @@ describe("POST /api/forenzx/presign-for-hub — auth", () => {
   });
 
   it("rejects caller-supplied downloadUrl", async () => {
-    const { POST } = await import("../../app/api/forenzx/presign-for-hub/route");
+    const { POST } = await import("@/app/api/forenzx/presign-for-hub/route");
     const req = new NextRequest("http://localhost/api/forenzx/presign-for-hub", {
       method: "POST",
       headers: {
@@ -98,7 +98,7 @@ describe("POST /api/forenzx/presign-for-hub — auth", () => {
   });
 
   it("rejects caller-supplied bucket", async () => {
-    const { POST } = await import("../../app/api/forenzx/presign-for-hub/route");
+    const { POST } = await import("@/app/api/forenzx/presign-for-hub/route");
     const req = new NextRequest("http://localhost/api/forenzx/presign-for-hub", {
       method: "POST",
       headers: {
@@ -114,7 +114,7 @@ describe("POST /api/forenzx/presign-for-hub — auth", () => {
   });
 
   it("rejects path traversal in s3_object_key", async () => {
-    const { POST } = await import("../../app/api/forenzx/presign-for-hub/route");
+    const { POST } = await import("@/app/api/forenzx/presign-for-hub/route");
     const req = new NextRequest("http://localhost/api/forenzx/presign-for-hub", {
       method: "POST",
       headers: {

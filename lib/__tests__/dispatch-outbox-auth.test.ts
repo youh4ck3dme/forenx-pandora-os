@@ -31,14 +31,14 @@ describe("GET|POST /api/forenzx/dispatch-outbox — auth", () => {
   });
 
   it("returns 401 with no auth on GET", async () => {
-    const { GET } = await import("../../app/api/forenzx/dispatch-outbox/route");
+    const { GET } = await import("@/app/api/forenzx/dispatch-outbox/route");
     const req = new NextRequest("http://localhost/api/forenzx/dispatch-outbox", { method: "GET" });
     const res = await GET(req);
     expect(res.status).toBe(401);
   });
 
   it("returns 401 with wrong Bearer on POST", async () => {
-    const { POST } = await import("../../app/api/forenzx/dispatch-outbox/route");
+    const { POST } = await import("@/app/api/forenzx/dispatch-outbox/route");
     const req = new NextRequest("http://localhost/api/forenzx/dispatch-outbox", {
       method: "POST",
       headers: { Authorization: "Bearer wrong-secret" },
@@ -48,7 +48,7 @@ describe("GET|POST /api/forenzx/dispatch-outbox — auth", () => {
   });
 
   it("accepts correct FORENZX_WEBHOOK_SECRET as Bearer", async () => {
-    const { GET } = await import("../../app/api/forenzx/dispatch-outbox/route");
+    const { GET } = await import("@/app/api/forenzx/dispatch-outbox/route");
     const req = new NextRequest("http://localhost/api/forenzx/dispatch-outbox", {
       method: "GET",
       headers: { Authorization: `Bearer ${WEBHOOK_SECRET}` },
@@ -58,7 +58,7 @@ describe("GET|POST /api/forenzx/dispatch-outbox — auth", () => {
   });
 
   it("accepts correct FORENZX_WEBHOOK_SECRET via x-forenzx-webhook-secret", async () => {
-    const { POST } = await import("../../app/api/forenzx/dispatch-outbox/route");
+    const { POST } = await import("@/app/api/forenzx/dispatch-outbox/route");
     const req = new NextRequest("http://localhost/api/forenzx/dispatch-outbox", {
       method: "POST",
       headers: { "x-forenzx-webhook-secret": WEBHOOK_SECRET },
@@ -68,7 +68,7 @@ describe("GET|POST /api/forenzx/dispatch-outbox — auth", () => {
   });
 
   it("accepts CRON_SECRET as Bearer", async () => {
-    const { GET } = await import("../../app/api/forenzx/dispatch-outbox/route");
+    const { GET } = await import("@/app/api/forenzx/dispatch-outbox/route");
     const req = new NextRequest("http://localhost/api/forenzx/dispatch-outbox", {
       method: "GET",
       headers: { Authorization: `Bearer ${CRON_SECRET}` },
@@ -81,7 +81,7 @@ describe("GET|POST /api/forenzx/dispatch-outbox — auth", () => {
     process.env = { ...originalEnv };
     delete process.env.FORENZX_WEBHOOK_SECRET;
     delete process.env.CRON_SECRET;
-    const { GET } = await import("../../app/api/forenzx/dispatch-outbox/route");
+    const { GET } = await import("@/app/api/forenzx/dispatch-outbox/route");
     const req = new NextRequest("http://localhost/api/forenzx/dispatch-outbox", {
       method: "GET",
       headers: { Authorization: `Bearer ${WEBHOOK_SECRET}` },
