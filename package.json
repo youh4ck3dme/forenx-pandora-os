@@ -28,7 +28,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "audit": "node scripts/audit.mjs",
-    "audit:ast": "node scripts/ci/ast-guard.mjs",
+    "audit:ast": "node scripts/ci/ast-guard.mjs lib/ai && node scripts/ci/ast-guard.mjs app/api/forenzx",
     "ci:guard": "node scripts/ci/ast-guard.mjs lib/ai && vitest run",
     "verify:desktop-security": "npx vitest run electron/__tests__/ && npx tsc -p electron/tsconfig.json --noEmit",
     "verify:web": "npx tsc --noEmit && npm run build && npx vitest run",
