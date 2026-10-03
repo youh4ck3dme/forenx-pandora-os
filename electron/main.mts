@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url'
 import { ElectronBlocker } from '@ghostery/adblocker-electron'
 import fetch from 'cross-fetch'
 import { HistoryManager } from './history-manager.js'
-import { PasswordManager } from './password-manager.js'
+import { PasswordManager, createPasswordIpcHandlers } from './password-manager.js'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { streamText } from 'ai'
@@ -155,27 +155,25 @@ function isMainWindowSender(event: Electron.IpcMainInvokeEvent): boolean {
     return !!mainWindow && event.sender.id === mainWindow.webContents.id
 }
 
+const passwordIpcHandlers = createPasswordIpcHandlers(
+    () => passwordManager,
+    isMainWindowSender
+)
+
 ipcMain.handle('password:get', async (event) => {
-    if (!isMainWindowSender(event)) return { ok: false, code: 'FORBIDDEN' }
-    return passwordManager?.listMasked() ?? []
+    return passwordIpcHandlers.handleGet(event)
 })
 
 ipcMain.handle('password:reveal', async (event, id: unknown) => {
-    if (!isMainWindowSender(event)) return { ok: false, code: 'FORBIDDEN' }
-    if (typeof id !== 'string' || id.length === 0 || id.length > 128) return { ok: false, code: 'VALIDATION_ERROR' }
-    const entry = passwordManager?.revealPassword(id) ?? null
-    if (!entry) return { ok: false, code: 'NOT_FOUND' }
-    return { ok: true, entry }
+    return passwordIpcHandlers.handleReveal(event, id)
 })
 
 ipcMain.handle('password:save', async (event, entry) => {
-    if (!isMainWindowSender(event)) return { ok: false, code: 'FORBIDDEN' }
-    return passwordManager?.savePassword(entry)
+    return passwordIpcHandlers.handleSave(event, entry)
 })
 
 ipcMain.handle('password:delete', async (event, id) => {
-    if (!isMainWindowSender(event)) return { ok: false, code: 'FORBIDDEN' }
-    return passwordManager?.deletePassword(id)
+    return passwordIpcHandlers.handleDelete(event, id)
 })
 
 // IPC Handlers for Session Data

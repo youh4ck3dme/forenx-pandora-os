@@ -64,3 +64,13 @@ describe("PasswordManager", () => {
     expect(pm.listMasked()).toHaveLength(0);
   });
 });
+
+describe("MAX_PASSWORD_ID_LENGTH consistency", () => {
+  it("ipc-contract MAX_PASSWORD_ID_LENGTH covers max base64(url:username)", async () => {
+    const { MAX_PASSWORD_ID_LENGTH } = await import("../ipc-contract");
+    // Worst case: url=2048 ASCII + ':' + username=320 × 4 bytes UTF-8 = 3329 bytes → ceil(3329/3)*4 = 4440
+    const maxInputBytes = 2048 + 1 + 320 * 4;
+    const maxBase64Chars = Math.ceil(maxInputBytes / 3) * 4;
+    expect(MAX_PASSWORD_ID_LENGTH).toBeGreaterThanOrEqual(maxBase64Chars);
+  });
+});
