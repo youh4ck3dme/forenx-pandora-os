@@ -35,6 +35,14 @@ Web, PWA, mobile a Electron nesmú implementovať rozdielne pravidlá pre vlastn
 
 - **Second Brain at-rest šifrovanie a IPC sender gate**: `userData/history-index.json` nesmie ukladať plaintext page body (`content`). `HistoryManager` (`electron/history-manager.ts`) šifruje zachytený obsah stránky pomocou `safeStorage.encryptString` a ukladá ho ako base64 `encryptedContent`. Ak `safeStorage.isEncryptionAvailable()` nie je k dispozícii, nový text stránky sa na disk nezapisuje (fail-closed); už uložený nepriehľadný ciphertext sa však v pamäti bezpečne zachová a pri ďalšom zápise sa prenesie bez zmeny, ak sa obsah nepodarilo dešifrovať. Volajúci dovtedy dostávajú prázdny obsah. Starý plaintext index sa pri prvom načítaní okamžite premigruje (zašifruje alebo očistí od plaintextu) a prepíše na disku. Kanály `history:search` a `history:getContent` sú prísne viazané na `isMainWindowSender(event)` (`mainWindow.webContents`), čím sa zabraňuje crosstalku a úniku histórie z BrowserView alebo cudzích rámcov.
 
+- **Electron Password Manager IPC sender gates**: Správa hesiel (`electron/password-manager.ts`) beží výhradne v main procese; renderer pristupuje k nej iba cez overené IPC kanály. Všetky kanály vyžadujú `isMainWindowSender(event)` (overenie `event.sender.id === mainWindow.webContents.id`). Pri volaní z nepovoleného odosielateľa (BrowserView, cudzie iframe/framy) systém vracia fail-closed odpoveď: `password:*` a `extension:load` vracajú `{ ok: false, code: 'FORBIDDEN' }`, zatiaľ čo `session:clear-data`, `history:*` a dialógy vracajú `false`, prázdne pole alebo `null`. Kanonické kontrakty kanálov:
+  - `password:get` → vracia iba maskované metadáta (`id`, `url`, `username`, `updatedAt`) cez `listMasked()`; žiadny bulk plaintext ani šifrované heslá.
+  - `password:reveal` → sprístupňuje dešifrovaný plaintext jediného záznamu podľa validovaného `id` s dĺžkou 1–`MAX_PASSWORD_ID_LENGTH` (4 440 znakov; horná hranica base64 kódovania `url:username` pri `url≤2048`, `username≤320` v UTF-8, pričom pre ASCII je minimum 3 160 znakov); vracia `{ ok: true, entry }` s dešifrovaným heslom alebo chybový objekt `{ ok: false, code }` s hodnotou `FORBIDDEN`, `VALIDATION_ERROR` alebo `NOT_FOUND`. Nikdy nevracia batch hesiel.
+  - `password:save` → uloží jedno heslo zašifrované cez `safeStorage.encryptString`; ID je deterministicky generované ako `base64(url + ":" + username)`. Chránené cez `isMainWindowSender`.
+  - `password:delete` → zmaže záznam podľa `id`; limit dĺžky ohraničený zdieľanou konštantou `MAX_PASSWORD_ID_LENGTH`. Chránené cez `isMainWindowSender`.
+  - Zdieľaná konštanta `MAX_PASSWORD_ID_LENGTH = 4440` (alias `MAX_PASSWORD_RECORD_ID_LENGTH`) je definovaná v `electron/ipc-contract.ts` a priamo importovaná a synchronizovaná v `electron/preload.ts` (`invokeSchemas`), `electron/main.mts` aj `electron/password-manager.ts`.
+  - Rovnaký `isMainWindowSender` gate chráni aj ostatné citlivé operácie: `session:clear-data`, `history:search`, `history:getContent`, `extension:load`, `capture:page`, `dialog:openFile`, `dialog:saveFile`.
+
 ## 3. Kanonický dátový tok
 
 ```text
@@ -69,9 +77,9 @@ AI môže vytvoriť hypotézu, klasifikáciu alebo nález, ale nesmie zmeniť p�
 
 ### 3.1 Autentifikácia a relácie (Auth Session Invariants)
 
-- **Klientske ukladanie vs. Serverový middleware:** Supabase JS ukladá reláciu na klientovi do `localStorage`. Next.js Edge Middleware (`middleware.ts`) a Server Components overujú reláciu server-side cez HTTP cookies (`sb-access-token`, `sb-refresh-token`) a `Authorization: Bearer <token>` header.
-- **Synchronizácia do cookies (`lib/auth/cookies.ts`):** Po úspešnom `signInWithPassword`, `signUp` alebo `TOKEN_REFRESHED` sa tokeny synchrónne zapisujú do `document.cookie` (`sb-access-token`, `sb-refresh-token` s parametrami `Path=/`, `SameSite=Lax`, `Secure` pri HTTPS).
-- **Globálny cookie sync (`components/core/providers/auth-cookie-sync.tsx`):** V pozadí počúva na `onAuthStateChange` a udržiava cookies v súlade s platným Supabase tokenom.
+- **Klientske ukladanie vs. Serverový middleware:** Supabase JS ukladá reláciu na klientovi do `localStorage`. Next.js Middleware (`middleware.ts`) overuje reláciu server-side cez HTTP cookies (`sb-access-token`, `sb-refresh-token`) a `Authorization: Bearer <token>` header.
+- **Synchronizácia do cookies (`lib/auth/cookies.ts`):** Po úspešnom `signInWithPassword`, `signUp` alebo `TOKEN_REFRESHED` klient volá `syncAuthCookies(session)`, ktorý posiela token na `POST /api/auth/session`. Server overí token cez Supabase a vydá HttpOnly cookies (`sb-access-token`, `sb-refresh-token`). Tokeny sa **nikdy nepíšu priamo cez `document.cookie`** — vždy prechádzajú cez server-side bridge (`app/api/auth/session/route.ts`).
+- **Globálny cookie sync (`components/core/providers/auth-cookie-sync.tsx`):** V pozadí počúva na `onAuthStateChange` (`SIGNED_IN`, `TOKEN_REFRESHED`, `INITIAL_SESSION`) a volá `syncAuthCookies(session)`. Pri `SIGNED_OUT` volá `DELETE /api/auth/session`.
 - **Čistenie relácie:** Pri odhlásení cez `signOutEverywhere` / `clearClientState` sa cookies zneplatnia (`Max-Age=0`).
 - **Presmerovanie po prihlásení:** Pri neautentifikovanom prístupe k chráneným trasám middleware presmeruje priamo na `/auth/login?next=<sanitized_path>`, pričom cieľová cesta musí prejsť validáciou open-redirect ochrany (`lib/auth/redirect.ts`).
 
