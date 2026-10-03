@@ -25,12 +25,12 @@ export {
 } from './route-policy';
 export type { PublicRoute } from './route-policy';
 
-export type { RouteCategory } from '@/middleware';
+export type { RouteCategory } from './route-policy';
 
 /**
- * Re-export route classification from middleware for use in other contexts
+ * Re-export route classification from route-policy for use in other contexts
  */
-import type { RouteCategory } from '@/middleware';
+import type { RouteCategory } from './route-policy';
 
 /**
  * User session information extracted from Supabase JWT

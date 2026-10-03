@@ -4,6 +4,13 @@
  * Keep this module free of framework imports: it is consumed by both the
  * request middleware and server-side auth helpers.
  */
+
+/**
+ * Route categories for access control. Defined here (not in middleware.ts) so
+ * lib/auth can use the type without creating a circular import.
+ */
+export type RouteCategory = 'PUBLIC' | 'AUTHENTICATED' | 'SYSTEM';
+
 export const PUBLIC_ROUTES = [
   "/",
   "/auth",

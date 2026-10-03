@@ -232,3 +232,94 @@ describe('Middleware - Explicit Bearer Token Precedence (Blueprint P2)', () => {
     expect(response?.status).toBe(401);
   });
 });
+
+describe('Middleware - Session Refresh Cookies Are HttpOnly (R-3)', () => {
+  test('middleware source sets httpOnly: true on refresh cookies', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../../../middleware.ts'),
+      'utf8',
+    );
+    const refreshBlock = src.slice(src.indexOf('if (refreshedSession)'));
+    const matches = [...refreshBlock.matchAll(/httpOnly:\s*true/g)];
+    expect(matches.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('Canonical Redirect Validator (R-2)', () => {
+  test('middleware re-exports isInternalPath and validateRedirectTarget from lib/auth/redirect', async () => {
+    const middlewareModule = await import('../../../middleware');
+    const redirectModule = await import('../redirect');
+    expect(middlewareModule.isInternalPath).toBe(redirectModule.isInternalPath);
+    expect(middlewareModule.validateRedirectTarget).toBe(redirectModule.validateRedirectTarget);
+  });
+});
+
+describe('Auth Architecture - Circular Import Prevention (R-5)', () => {
+  test('lib/auth/index.ts does not import from middleware', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../index.ts'),
+      'utf8',
+    );
+    expect(src).not.toContain('@/middleware');
+    expect(src).not.toContain("from '../middleware'");
+    expect(src).not.toContain('from "../../middleware"');
+  });
+});
+
+describe('Middleware - Fail-Closed devAuthBypassAllowed (R-1)', () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  test('returns false in production even if ALLOW_DEV_AUTH_BYPASS is true', async () => {
+    const { devAuthBypassAllowed } = await import('../../../middleware');
+    process.env.NODE_ENV = 'production';
+    process.env.ALLOW_DEV_AUTH_BYPASS = 'true';
+    const req = new NextRequest('http://localhost:3000/forza');
+    expect(devAuthBypassAllowed(req)).toBe(false);
+  });
+
+  test('returns false when ALLOW_DEV_AUTH_BYPASS is not true', async () => {
+    const { devAuthBypassAllowed } = await import('../../../middleware');
+    process.env.NODE_ENV = 'development';
+    delete process.env.ALLOW_DEV_AUTH_BYPASS;
+    const req = new NextRequest('http://localhost:3000/forza');
+    expect(devAuthBypassAllowed(req)).toBe(false);
+  });
+
+  test('returns false on Vercel', async () => {
+    const { devAuthBypassAllowed } = await import('../../../middleware');
+    process.env.NODE_ENV = 'development';
+    process.env.ALLOW_DEV_AUTH_BYPASS = 'true';
+    process.env.VERCEL = '1';
+    const req = new NextRequest('http://localhost:3000/forza');
+    expect(devAuthBypassAllowed(req)).toBe(false);
+  });
+
+  test('returns false when real evidence access keys are present', async () => {
+    const { devAuthBypassAllowed } = await import('../../../middleware');
+    process.env.NODE_ENV = 'development';
+    process.env.ALLOW_DEV_AUTH_BYPASS = 'true';
+    delete process.env.VERCEL;
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'secret-service-key';
+    const req = new NextRequest('http://localhost:3000/forza');
+    expect(devAuthBypassAllowed(req)).toBe(false);
+  });
+
+  test('returns false for non-loopback hostname', async () => {
+    const { devAuthBypassAllowed } = await import('../../../middleware');
+    process.env.NODE_ENV = 'development';
+    process.env.ALLOW_DEV_AUTH_BYPASS = 'true';
+    delete process.env.VERCEL;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const req = new NextRequest('https://evil.example.com/forza');
+    expect(devAuthBypassAllowed(req)).toBe(false);
+  });
+});
+

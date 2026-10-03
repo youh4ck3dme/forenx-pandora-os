@@ -8,20 +8,34 @@
  */
 
 /**
- * Application internal path prefixes.
- * These define which paths are considered "internal" and safe for redirects.
+ * Canonical list of internal application path prefixes.
+ * Used for open-redirect protection in both middleware and client-side redirects.
+ * Keep in sync with the route table in middleware.ts.
  */
-const INTERNAL_PATHS = [
+export const INTERNAL_PATH_PREFIXES = [
   '/',
   '/forza',
+  '/prehlad',
+  '/asistent',
+  '/vztahy',
+  '/workspace',
+  '/cases',
+  '/pripad',
+  '/export',
+  '/profile',
+  '/settings',
   '/browser',
   '/forge',
   '/offline',
   '/auth',
+  '/blog',
+  '/healthz',
+  '/api',
 ] as const;
 
 /**
  * Check if a path string represents an internal application path.
+ * Used to prevent open redirect vulnerabilities.
  * 
  * @param path - The path to validate
  * @returns true if the path is internal, false otherwise
@@ -37,27 +51,19 @@ const INTERNAL_PATHS = [
 export function isInternalPath(path: string | null | undefined): boolean {
   if (!path) return false;
   
-  // Reject absolute URLs
+  // Must be a relative path (not absolute URL or protocol-relative)
   if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('//')) {
     return false;
   }
   
-  // Parse the path to extract just the pathname (ignore query and hash)
-  try {
-    // Try to parse as URL to extract pathname
-    const url = new URL(path, 'http://dummy.example');
-    path = url.pathname;
-  } catch {
-    // If URL parsing fails, use the path as-is
-    // This handles paths that might have query strings
-  }
-  
-  // Remove query string and hash if present
+  // Remove query string and hash for prefix matching
   const cleanPath = path.split('?')[0].split('#')[0];
-  
-  // Check against internal path prefixes
-  for (const internalPath of INTERNAL_PATHS) {
-    if (cleanPath === internalPath || cleanPath.startsWith(`${internalPath}/`)) {
+
+  // Case-insensitive prefix check (paths like /FORZA/pripady are valid)
+  const lowerCleanPath = cleanPath.toLowerCase();
+  for (const prefix of INTERNAL_PATH_PREFIXES) {
+    const lowerPrefix = prefix.toLowerCase();
+    if (lowerCleanPath === lowerPrefix || lowerCleanPath.startsWith(`${lowerPrefix}/`)) {
       return true;
     }
   }
@@ -67,58 +73,67 @@ export function isInternalPath(path: string | null | undefined): boolean {
 
 /**
  * Validate and sanitize a redirect target URL.
+ * Returns the sanitized path or null if invalid.
+ * 
+ * Security: Rejects absolute URLs, javascript:, data: URIs, and path traversal.
  * 
  * @param next - The redirect target to validate
  * @returns The sanitized path if valid, or null if invalid
  * 
  * @example
- * validateRedirect('/forza/pripady') // '/forza/pripady'
- * validateRedirect('/forza/pripady?tab=1') // '/forza/pripady?tab=1'
- * validateRedirect('https://evil.com') // null
- * validateRedirect('javascript:alert(1)') // null
- * validateRedirect('/auth?next=https://evil.com') // '/auth'
+ * validateRedirectTarget('/forza/pripady') // '/forza/pripady'
+ * validateRedirectTarget('/forza/pripady?tab=1') // '/forza/pripady?tab=1'
+ * validateRedirectTarget('https://evil.com') // null
+ * validateRedirectTarget('javascript:alert(1)') // null
  */
 export function validateRedirectTarget(next: string | null | undefined): string | null {
   if (!next) return null;
   
-  // Reject absolute URLs
-  if (next.startsWith('http://') || next.startsWith('https://') || next.startsWith('//')) {
+  const trimmed = next.trim();
+  if (!trimmed) return null;
+
+  // Reject dangerous characters like backslashes, encoded slashes, and null bytes
+  if (trimmed.includes('%2F') || trimmed.includes('%5C') || trimmed.includes('\\') || trimmed.includes('%00')) {
     return null;
   }
-  
+
+  // Reject paths that are only query strings or fragments
+  if (trimmed.startsWith('?') || trimmed.startsWith('#')) {
+    return null;
+  }
+
+  // Reject absolute URLs (http, https, protocol-relative)
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('//')) {
+    return null;
+  }
+
   // Reject javascript: and data: URLs
-  if (next.toLowerCase().startsWith('javascript:') || next.toLowerCase().startsWith('data:')) {
+  if (trimmed.toLowerCase().startsWith('javascript:') || trimmed.toLowerCase().startsWith('data:')) {
     return null;
   }
-  
-  // Parse the path
+
+  // Check for path traversal or double slashes
+  if (trimmed.includes('..') || trimmed.includes('//')) {
+    return null;
+  }
+
+  // Remove any query parameters or fragments
   try {
-    const url = new URL(next, 'http://dummy.example');
-    const pathname = url.pathname;
-    const search = url.search;
-    const hash = url.hash;
-    
-    // Validate the pathname is internal
-    if (!isInternalPath(pathname)) {
+    const url = new URL(trimmed, 'http://dummy.example');
+    const path = url.pathname + (url.search ? url.search : '') + (url.hash ? url.hash : '');
+
+    // Must be internal path
+    if (!isInternalPath(url.pathname)) {
       return null;
     }
-    
-    // Check for path traversal attempts
-    if (pathname.includes('..') || pathname.includes('//')) {
-      return null;
-    }
-    
-    // Reconstruct the path (pathname + search + hash)
-    return `${pathname}${search}${hash}`;
+
+    return path;
   } catch {
     // If URL parsing fails, check if it's a simple path
-    const cleanNext = next.split('?')[0].split('#')[0];
-    
+    const cleanNext = trimmed.split('?')[0].split('#')[0];
     if (isInternalPath(cleanNext)) {
-      // It's an internal path, allow it as-is
-      return next;
+      return trimmed;
     }
-    
     return null;
   }
 }

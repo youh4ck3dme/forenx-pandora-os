@@ -14,21 +14,16 @@ import { createClient, type Session, type User } from '@supabase/supabase-js';
 import {
   PUBLIC_ROUTES,
   matchRoutePattern,
+  type RouteCategory,
 } from '@/lib/auth/route-policy';
+import {
+  isInternalPath,
+  validateRedirectTarget,
+} from '@/lib/auth/redirect';
 
 // ============================================================================
 // ROUTE CLASSIFICATION
 // ============================================================================
-
-/**
- * Route categories for access control.
- *
- * PUBLIC: Accessible without authentication
- * AUTHENTICATED: Requires valid Supabase session
- * SYSTEM: Internal system endpoints (machine-to-machine, cron, etc.)
- */
-
-export type RouteCategory = 'PUBLIC' | 'AUTHENTICATED' | 'SYSTEM';
 
 /**
  * Route configuration: path pattern -> category
@@ -111,114 +106,6 @@ function getRouteCategory(pathname: string): { category: RouteCategory; pattern:
 // ============================================================================
 
 const SIGN_IN_ROUTE = '/auth/login/';
-const HOME_ROUTE = '/';
-
-/**
- * Application internal paths - used for open redirect protection.
- * These are the only paths that can be used as redirect targets.
- */
-const INTERNAL_PATH_PREFIXES = [
-  '/',
-  '/forza',
-  '/prehlad',
-  '/asistent',
-  '/vztahy',
-  '/workspace',
-  '/cases',
-  '/pripad',
-  '/export',
-  '/profile',
-  '/settings',
-  '/browser',
-  '/forge',
-  '/offline',
-  '/auth',
-  '/blog',
-  '/healthz',
-  '/api',
-];
-
-/**
- * Check if a path is an internal application path.
- * Used to prevent open redirect vulnerabilities.
- */
-function isInternalPath(path: string): boolean {
-  // Must be a relative path (not absolute URL)
-  if (!path || path.startsWith('http://') || path.startsWith('https://') || path.startsWith('//')) {
-    return false;
-  }
-
-  // Remove query string and hash for prefix matching
-  const cleanPath = path.split('?')[0].split('#')[0];
-
-  // Check if path starts with any internal prefix (case-insensitive)
-  const lowerCleanPath = cleanPath.toLowerCase();
-  for (const prefix of INTERNAL_PATH_PREFIXES) {
-    const lowerPrefix = prefix.toLowerCase();
-    if (lowerCleanPath === lowerPrefix || lowerCleanPath.startsWith(`${lowerPrefix}/`)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/**
- * Validate and sanitize redirect target.
- * Returns the sanitized path or null if invalid.
- *
- * Security: Rejects absolute URLs, javascript:, data: URIs, and path traversal.
- */
-function validateRedirectTarget(next: string | null): string | null {
-  if (!next) return null;
-
-  let trimmed = next.trim();
-  if (!trimmed) return null;
-
-  // Check for encoded slashes or other dangerous characters in the raw input
-  if (trimmed.includes('%2F') || trimmed.includes('%5C') || trimmed.includes('\\') || trimmed.includes('%00')) {
-    return null;
-  }
-
-  // Reject paths that are only query strings or fragments
-  if (trimmed.startsWith('?') || trimmed.startsWith('#')) {
-    return null;
-  }
-
-  // Reject absolute URLs (http, https, protocol-relative)
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('//')) {
-    return null;
-  }
-
-  // Reject javascript: and data: URLs
-  if (trimmed.toLowerCase().startsWith('javascript:') || trimmed.toLowerCase().startsWith('data:')) {
-    return null;
-  }
-
-  // Remove any query parameters or fragments
-  try {
-    const url = new URL(trimmed, 'http://dummy');
-    const path = url.pathname + (url.search ? url.search : '');
-
-    // Must be internal path
-    if (!isInternalPath(path)) {
-      return null;
-    }
-
-    // Must not contain dangerous patterns
-    if (path.includes('..') || path.includes('//')) {
-      return null;
-    }
-
-    return path;
-  } catch {
-    // If URL parsing fails, try simple path validation
-    if (isInternalPath(trimmed)) {
-      return trimmed;
-    }
-    return null;
-  }
-}
 
 // ============================================================================
 // SESSION VALIDATION
@@ -335,13 +222,7 @@ async function getSessionFromRequest(request: NextRequest): Promise<{
   }
 }
 
-/**
- * Check if request is from a development environment.
- * In development, we allow more permissive behavior for local testing.
- */
-function isDevelopment(): boolean {
-  return process.env.NODE_ENV === 'development';
-}
+
 
 /**
  * Check if dev auth bypass is allowed.
@@ -561,7 +442,7 @@ export {
   matchPathPattern,
   isInternalPath,
   validateRedirectTarget,
-  isDevelopment,
   devAuthBypassAllowed,
+  type RouteCategory,
 };
 
