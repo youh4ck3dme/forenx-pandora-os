@@ -20,6 +20,7 @@ export const CLEANROOM_FILES = [
   "007_storage_contract.sql",
   "008_security_hardening.sql",
   "009_evidence_case_id_ownership.sql",
+  "010_evidence_worm_case_id.sql",
 ] as const;
 
 export const SUPABASE_RUNTIME_STUBS = `
