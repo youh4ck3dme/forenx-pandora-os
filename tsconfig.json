@@ -68,6 +68,7 @@
     "**/*.test.tsx",
     "**/*.spec.ts",
     "**/*.spec.tsx",
-    "supabase/functions"
+    "supabase/functions",
+    "forenzx-mcp-hub"
   ]
 }

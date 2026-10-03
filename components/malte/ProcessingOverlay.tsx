@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, Hourglass } from "lucide-react";
 import {
   formatElapsed,
@@ -74,19 +75,19 @@ export function ProcessingOverlay({
   const uploadDone =
     stage === "analysing" || stage === "saving" || stage === "complete";
 
-  return (
+  const overlayContent = (
     <div
-      className="processing-overlay fixed inset-0 z-50 flex items-center justify-center overflow-y-auto px-4 py-8"
+      className="processing-overlay fixed inset-0 z-9999 flex items-center justify-center overflow-y-auto p-4 sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="processing-title"
       aria-describedby="processing-detail"
     >
       <div
-        className="processing-mist fixed inset-0 bg-black/85 backdrop-blur-md transition-opacity animate-in fade-in duration-200"
+        className="processing-mist fixed inset-0 z-9998 bg-black/92 backdrop-blur-xl transition-opacity animate-in fade-in duration-200"
         aria-hidden
       />
-      <div className="processing-panel relative z-10 w-full max-w-sm sm:max-w-md overflow-hidden rounded-2xl border border-border bg-card/98 text-card-foreground p-6 shadow-2xl backdrop-blur-xl sm:p-8 animate-in zoom-in-95 duration-200">
+      <div className="processing-panel relative z-9999 w-full max-w-sm sm:max-w-md overflow-hidden rounded-2xl border border-white/20 bg-[#0e1117] text-white p-6 shadow-[0_20px_60px_rgba(0,0,0,0.95)] sm:p-8 animate-in zoom-in-95 duration-200">
         <div
           className="processing-hourglass relative mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-primary/10 border border-primary/25"
           aria-hidden
@@ -206,15 +207,17 @@ export function ProcessingOverlay({
           </div>
         </div>
 
-        <div className="mt-5 min-w-0 rounded-lg border border-border/50 bg-secondary/50 px-3 py-2 text-center">
-          <p className="truncate text-xs font-medium text-foreground">
+        <div className="mt-5 min-w-0 rounded-lg border border-white/10 bg-white/4 px-3 py-2 text-center">
+          <p className="truncate text-xs font-medium text-white">
             {fileName || "Spracúvam pripravené dokumenty"}
           </p>
-          <p className="mt-1 text-[10px] text-muted-foreground">
+          <p className="mt-1 text-[10px] text-zinc-400">
             Nezatvárajte aplikáciu
           </p>
         </div>
       </div>
     </div>
   );
+
+  return createPortal(overlayContent, document.body);
 }

@@ -143,7 +143,7 @@ async function fetchPresignedDownloadUrl(
   s3ObjectKey: string,
   pandoraBaseUrl: string,
   webhookSecret: string,
-): Promise<{ download_url: string; filename: string; expires_at: string }> {
+): Promise<{ download_url: string; filename: string; expires_at: string; capability?: Record<string, unknown> }> {
   const url = `${pandoraBaseUrl.replace(/\/$/, "")}/api/forenzx/presign-for-hub`;
   const response = await fetch(url, {
     method: "POST",
@@ -157,7 +157,7 @@ async function fetchPresignedDownloadUrl(
     const text = await response.text().catch(() => "");
     throw new Error(`Pandora presign-for-hub returned ${response.status}: ${text.slice(0, 500)}`);
   }
-  const data = await response.json() as { download_url: string; filename: string; expires_at: string };
+  const data = await response.json() as { download_url: string; filename: string; expires_at: string; capability?: Record<string, unknown> };
   if (!data.download_url) throw new Error("Pandora presign-for-hub returned no download_url");
   return data;
 }
@@ -191,7 +191,7 @@ type LedgerEvidenceRow = {
 };
 
 async function writeCaseMismatchAudit(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   evidenceRow: LedgerEvidenceRow,
   suppliedCaseIds: unknown[] | null,
   evidenceId: string,
@@ -358,6 +358,7 @@ Deno.serve(async (request: Request) => {
         idempotency_key: idempotencyKey,
         download_url,
         download_filename: filename,
+        ...(presigned.capability ? { evidence_capability: presigned.capability } : {}),
       });
 
       if (!result.job_id) throw new Error("ForenZX did not return a job_id");

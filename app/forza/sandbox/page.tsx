@@ -245,11 +245,12 @@ function Sandbox() {
       let combined = "";
 
       result.results.forEach((r: any, idx: number) => {
-        combined += `\n--- SÚBOR: ${r.filename} ---\n${r.text}`;
+        const fName = r.fileName || fileStates[idx]?.name || `Dokument_${idx + 1}`;
+        combined += `\n--- SÚBOR: ${fName} ---\n${r.text || ""}`;
         fileStates[idx] = {
-          name: r.filename,
+          name: fName,
           status: r.error ? "failed" : "done",
-          chars: r.text.length,
+          chars: r.charCount || r.text?.length || 0,
           pages: r.pageCount,
           usedOcr: r.usedOcr,
           error: r.error,
@@ -260,7 +261,7 @@ function Sandbox() {
       setExtractedText(combined);
 
       const parsed = await parseUploadedCaseDocument({
-        data: { text: combined, caseId: activeCase.id, consentVersion },
+        data: { fileName: "sandbox_spisy.txt", textContent: combined, consentVersion },
       });
 
       if (parsed.entities) {
@@ -269,19 +270,24 @@ function Sandbox() {
           places: [],
           vehicles: parsed.entities.vehicles || [],
           weapons: parsed.entities.weapons || [],
-          companies: parsed.entities.companies || [],
+          companies: (parsed.entities.companies || []).map((c: any) => typeof c === "string" ? c : c.name || ""),
           paragraphs: parsed.entities.legalParagraphs || [],
           amounts: [],
         });
       }
 
-      await applyAiResultsToCase({
-        data: {
-          caseId: activeCase.id,
-          persons: parsed.entities?.persons || [],
-          companies: parsed.entities?.companies || [],
-        },
-      });
+      if (parsed.entities?.persons?.length || parsed.entities?.companies?.length) {
+        await applyAiResultsToCase({
+          data: {
+            caseId: activeCase.id,
+            persons: (parsed.entities.persons || []).map((p: any) => ({
+              name: p.name,
+              ...(p.role ? { role: p.role } : {}),
+            })),
+            companies: (parsed.entities.companies || []).map((c: any) => typeof c === "string" ? c : c.name || ""),
+          },
+        });
+      }
 
       refresh();
       toast.success("Spis bol úspešne spracovaný a entity boli vytvorené.");
