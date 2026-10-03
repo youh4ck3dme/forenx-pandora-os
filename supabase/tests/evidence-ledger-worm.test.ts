@@ -364,6 +364,28 @@ describe("evidence ledger: review hardening", () => {
       const row = await evidence(id);
       expect(row?.case_id).toBe(case1);
     });
+
+    it("rejects insert when case_id belongs to a different investigator (cross-tenant spoof)", async () => {
+      const owner = await createUser(db, "case-owner-ct@test.local");
+      const attacker = await createUser(db, "attacker-ct@test.local");
+      const ownerCase = await createCase(db, owner);
+
+      // attacker tries to insert evidence attributed to ownerCase — must be rejected
+      await expect(
+        insertEvidence(attacker, {
+          case_id: ownerCase,
+          s3_object_key: `cases/${ownerCase}/evidence/stolen.pdf`,
+        }),
+      ).rejects.toThrow(/does not belong to the authenticated user/);
+    });
+
+    it("allows NULL case_id insert (legacy orphan rows)", async () => {
+      const user = await createUser(db, "null-case-ct@test.local");
+      // NULL case_id must not trigger the ownership check
+      const id = await insertEvidence(user, { case_id: null });
+      const row = await evidence(id);
+      expect(row?.case_id).toBeNull();
+    });
   });
 });
 
