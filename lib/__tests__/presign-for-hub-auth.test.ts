@@ -32,7 +32,14 @@ describe("POST /api/forenzx/presign-for-hub — auth", () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
-    process.env = { ...originalEnv, FORENZX_WEBHOOK_SECRET: "test-secret-value-32chars-exactly!!" };
+    process.env = {
+      ...originalEnv,
+      FORENZX_WEBHOOK_SECRET: "test-secret-value-32chars-exactly!!",
+      FORENZX_S3_BUCKET: "test-bucket",
+      FORENZX_S3_REGION: "eu-central-1",
+      FORENZX_S3_ACCESS_KEY_ID: "AKIATEST",
+      FORENZX_S3_SECRET_ACCESS_KEY: "test-secret",
+    };
   });
 
   afterEach(() => {

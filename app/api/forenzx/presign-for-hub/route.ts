@@ -63,6 +63,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
+  // Fail-closed: bucket must be configured (checked after auth so 401 has priority)
+  if (!process.env.FORENZX_S3_BUCKET?.trim()) {
+    return NextResponse.json(
+      { error: "FORENZX_S3_BUCKET is not configured — presign-for-hub route is unavailable" },
+      { status: 500 },
+    );
+  }
+
   // Invariant: Webhook/presign endpoint must never accept downloadUrl from caller
   if (body && typeof body === "object" && ("downloadUrl" in body || "download_url" in body)) {
     return NextResponse.json(
