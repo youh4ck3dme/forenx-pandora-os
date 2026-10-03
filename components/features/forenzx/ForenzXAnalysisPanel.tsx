@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import { getForenZXTools, getForenZXJobs } from "@/lib/forza/forenzx-mcp.functions";
 import { useForenzxJobEvents } from "@/lib/hooks/useForenzxJobEvents";
 import type { ForenZXTool, ForenZXJob } from "@/lib/forza/forenzx-mcp.functions";
@@ -9,10 +8,7 @@ import type { ForenZXTool, ForenZXJob } from "@/lib/forza/forenzx-mcp.functions"
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface StartAnalysisPayload {
-  caseId: string;
   evidenceId: string;
-  s3ObjectKey: string;
-  sha256: string;
   inputType: string;
   packId?: string;
 }
@@ -22,9 +18,9 @@ export interface ForenzXAnalysisPanelProps {
   caseId?: string;
   /** UUID of the evidence item */
   evidenceId?: string;
-  /** S3 object key for the evidence file */
+  /** S3 object key for the evidence file (optional, resolved on server) */
   s3ObjectKey?: string;
-  /** SHA-256 from the Pandora evidence ledger */
+  /** SHA-256 from the Pandora evidence ledger (optional, resolved on server) */
   sha256?: string;
   /** Evidence input type (e.g. "ios_backup") */
   inputType?: string;
@@ -36,11 +32,17 @@ export interface ForenzXAnalysisPanelProps {
 // ── Progress bar ───────────────────────────────────────────────────────────────
 
 function ProgressBar({ percent }: { percent: number }) {
-  const clamped = Math.max(0, Math.min(100, percent));
+  const clamped = Math.min(100, Math.max(0, percent));
   return (
-    <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+    <div
+      role="progressbar"
+      aria-valuenow={clamped}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden"
+    >
       <div
-        className="h-full bg-linear-to-r from-cyan-500 to-violet-500 transition-all duration-500 rounded-full"
+        className="bg-linear-to-r from-cyan-500 to-violet-500 h-1.5 rounded-full transition-all duration-300"
         style={{ width: `${clamped}%` }}
       />
     </div>
@@ -49,33 +51,34 @@ function ProgressBar({ percent }: { percent: number }) {
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
-const STATUS_COLORS: Record<string, string> = {
-  starting: "text-yellow-400 bg-yellow-400/10",
-  queued:   "text-blue-400 bg-blue-400/10",
-  running:  "text-cyan-400 bg-cyan-400/10",
-  completed:"text-emerald-400 bg-emerald-400/10",
-  failed:   "text-red-400 bg-red-400/10",
-  cancelled:"text-zinc-400 bg-zinc-400/10",
-};
-
 function StatusBadge({ status }: { status: string }) {
-  const color = STATUS_COLORS[status.toLowerCase()] ?? "text-zinc-300 bg-zinc-300/10";
+  const config: Record<string, { label: string; color: string }> = {
+    starting: { label: "Štartujem", color: "bg-blue-500/20 text-blue-400 border-blue-500/30" },
+    queued: { label: "V rade", color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" },
+    running: { label: "Prebieha", color: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30" },
+    completed: { label: "Dokončené", color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
+    failed: { label: "Zlyhalo", color: "bg-red-500/20 text-red-400 border-red-500/30" },
+    cancelled: { label: "Zrušené", color: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30" },
+  };
+  const { label, color } = config[status.toLowerCase()] ?? {
+    label: status,
+    color: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
+  };
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide ${color}`}>
-      <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-      {status}
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${color}`}>
+      {label}
     </span>
   );
 }
 
-// ── Tool card (tools/list) ────────────────────────────────────────────────────
+// ── Tool card ─────────────────────────────────────────────────────────────────
 
 function ToolCard({ tool }: { tool: ForenZXTool }) {
   return (
-    <div className="flex flex-col gap-0.5 px-3 py-2 rounded-lg bg-white/5 border border-white/10 hover:border-cyan-500/30 transition-colors">
-      <span className="text-xs font-mono text-cyan-300 truncate">{tool.name}</span>
+    <div className="bg-white/5 rounded-lg p-2.5 flex flex-col gap-1 border border-white/5">
+      <span className="font-mono text-xs text-cyan-300 font-semibold">{tool.name}</span>
       {tool.description && (
-        <span className="text-xs text-zinc-400 line-clamp-2">{tool.description}</span>
+        <p className="text-xs text-zinc-400 line-clamp-2">{tool.description}</p>
       )}
     </div>
   );
@@ -145,18 +148,15 @@ export function ForenzXAnalysisPanel({
   // ── Start analysis ─────────────────────────────────────────────────────────
 
   const startAnalysis = useCallback(async () => {
-    if (!caseId || !evidenceId || !s3ObjectKey || !sha256) {
-      setStartError("Pre spustenie analýzy je potrebné vybrať dôkaz (chýbajú caseId/evidenceId/s3Key/hash).");
+    if (!evidenceId) {
+      setStartError("Pre spustenie analýzy je potrebné vybrať dôkaz (chýba evidenceId).");
       return;
     }
     setStartLoading(true);
     setStartError(null);
     try {
       const payload: StartAnalysisPayload = {
-        caseId,
         evidenceId,
-        s3ObjectKey,
-        sha256,
         inputType,
         packId,
       };
@@ -187,7 +187,7 @@ export function ForenzXAnalysisPanel({
     } finally {
       setStartLoading(false);
     }
-  }, [caseId, evidenceId, s3ObjectKey, sha256, inputType, packId]);
+  }, [caseId, evidenceId, inputType, packId]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 

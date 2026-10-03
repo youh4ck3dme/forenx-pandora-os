@@ -224,6 +224,13 @@ verified evidence
   → findings + execution record
 ```
 
+#### Browser ForenZX spúšťanie (`/api/forenzx/start`)
+
+- **Klientsky kontrakt:** Browser posiela výhradne `evidenceId`, `packId` a `inputType`.
+- **Integritný ledger:** `caseId`, `s3ObjectKey`, `sha256` a `fileSize` sa načítavajú výhradne zo serverového ledgera `evidence_items` podľa `evidenceId` a prihláseného vyšetrovateľa (`investigator_id`). Prípadné klientske hodnoty `s3ObjectKey` alebo `sha256` sú striktne ignorované a do presignu a ForenZX nástroja putujú len dáta z DB riadku.
+- **Fail-closed overenie:** Dôkaz musí mať `hash_verification_status = 'verified'`. Akýkoľvek iný stav vracia HTTP `403`. Chýbajúci alebo cudzí dôkaz vracia HTTP `404`.
+- **Dostupnosť case_id:** Tabuľka `evidence_items` nemá cudzí kľúč `case_id`. Dočasne sa používa identifikátor z riadku (`case_id` ak je prítomné, inak extrahovaný z cesty `s3_object_key` alebo `case_name`) bez pridávania migrácie v tomto PR.
+
 ### 6.1 Sprísnené AI schémy, oprava JSON, CSV a Export Manifest (Blueprint P4)
 
 - **Striktná typizácia schémy (`lib/forza/forensic-dossier.schema.ts`):** Všetky sub-schémy (`timeline`, `traces`, `attacks`, `evidence`, `paragraphs`, `analysisMeta`) sú prísne typované Zod schémami namiesto voľných `z.record(z.unknown())`. Neznáme alebo malformované štruktúry zlyhajú na validačnej bráne.
