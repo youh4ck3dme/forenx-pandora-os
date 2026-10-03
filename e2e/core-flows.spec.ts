@@ -14,6 +14,7 @@ test.describe('PΛND0RΛ Browser Core Flows', () => {
     });
 
     test('should open Forge editor panel', async ({ page }) => {
+        test.skip(!process.env.E2E_USER_EMAIL, 'Vyžaduje autentifikovanú session (E2E_USER_EMAIL)');
         await page.goto('/forge', { waitUntil: 'domcontentloaded' });
         await expect(page.getByText('Forge Studio').first()).toBeVisible();
         await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
@@ -36,6 +37,10 @@ test.describe('PΛND0RΛ Browser Core Flows', () => {
 });
 
 test.describe('PΛND0RΛ Forza Forensic Suite Flows', () => {
+    // These routes are auth-gated — skip gracefully when no session credentials provided
+    test.beforeEach(() => {
+        test.skip(!process.env.E2E_USER_EMAIL, 'Vyžaduje autentifikovanú session (E2E_USER_EMAIL)');
+    });
 
     test('should open Forza Prehľad (Dashboard)', async ({ page }) => {
         await page.goto('/forza/prehlad', { waitUntil: 'domcontentloaded' });

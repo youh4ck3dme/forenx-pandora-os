@@ -1,6 +1,11 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("PΛND0RΛ Navigation Sections & Contrast E2E Flows", () => {
+  // All routes in this suite are auth-gated — skip without a valid session
+  test.beforeEach(() => {
+    test.skip(!process.env.E2E_USER_EMAIL, 'Vyžaduje autentifikovanú session (E2E_USER_EMAIL)');
+  });
+
   test("should render high-contrast section headers in desktop sidebar (PRÍPAD, ZISTENIA, ÚČET)", async ({
     page,
   }) => {
