@@ -31,6 +31,7 @@ function input(overrides: Record<string, unknown> = {}) {
 function row(overrides: Partial<LedgerRow> = {}): LedgerRow {
   return {
     id: "33333333-3333-4333-8333-333333333333",
+    case_id: CASE,
     case_name: "Prípad X",
     file_name: "spis č.1.pdf",
     file_size: 2048,
@@ -101,6 +102,7 @@ describe("registerEvidence", () => {
     expect(inserted).toEqual([
       {
         investigator_id: USER,
+        case_id: CASE,
         case_name: "Prípad X",
         file_name: "spis č.1.pdf",
         file_size: 2048,

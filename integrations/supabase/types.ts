@@ -144,6 +144,7 @@ export type Database = {
         Row: {
           id: string;
           investigator_id: string;
+          case_id: string | null;
           case_name: string;
           file_name: string;
           file_size: number;
@@ -162,6 +163,7 @@ export type Database = {
         Insert: {
           id?: string;
           investigator_id: string;
+          case_id?: string | null;
           case_name: string;
           file_name: string;
           file_size: number;
@@ -180,6 +182,7 @@ export type Database = {
         Update: {
           id?: string;
           investigator_id?: string;
+          case_id?: string | null;
           case_name?: string;
           file_name?: string;
           file_size?: number;
