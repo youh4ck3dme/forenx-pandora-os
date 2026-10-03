@@ -1,0 +1,270 @@
+// @vitest-environment node
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
+
+const TEST_USER_ID = "00000000-0000-4000-8000-000000000001";
+const EVIDENCE_ID = "11111111-1111-4111-8111-111111111111";
+const CASE_UUID = "22222222-2222-4222-8222-222222222222";
+const REAL_HASH = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const REAL_S3_KEY = `cases/${CASE_UUID}/evidence/real-dump.tar.gz`;
+
+let mockAuthUser: string | null = TEST_USER_ID;
+let mockEvidenceRow: Record<string, unknown> | null = null;
+let mockExistingJob: { id: string; hub_job_id: string; status: string } | null = null;
+let mockInsertError: { message: string } | null = null;
+let mockStartResult = {
+  job_id: "hub-job-999",
+  status: "queued",
+  deduplicated: false,
+};
+
+const startForenZXAnalysisMock = vi.fn();
+
+vi.mock("@/lib/storage/vault-auth", () => ({
+  authenticateVaultRequest: vi.fn(async () => {
+    if (!mockAuthUser) {
+      return { userId: null, error: "Unauthorized", status: 401 };
+    }
+    return { userId: mockAuthUser, error: null, status: 200 };
+  }),
+}));
+
+vi.mock("@/lib/forza/forenzx-mcp.server", () => ({
+  startForenZXAnalysis: (...args: unknown[]) => startForenZXAnalysisMock(...args),
+}));
+
+vi.mock("@/integrations/supabase/client.server", () => ({
+  supabaseAdmin: {
+    from: (table: string) => {
+      if (table === "evidence_items") {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: mockEvidenceRow, error: null }),
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === "forenzx_analysis_jobs") {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({ data: mockExistingJob, error: null }),
+                }),
+              }),
+            }),
+          }),
+          upsert: (payload: Record<string, unknown>) => ({
+            select: () => ({
+              single: async () => {
+                if (mockInsertError) return { data: null, error: mockInsertError };
+                return { data: { id: "job-row-1", ...payload }, error: null };
+              },
+            }),
+          }),
+          update: () => ({
+            eq: async () => ({ error: null }),
+          }),
+        };
+      }
+      return {};
+    },
+  },
+}));
+
+describe("POST /api/forenzx/start", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAuthUser = TEST_USER_ID;
+    mockEvidenceRow = {
+      id: EVIDENCE_ID,
+      investigator_id: TEST_USER_ID,
+      case_name: "Vyšetrovanie prípadu X",
+      file_name: "real-dump.tar.gz",
+      file_size: 1048576,
+      mime_type: "application/gzip",
+      s3_object_key: REAL_S3_KEY,
+      sha256_hash: REAL_HASH,
+      hash_verification_status: "verified",
+    };
+    mockExistingJob = null;
+    mockInsertError = null;
+    startForenZXAnalysisMock.mockReset();
+    startForenZXAnalysisMock.mockResolvedValue(mockStartResult);
+  });
+
+  it("strictly ignores spoofed s3ObjectKey and sha256 from request body and uses verified DB ledger row", async () => {
+    const { POST } = await import("../../../app/api/forenzx/start/route");
+
+    const spoofedKey = "cases/attacker-evil/evidence/trojan.bin";
+    const spoofedSha = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+
+    const request = new NextRequest("http://localhost/api/forenzx/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        evidenceId: EVIDENCE_ID,
+        inputType: "ios_backup",
+        packId: "mobile_compromise",
+        s3ObjectKey: spoofedKey,
+        sha256: spoofedSha,
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as { jobId: string };
+    expect(body.jobId).toBe("hub-job-999");
+
+    // Invariant verification: startForenZXAnalysis must receive LEDGER values, NOT spoofed values
+    expect(startForenZXAnalysisMock).toHaveBeenCalledTimes(1);
+    const calledArgs = startForenZXAnalysisMock.mock.calls[0][0];
+
+    expect(calledArgs.s3Key).toBe(REAL_S3_KEY);
+    expect(calledArgs.s3Key).not.toBe(spoofedKey);
+
+    expect(calledArgs.sha256).toBe(REAL_HASH);
+    expect(calledArgs.sha256).not.toBe(spoofedSha);
+
+    expect(calledArgs.caseId).toBe(CASE_UUID);
+    expect(calledArgs.evidenceId).toBe(EVIDENCE_ID);
+    expect(calledArgs.idempotencyKey).toBe(`pandora:evidence:${EVIDENCE_ID}:${REAL_HASH}`);
+  });
+
+  it("rejects unverified evidence with HTTP 403 when hash_verification_status is 'checking'", async () => {
+    const { POST } = await import("../../../app/api/forenzx/start/route");
+
+    mockEvidenceRow = {
+      ...mockEvidenceRow,
+      hash_verification_status: "checking",
+    };
+
+    const request = new NextRequest("http://localhost/api/forenzx/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        evidenceId: EVIDENCE_ID,
+        inputType: "ios_backup",
+        packId: "mobile_compromise",
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(403);
+
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toContain("verified");
+    expect(startForenZXAnalysisMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects unverified evidence with HTTP 403 when hash_verification_status is 'tampered'", async () => {
+    const { POST } = await import("../../../app/api/forenzx/start/route");
+
+    mockEvidenceRow = {
+      ...mockEvidenceRow,
+      hash_verification_status: "tampered",
+    };
+
+    const request = new NextRequest("http://localhost/api/forenzx/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        evidenceId: EVIDENCE_ID,
+        inputType: "ios_backup",
+        packId: "mobile_compromise",
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(403);
+    expect(startForenZXAnalysisMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 if evidence row is missing or belongs to another investigator", async () => {
+    const { POST } = await import("../../../app/api/forenzx/start/route");
+
+    mockEvidenceRow = null;
+
+    const request = new NextRequest("http://localhost/api/forenzx/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        evidenceId: EVIDENCE_ID,
+        inputType: "ios_backup",
+        packId: "mobile_compromise",
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(404);
+    expect(startForenZXAnalysisMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 when request is unauthenticated", async () => {
+    const { POST } = await import("../../../app/api/forenzx/start/route");
+
+    mockAuthUser = null;
+
+    const request = new NextRequest("http://localhost/api/forenzx/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        evidenceId: EVIDENCE_ID,
+        inputType: "ios_backup",
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(401);
+    expect(startForenZXAnalysisMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when request body fails validation (missing evidenceId)", async () => {
+    const { POST } = await import("../../../app/api/forenzx/start/route");
+
+    const request = new NextRequest("http://localhost/api/forenzx/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        inputType: "ios_backup",
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    expect(startForenZXAnalysisMock).not.toHaveBeenCalled();
+  });
+
+  it("deduplicates requests if an active job already exists", async () => {
+    const { POST } = await import("../../../app/api/forenzx/start/route");
+
+    mockExistingJob = {
+      id: "job-123",
+      hub_job_id: "hub-existing-555",
+      status: "running",
+    };
+
+    const request = new NextRequest("http://localhost/api/forenzx/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        evidenceId: EVIDENCE_ID,
+        inputType: "ios_backup",
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as { jobId: string; deduplicated: boolean };
+    expect(body.jobId).toBe("hub-existing-555");
+    expect(body.deduplicated).toBe(true);
+
+    expect(startForenZXAnalysisMock).not.toHaveBeenCalled();
+  });
+});

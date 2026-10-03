@@ -13,20 +13,16 @@ export const runtime = "nodejs";
  * Browser-facing endpoint to trigger a ForenZX forensic analysis job.
  * Called by <ForenzXAnalysisPanel /> after the user clicks "Spustiť analýzu".
  *
- * Flow:
- *  1. Authenticate user (Supabase session)
- *  2. Validate evidence ownership (IDOR protection)
- *  3. Generate presigned S3 GET URL (via startForenZXAnalysis → buildForenzxStartPayload)
- *  4. Call forenzx_analysis_start on the Hub (MCP tools/call)
- *  5. Persist job row in forenzx_analysis_jobs
- *  6. Return { jobId } to browser for SSE subscription
+ * Security & Ledger invariants:
+ *  - Client sends ONLY evidenceId, packId, and inputType.
+ *  - caseId, s3ObjectKey, sha256, and fileSize are loaded exclusively from evidence_items.
+ *  - Evidence must have hash_verification_status = 'verified'. Otherwise HTTP 403.
+ *  - Any client-supplied s3ObjectKey, sha256, or caseId is strictly ignored.
+ *  - ForenZX tool call and S3 presigned URL use only ledger row values.
  */
 
-const RequestSchema = z.object({
-  caseId: z.string().uuid(),
+export const ForenzxStartRequestSchema = z.object({
   evidenceId: z.string().uuid(),
-  s3ObjectKey: z.string().min(1).max(2048),
-  sha256: z.string().regex(/^[a-f0-9]{64}$/i, "sha256 must be 64 hex chars"),
   inputType: z.string().min(1).max(64),
   packId: z.string().min(1).max(128).default("mobile_compromise"),
 });
@@ -44,7 +40,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const parsed = RequestSchema.safeParse(body);
+  const parsed = ForenzxStartRequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Validation failed.", details: parsed.error.issues },
@@ -52,12 +48,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const { caseId, evidenceId, s3ObjectKey, sha256, inputType, packId } = parsed.data;
+  const { evidenceId, inputType, packId } = parsed.data;
 
-  // ── IDOR protection: verify evidence ownership ─────────────────────────────
+  // ── IDOR protection & load trusted evidence row ────────────────────────────
   const { data: evidenceRow, error: lookupError } = await (supabaseAdmin as any)
     .from("evidence_items")
-    .select("id, investigator_id, hash_verification_status")
+    .select("*")
     .eq("id", evidenceId)
     .eq("investigator_id", auth.userId)
     .maybeSingle();
@@ -66,17 +62,41 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Overenie vlastníctva dôkazu zlyhalo." }, { status: 503 });
   }
   if (!evidenceRow) {
-    return NextResponse.json({ error: "Dôkaz nebol nájdený alebo nemáte k nemu prístup." }, { status: 404 });
+    return NextResponse.json({ error: "Dôkaz nebol nájdený alebo k nemu nemáte prístup." }, { status: 404 });
   }
+
+  // Evidence must have hash_verification_status = verified. Otherwise HTTP 403.
   if (evidenceRow.hash_verification_status !== "verified") {
     return NextResponse.json(
-      { error: "Analýzu možno spustiť iba na overených dôkazoch (hash_verification_status = verified)." },
-      { status: 422 },
+      { error: "Dôkaz nie je overený (vyžaduje sa verified status)." },
+      { status: 403 },
     );
   }
 
+  const trustedS3Key = typeof evidenceRow.s3_object_key === "string" ? evidenceRow.s3_object_key : "";
+  const trustedSha256 = typeof evidenceRow.sha256_hash === "string" ? evidenceRow.sha256_hash.toLowerCase() : "";
+  const rawSize = evidenceRow.file_size;
+  const trustedFileSize = typeof rawSize === "number" ? rawSize : Number(rawSize);
+
+  if (!trustedS3Key || trustedS3Key.includes("..") || !/^[a-f0-9]{64}$/.test(trustedSha256) || Number.isNaN(trustedFileSize) || trustedFileSize < 0) {
+    return NextResponse.json(
+      { error: "Dôkaz obsahuje neplatné metadáta integrity." },
+      { status: 403 },
+    );
+  }
+
+  // Ak v tabuľke nie je case_id, použijeme to, čo riadok naozaj má:
+  // (row.case_id ak existuje, extrakciu z s3_object_key, alebo case_name)
+  const keyCaseMatch = trustedS3Key.match(/^cases\/([^/]+)\/evidence\//);
+  const resolvedCaseId =
+    (typeof evidenceRow.case_id === "string" && evidenceRow.case_id ? evidenceRow.case_id : null) ??
+    (keyCaseMatch?.[1] ? keyCaseMatch[1] : null) ??
+    (typeof evidenceRow.case_name === "string" && evidenceRow.case_name ? evidenceRow.case_name : null) ??
+    "unknown-case";
+
   // ── Idempotency check ──────────────────────────────────────────────────────
-  const idempotencyKey = `pandora:evidence:${evidenceId}:${sha256.toLowerCase()}`;
+  // Use verified SHA-256 digest from evidence row
+  const idempotencyKey = `pandora:evidence:${evidenceId}:${trustedSha256}`;
   const { data: existing } = await (supabaseAdmin as any)
     .from("forenzx_analysis_jobs")
     .select("id, hub_job_id, status")
@@ -93,7 +113,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { data: row, error: insertError } = await (supabaseAdmin as any)
     .from("forenzx_analysis_jobs")
     .upsert({
-      case_id: caseId,
+      case_id: resolvedCaseId,
       evidence_id: evidenceId,
       user_id: auth.userId,
       pack_id: packId,
@@ -112,14 +132,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // ── Call Hub via MCP (includes presigned URL generation) ──────────────────
+  // s3Key and sha256 come exclusively from the ledger row, NEVER from request
   try {
     const result = await startForenZXAnalysis({
-      caseId,
+      caseId: resolvedCaseId,
       evidenceId,
       packId,
       inputType,
-      s3Key: s3ObjectKey,
-      sha256: sha256.toLowerCase(),
+      s3Key: trustedS3Key,
+      sha256: trustedSha256,
       idempotencyKey,
     });
 
