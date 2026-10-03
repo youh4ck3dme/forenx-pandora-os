@@ -164,6 +164,10 @@ ipcMain.handle('password:delete', async (_, id) => {
 })
 
 
+function isMainWindowSender(event: Electron.IpcMainInvokeEvent): boolean {
+    return Boolean(mainWindow && event.sender.id === mainWindow.webContents.id)
+}
+
 // IPC Handlers for Session Data
 ipcMain.handle('session:clear-data', async () => {
     try {
@@ -415,15 +419,17 @@ function createWindow() {
         updateTabUrl(id, url)
     })
 
-    // IPC for History Search
-    ipcMain.handle('history:search', (_, query) => {
+    // IPC for History Search & Second Brain
+    ipcMain.handle('history:search', (event, query) => {
+        if (!isMainWindowSender(event)) return []
+        if (typeof query !== 'string') return []
         return historyManager?.search(query) || []
     })
 
-    ipcMain.handle('history:getContent', (_, url) => {
-        // Find doc by URL in history
-        const docs = Array.from((historyManager as any).docs.values())
-        return docs.find((d: any) => d.url === url)
+    ipcMain.handle('history:getContent', (event, url) => {
+        if (!isMainWindowSender(event)) return null
+        if (typeof url !== 'string') return null
+        return historyManager?.getContent(url) || null
     })
 
     ipcMain.handle('search:suggestions', async (_, query) => {
