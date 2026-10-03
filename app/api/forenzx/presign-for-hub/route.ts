@@ -4,6 +4,7 @@ import { z } from "zod";
 import { generateEvidencePresignedUrl } from "@/lib/forza/forenzx-evidence-presign.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { isValidDownloadUrl } from "@/lib/forza/forenzx-download-guard";
+import { generateEvidenceCapability } from "@/lib/forenzx/capability";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // ── Ledger validation: S3 key must exist in evidence_items and have verified status ──
   const { data: evidenceRow, error: lookupError } = await supabaseAdmin
     .from("evidence_items")
-    .select("id, s3_object_key, hash_verification_status")
+    .select("id, case_id, s3_object_key, sha256_hash, hash_verification_status, file_name")
     .eq("s3_object_key", s3_object_key)
     .maybeSingle();
 
@@ -112,6 +113,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Fail-closed: bucket must be configured before any presigned URL can be issued
+  if (!process.env.FORENZX_S3_BUCKET?.trim()) {
+    return NextResponse.json(
+      { error: "FORENZX_S3_BUCKET is not configured — presign-for-hub route is unavailable" },
+      { status: 500 },
+    );
+  }
+
   try {
     const presigned = await generateEvidencePresignedUrl(s3_object_key);
 
@@ -124,11 +133,31 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
+    const filename = presigned.filename || evidenceRow.file_name || "evidence.bin";
+
+    // Issue a signed capability if FORENZX_M2M_SECRET is configured.
+    // Falls back to legacy response (raw URL only) so existing webhooks keep working
+    // while the secret is not yet provisioned.
+    let capability: ReturnType<typeof generateEvidenceCapability> | undefined;
+    if (process.env.FORENZX_M2M_SECRET?.trim() && evidenceRow.case_id && evidenceRow.sha256_hash) {
+      capability = generateEvidenceCapability(
+        {
+          id: evidenceRow.id,
+          case_id: evidenceRow.case_id,
+          sha256_hash: evidenceRow.sha256_hash,
+          s3_object_key: evidenceRow.s3_object_key,
+        },
+        presigned.url,
+        filename,
+      );
+    }
+
     return NextResponse.json({
       download_url: presigned.url,
       expires_at: presigned.expiresAt,
-      filename: presigned.filename,
+      filename,
       s3_key: presigned.s3Key,
+      ...(capability ? { capability } : {}),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Presign generation failed.";

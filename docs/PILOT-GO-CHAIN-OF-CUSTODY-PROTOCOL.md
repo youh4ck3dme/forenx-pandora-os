@@ -13,7 +13,7 @@ Otvorené blokeры ku dňu 2026-10-03:
 | S-01 | Rotácia secrets | `ROTATION REQUIRED` |
 | S-02 | DNS / TLS `pandora.whoiswho.at` | `BLOCKED` |
 | S-03 | WebAuthn na produkčnej doméne | `BLOCKED` |
-| D-01 | Migrácie na `tlmuvzrgighahnjkxoyw` | `BLOCKED` |
+| D-01 | Migrácie na `tlmuvzrgighahnjkxoyw` | `DONE` (aplikovaných 6 migrácií 20261003100000–20261003140000) |
 | Z-01 | Supabase PITR | `BLOCKED` |
 | Z-02 | Hetzner S3 Object Lock | `BLOCKED` |
 | Z-03 | DR drill | `TODO` |

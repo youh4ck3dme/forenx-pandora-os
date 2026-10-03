@@ -339,7 +339,9 @@ export type Database = {
           user_id: string;
           credential_id: string;
           public_key_cbor: string;
+          public_key: string | null;
           sign_count: number;
+          counter: number | null;
           aaguid: string | null;
           device_type: string | null;
           backed_up: boolean;
@@ -353,7 +355,9 @@ export type Database = {
           user_id: string;
           credential_id: string;
           public_key_cbor: string;
+          public_key?: string | null;
           sign_count?: number;
+          counter?: number | null;
           aaguid?: string | null;
           device_type?: string | null;
           backed_up?: boolean;
@@ -367,7 +371,9 @@ export type Database = {
           user_id?: string;
           credential_id?: string;
           public_key_cbor?: string;
+          public_key?: string | null;
           sign_count?: number;
+          counter?: number | null;
           aaguid?: string | null;
           device_type?: string | null;
           backed_up?: boolean;
@@ -1265,7 +1271,22 @@ export type Database = {
       };
     };
     Views: {
-      [_ in never]: never;
+      user_passkeys: {
+        Row: {
+          id: string;
+          user_id: string;
+          credential_id: string;
+          public_key: string | null;
+          public_key_cbor: string;
+          counter: number;
+          sign_count: number;
+          transports: string[] | null;
+          friendly_name: string | null;
+          created_at: string;
+          last_used_at: string | null;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
       commit_import: {

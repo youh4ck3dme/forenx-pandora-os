@@ -5,6 +5,7 @@ import {
   encodeChallengePayload,
   decodeChallengePayload,
   CHALLENGE_COOKIE,
+  REG_CHALLENGE_COOKIE,
   CHALLENGE_TTL_SECONDS,
 } from "@/lib/auth/webauthn.server";
 
@@ -37,7 +38,11 @@ describe("encodeChallengePayload / decodeChallengePayload", () => {
   });
 });
 
-// ── Integration: GET /api/auth/webauthn/challenge ────────────────────────────
+// ── Integration mocks ────────────────────────────────────────────────────────
+
+const mockVerifyAuthResponse = vi.fn();
+const mockGenerateRegOptions = vi.fn();
+const mockVerifyRegResponse = vi.fn();
 
 vi.mock("@simplewebauthn/server", () => ({
   generateAuthenticationOptions: vi.fn().mockResolvedValue({
@@ -47,29 +52,41 @@ vi.mock("@simplewebauthn/server", () => ({
     userVerification: "required",
     allowCredentials: [],
   }),
-  verifyAuthenticationResponse: vi.fn(),
+  verifyAuthenticationResponse: (...args: unknown[]) => mockVerifyAuthResponse(...args),
+  generateRegistrationOptions: (...args: unknown[]) => mockGenerateRegOptions(...args),
+  verifyRegistrationResponse: (...args: unknown[]) => mockVerifyRegResponse(...args),
 }));
+
+const mockDbSelect = vi.fn();
+const mockDbInsert = vi.fn();
+const mockDbUpdate = vi.fn();
+const mockGetUserById = vi.fn();
+const mockCreateSession = vi.fn();
+const mockGetUser = vi.fn();
 
 vi.mock("@/integrations/supabase/client.server", () => ({
   supabaseAdmin: {
-    from: vi.fn().mockReturnValue({
+    from: vi.fn(() => ({
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       order: vi.fn().mockReturnThis(),
-      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
-      insert: vi.fn().mockResolvedValue({ error: null }),
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      }),
-    }),
+      maybeSingle: (...args: unknown[]) => mockDbSelect(...args),
+      insert: (...args: unknown[]) => mockDbInsert(...args),
+      update: vi.fn(() => ({
+        eq: (...args: unknown[]) => mockDbUpdate(...args),
+      })),
+    })),
     auth: {
+      getUser: (...args: unknown[]) => mockGetUser(...args),
       admin: {
-        getUserById: vi.fn().mockResolvedValue({ data: null, error: { message: "not found" } }),
-        createSession: vi.fn().mockResolvedValue({ data: null, error: { message: "not found" } }),
+        getUserById: (...args: unknown[]) => mockGetUserById(...args),
+        createSession: (...args: unknown[]) => mockCreateSession(...args),
       },
     },
   },
 }));
+
+// ── Integration: GET /api/auth/webauthn/challenge ────────────────────────────
 
 describe("GET /api/auth/webauthn/challenge", () => {
   it("returns 200 with challenge and sets HttpOnly cookie", async () => {
@@ -78,7 +95,7 @@ describe("GET /api/auth/webauthn/challenge", () => {
     const res = await GET(req);
 
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body).toHaveProperty("challenge");
     expect(typeof body.challenge).toBe("string");
 
@@ -94,12 +111,12 @@ describe("POST /api/auth/webauthn/verify", () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     process.env = { ...originalEnv, NEXT_PUBLIC_RP_ID: "localhost" };
   });
 
   afterEach(() => {
     process.env = originalEnv;
-    vi.resetModules();
   });
 
   it("returns 401 when challenge cookie is missing", async () => {
@@ -111,7 +128,7 @@ describe("POST /api/auth/webauthn/verify", () => {
     });
     const res = await POST(req);
     expect(res.status).toBe(401);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.error).toMatch(/challenge/i);
   });
 
@@ -130,7 +147,7 @@ describe("POST /api/auth/webauthn/verify", () => {
     });
     const res = await POST(req);
     expect(res.status).toBe(401);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.error).toMatch(/expired/i);
   });
 
@@ -151,6 +168,8 @@ describe("POST /api/auth/webauthn/verify", () => {
   });
 
   it("returns 401 when credential not found in DB", async () => {
+    mockDbSelect.mockResolvedValueOnce({ data: null, error: null });
+
     const { POST } = await import("@/app/api/auth/webauthn/verify/route");
     const validCookie = encodeChallengePayload("fresh-challenge");
 
@@ -173,5 +192,341 @@ describe("POST /api/auth/webauthn/verify", () => {
     });
     const res = await POST(req);
     expect(res.status).toBe(401);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.error).toMatch(/credential/i);
+  });
+
+  it("returns 401 when signature verification fails", async () => {
+    mockDbSelect.mockResolvedValueOnce({
+      data: {
+        id: "cred-uuid-1",
+        user_id: "user-uuid-1",
+        credential_id: "cred-id-1",
+        public_key_cbor: Buffer.from("fake-key").toString("base64url"),
+        sign_count: 5,
+        counter: 5,
+        transports: ["internal"],
+      },
+      error: null,
+    });
+
+    mockVerifyAuthResponse.mockResolvedValueOnce({
+      verified: false,
+    });
+
+    const { POST } = await import("@/app/api/auth/webauthn/verify/route");
+    const validCookie = encodeChallengePayload("fresh-challenge");
+
+    const req = new NextRequest("http://localhost/api/auth/webauthn/verify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: `${CHALLENGE_COOKIE}=${validCookie}`,
+      },
+      body: JSON.stringify({
+        id: "cred-id-1",
+        rawId: "cred-id-1",
+        response: {
+          clientDataJSON: "base64url-data",
+          authenticatorData: "base64url-data",
+          signature: "invalid-signature",
+        },
+        type: "public-key",
+      }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects cloned authenticator when counter does not advance", async () => {
+    mockDbSelect.mockResolvedValueOnce({
+      data: {
+        id: "cred-uuid-1",
+        user_id: "user-uuid-1",
+        credential_id: "cred-id-1",
+        public_key_cbor: Buffer.from("fake-key").toString("base64url"),
+        sign_count: 10,
+        counter: 10,
+        transports: ["internal"],
+      },
+      error: null,
+    });
+
+    // Authenticator returns counter 10 (not > 10)
+    mockVerifyAuthResponse.mockResolvedValueOnce({
+      verified: true,
+      authenticationInfo: {
+        newCounter: 10,
+      },
+    });
+
+    const { POST } = await import("@/app/api/auth/webauthn/verify/route");
+    const validCookie = encodeChallengePayload("fresh-challenge");
+
+    const req = new NextRequest("http://localhost/api/auth/webauthn/verify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: `${CHALLENGE_COOKIE}=${validCookie}`,
+      },
+      body: JSON.stringify({
+        id: "cred-id-1",
+        rawId: "cred-id-1",
+        response: {
+          clientDataJSON: "base64url-data",
+          authenticatorData: "base64url-data",
+          signature: "replay-signature",
+        },
+        type: "public-key",
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.error).toMatch(/cloned|counter/i);
+  });
+
+  it("successfully authenticates with valid signature, advances counter, sets session cookies and redirects to /dashboard", async () => {
+    mockDbSelect.mockResolvedValueOnce({
+      data: {
+        id: "cred-uuid-1",
+        user_id: "user-uuid-1",
+        credential_id: "cred-id-1",
+        public_key_cbor: Buffer.from("fake-cose-key").toString("base64url"),
+        sign_count: 5,
+        counter: 5,
+        transports: ["internal"],
+      },
+      error: null,
+    });
+
+    mockVerifyAuthResponse.mockResolvedValueOnce({
+      verified: true,
+      authenticationInfo: {
+        newCounter: 6,
+      },
+    });
+
+    mockDbUpdate.mockResolvedValueOnce({ error: null });
+
+    mockGetUserById.mockResolvedValueOnce({
+      data: {
+        user: {
+          id: "user-uuid-1",
+          email: "agent@forenx.org",
+        },
+      },
+      error: null,
+    });
+
+    mockCreateSession.mockResolvedValueOnce({
+      data: {
+        session: {
+          access_token: "mock-access-jwt",
+          refresh_token: "mock-refresh-jwt",
+          expires_in: 3600,
+        },
+      },
+      error: null,
+    });
+
+    const { POST } = await import("@/app/api/auth/webauthn/verify/route");
+    const validCookie = encodeChallengePayload("fresh-challenge");
+
+    const req = new NextRequest("http://localhost/api/auth/webauthn/verify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: `${CHALLENGE_COOKIE}=${validCookie}`,
+      },
+      body: JSON.stringify({
+        id: "cred-id-1",
+        rawId: "cred-id-1",
+        response: {
+          clientDataJSON: "base64url-data",
+          authenticatorData: "base64url-data",
+          signature: "valid-sig",
+        },
+        type: "public-key",
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.success).toBe(true);
+    expect(body.redirectUrl).toBe("/dashboard");
+
+    // Cookies check: session issued, challenge cleared
+    const setCookie = res.headers.get("set-cookie") ?? "";
+    expect(setCookie).toContain("sb-access-token=mock-access-jwt");
+    expect(setCookie).toContain("sb-refresh-token=mock-refresh-jwt");
+  });
+
+  it("handles custom redirect target safely and rejects open-redirect", async () => {
+    mockDbSelect.mockResolvedValueOnce({
+      data: {
+        id: "cred-uuid-1",
+        user_id: "user-uuid-1",
+        credential_id: "cred-id-1",
+        public_key_cbor: Buffer.from("fake-cose-key").toString("base64url"),
+        sign_count: 1,
+        counter: 1,
+      },
+      error: null,
+    });
+
+    mockVerifyAuthResponse.mockResolvedValueOnce({
+      verified: true,
+      authenticationInfo: { newCounter: 2 },
+    });
+
+    mockDbUpdate.mockResolvedValueOnce({ error: null });
+    mockGetUserById.mockResolvedValueOnce({
+      data: { user: { id: "user-uuid-1", email: "agent@forenx.org" } },
+      error: null,
+    });
+    mockCreateSession.mockResolvedValueOnce({
+      data: {
+        session: { access_token: "mock-access-jwt", refresh_token: "mock-refresh-jwt", expires_in: 3600 },
+      },
+      error: null,
+    });
+
+    const { POST } = await import("@/app/api/auth/webauthn/verify/route");
+    const validCookie = encodeChallengePayload("fresh-challenge");
+
+    // Request with malicious open redirect
+    const req = new NextRequest("http://localhost/api/auth/webauthn/verify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: `${CHALLENGE_COOKIE}=${validCookie}`,
+      },
+      body: JSON.stringify({
+        id: "cred-id-1",
+        rawId: "cred-id-1",
+        response: {
+          clientDataJSON: "data",
+          authenticatorData: "data",
+          signature: "sig",
+        },
+        type: "public-key",
+        next: "https://attacker.evil.com/steal-creds",
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    // Open redirect must be rejected and fall back safely to /dashboard
+    expect(body.redirectUrl).toBe("/dashboard");
+  });
+});
+
+// ── Integration: Passkey Registration Flow ──────────────────────────────────
+
+describe("Passkey Registration Flow (/api/auth/webauthn/register/*)", () => {
+  it("rejects unauthenticated user requesting registration options", async () => {
+    const { GET } = await import("@/app/api/auth/webauthn/register/options/route");
+    const req = new NextRequest("http://localhost/api/auth/webauthn/register/options");
+    const res = await GET(req);
+    expect(res.status).toBe(401);
+  });
+
+  it("generates registration options and sets HttpOnly cookie for authenticated user", async () => {
+    mockGetUser.mockResolvedValueOnce({
+      data: {
+        user: {
+          id: "auth-user-uuid",
+          email: "investigator@pandora.os",
+        },
+      },
+      error: null,
+    });
+
+    mockGenerateRegOptions.mockResolvedValueOnce({
+      challenge: "reg-challenge-token",
+      rp: { name: "PANDORA / ForenX OS", id: "localhost" },
+      user: { id: "auth-user-uuid", name: "investigator@pandora.os", displayName: "investigator@pandora.os" },
+      pubKeyCredParams: [],
+      timeout: 60000,
+    });
+
+    const { GET } = await import("@/app/api/auth/webauthn/register/options/route");
+    const req = new NextRequest("http://localhost/api/auth/webauthn/register/options", {
+      headers: {
+        Authorization: "Bearer valid.user.token",
+      },
+    });
+
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.challenge).toBe("reg-challenge-token");
+
+    const setCookie = res.headers.get("set-cookie") ?? "";
+    expect(setCookie).toContain(REG_CHALLENGE_COOKIE);
+    expect(setCookie).toContain("HttpOnly");
+  });
+
+  it("verifies registration response and persists credential to database", async () => {
+    mockGetUser.mockResolvedValueOnce({
+      data: {
+        user: {
+          id: "auth-user-uuid",
+          email: "investigator@pandora.os",
+        },
+      },
+      error: null,
+    });
+
+    mockVerifyRegResponse.mockResolvedValueOnce({
+      verified: true,
+      registrationInfo: {
+        credential: {
+          id: "new-cred-base64",
+          publicKey: new Uint8Array([1, 2, 3, 4]),
+          counter: 0,
+        },
+        credentialDeviceType: "multiDevice",
+        credentialBackedUp: true,
+        aaguid: "00000000-0000-0000-0000-000000000000",
+      },
+    });
+
+    mockDbInsert.mockResolvedValueOnce({ error: null });
+
+    const validCookie = encodeChallengePayload("reg-challenge-token");
+    const { POST } = await import("@/app/api/auth/webauthn/register/verify/route");
+
+    const req = new NextRequest("http://localhost/api/auth/webauthn/register/verify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer valid.user.token",
+        Cookie: `${REG_CHALLENGE_COOKIE}=${validCookie}`,
+      },
+      body: JSON.stringify({
+        id: "new-cred-base64",
+        rawId: "new-cred-base64",
+        response: {
+          clientDataJSON: "data",
+          attestationObject: "attestation",
+        },
+        type: "public-key",
+        friendlyName: "MacBook TouchID",
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.success).toBe(true);
+    expect(body.credentialId).toBe("new-cred-base64");
   });
 });

@@ -29,6 +29,7 @@ export const INTERNAL_PATH_PREFIXES = [
   '/offline',
   '/auth',
   '/blog',
+  '/dashboard',
   '/healthz',
   '/api',
 ] as const;

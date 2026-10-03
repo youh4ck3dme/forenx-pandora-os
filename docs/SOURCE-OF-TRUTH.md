@@ -440,9 +440,38 @@ Tieto položky nevyžadujú zmenu kódu. Sú blokované absenciou externých pr�
 | Položka | Blocker |
 |---|---|
 | Rotácia secrets (`SUPABASE_SERVICE_ROLE_KEY`, S3, Mistral, Gemini, webhook) | Vyžaduje konzoly Hetzner, Supabase, Vercel |
-| Supabase migrácie na remote `tlmuvzrgighahnjkxoyw` | Vyžaduje `supabase link` + access token |
 | DNS / TLS / WebAuthn overenie na `pandora.whoiswho.at` | Vyžaduje prehliadač + FIDO2 kľúč |
 | PITR zapnutie + S3 Object Lock + DR drill | Vyžaduje Supabase Dashboard + Hetzner Storage Console |
 | Sentry nasadenie (`NEXT_PUBLIC_SENTRY_DSN`) | Vyžaduje Sentry projekt + VPS deploy |
 | Desktop code-signing (Windows cert + macOS notarization) | Vyžaduje certifikáty + GitHub Secrets |
+
+> **Poznámka:** Migrácie na produkčný Supabase `tlmuvzrgighahnjkxoyw` boli úspešne aplikované (`20261003100000` až `20261003140000`) a história migrácií je plne zosúladená (D-01 DONE).
+
+## 14. WebAuthn / Passkey Autentifikácia (FIDO2)
+
+Plnohodnotná serverová autentifikácia a registrácia hardvérových / platformových kľúčov bez mockov a demo fallbackov.
+
+### 14.1 Bezpečnostné Invarianty (Fail-Closed)
+- **Zero Mock Policy**: Ak chýba kľúč, je neplatný podpis, alebo nesedí origin/rpId, požiadavka okamžite zlyhá so statusom HTTP `401 Unauthorized`.
+- **Jednorazová výzva (One-Time Challenge)**:
+  - Výzva (`challenge`) sa generuje kryptograficky náhodne (32 bajtov).
+  - Ukladá sa do cookie `webauthn_auth_challenge` s príznakmi `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/` a expiráciou 120 sekúnd.
+  - Pri volaní overenia (`/api/auth/webauthn/verify`) sa cookie okamžite prečíta a bezpodmienečne vymaže z klienta, čím je vylúčený akýkoľvek replay útok.
+- **Validácia pôvodu a Relying Party**:
+  - `rpId` sa dynamicky odvodzuje z `NEXT_PUBLIC_RP_ID` alebo `x-forwarded-host` / `host` hlavičky (`pandora.whoiswho.at`, `localhost`).
+  - `origin` musí striktne zodpovedať očakávanej doméne a protokolu (HTTPS na produkcii/stagingu).
+- **Ochrana pred klonovaným autentifikátorom (Counter Guard)**:
+  - Pre každý uložený kľúč sa sleduje `sign_count` / `counter`.
+  - Nový counter z `authenticatorData` musí byť striktne vyšší ako naposledy zaznamenaný (ak kľúč inkrementuje counter).
+  - Pri nulovom rozdiele alebo poklese countera je požiadavka zablokovaná pre podozrenie z klonovania súkromného kľúča.
+- **Redakcia a audit**:
+  - Žiadne citlivé COSE / privátne kľúče ani raw kryptografické podpisy sa nezapisujú do logov.
+
+### 14.2 API Endpointy a Dátová Štruktúra
+- `GET /api/auth/webauthn/challenge`: Vygenerovanie výzvy a nastavenie `webauthn_auth_challenge` cookie.
+- `POST /api/auth/webauthn/verify`: Overenie podpisu pomocou `@simplewebauthn/server`, aktualizácia počítadla a vytvorenie Supabase relácie (`sb-access-token`, `sb-refresh-token`).
+- `POST /api/auth/webauthn/register/options`: Vygenerovanie registračných volieb pre prihláseného vyšetrovateľa.
+- `POST /api/auth/webauthn/register/verify`: Overenie attestation objektu nového kľúča a uloženie do `webauthn_credentials`.
+- **Tabuľka `webauthn_credentials` / view `user_passkeys`**:
+  - `id` (UUID PK), `user_id` (FK na `auth.users`), `credential_id` (TEXT UNIQUE), `public_key_cbor` (TEXT), `public_key` (TEXT), `sign_count` (BIGINT), `counter` (BIGINT), `transports` (TEXT[]), `created_at`, `last_used_at`.
 

@@ -14,28 +14,28 @@ export const runtime = "nodejs";
  * GET /api/auth/webauthn/challenge
  *
  * Issues a fresh cryptographic challenge for passkey authentication.
- * The challenge is stored in a short-lived (2 min) HttpOnly SameSite=Strict cookie.
- * The response body contains the full PublicKeyCredentialRequestOptionsJSON
- * for navigator.credentials.get().
+ * The challenge is stored in a short-lived (120s) HttpOnly SameSite=Strict cookie.
+ * The response body contains PublicKeyCredentialRequestOptionsJSON for navigator.credentials.get().
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  // Optional hint: caller may pass ?userId=<uuid> to pre-filter allowCredentials
   const userId = request.nextUrl.searchParams.get("userId") ?? undefined;
+  const rpId = getRpId(request);
 
-  const options = await buildAuthenticationOptions(userId);
-
+  const options = await buildAuthenticationOptions(userId, request);
   const cookieValue = encodeChallengePayload(options.challenge);
+
+  const isProd = process.env.NODE_ENV === "production" || request.url.startsWith("https:");
 
   const response = NextResponse.json({
     ...options,
-    rpId: getRpId(),
+    rpId,
   });
 
   response.cookies.set(CHALLENGE_COOKIE, cookieValue, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: isProd,
     sameSite: "strict",
-    path: "/api/auth/webauthn/",
+    path: "/",
     maxAge: CHALLENGE_TTL_SECONDS,
   });
 

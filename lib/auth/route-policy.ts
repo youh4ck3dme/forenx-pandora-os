@@ -28,6 +28,12 @@ export const PUBLIC_ROUTES = [
   "/api/healthz/*",
   "/api/health/public",
   "/api/health/public/",
+  "/api/auth/session",
+  "/api/auth/session/",
+  "/api/auth/webauthn/challenge",
+  "/api/auth/webauthn/challenge/",
+  "/api/auth/webauthn/verify",
+  "/api/auth/webauthn/verify/",
 ] as const;
 
 export type PublicRoute = (typeof PUBLIC_ROUTES)[number];

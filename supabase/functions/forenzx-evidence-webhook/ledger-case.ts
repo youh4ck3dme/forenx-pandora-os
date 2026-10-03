@@ -10,12 +10,8 @@ const CASE_ID = /^[A-Za-z0-9_.-]{1,128}$/;
 
 export type CaseIdDecision =
   | { ok: true; caseId: string }
-  | {
-      ok: false;
-      status: 403;
-      code: "ledger_case_missing" | "case_id_mismatch";
-      error: string;
-    };
+  | { ok: false; status: 403; code: "ledger_case_missing"; error: string }
+  | { ok: false; status: 400; code: "case_id_mismatch"; error: string };
 
 type CaseBody = {
   caseId?: unknown;
@@ -68,9 +64,9 @@ export function decideEvidenceCaseId(
       if (supplied !== ledger) {
         return {
           ok: false,
-          status: 403,
+          status: 400,
           code: "case_id_mismatch",
-          error: "Caller caseId does not match the ledger case_id",
+          error: "CASE_ID_MISMATCH: Supplied caseId does not match canonical ledger",
         };
       }
     }

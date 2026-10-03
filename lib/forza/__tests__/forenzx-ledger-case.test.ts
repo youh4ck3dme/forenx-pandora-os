@@ -13,7 +13,7 @@ describe("decideEvidenceCaseId", () => {
     const decision = decideEvidenceCaseId(LEDGER, [SPOOF]);
     expect(decision.ok).toBe(false);
     if (!decision.ok) {
-      expect(decision.status).toBe(403);
+      expect(decision.status).toBe(400); // caller error: bad input, not authorization failure
       expect(decision.code).toBe("case_id_mismatch");
     }
   });

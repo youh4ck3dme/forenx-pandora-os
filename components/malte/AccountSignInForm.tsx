@@ -118,7 +118,11 @@ export function AccountSignInForm({
       const searchParams = typeof window !== "undefined"
         ? new URLSearchParams(window.location.search)
         : null;
-      const nextParam = searchParams?.get("next") ?? undefined;
+      const nextParam =
+        searchParams?.get("next") ??
+        searchParams?.get("redirect_to") ??
+        searchParams?.get("redirectTo") ??
+        "/dashboard";
       const result = await loginWithPasskey(nextParam);
       if (!result.ok) {
         toast.error(result.reason);
@@ -225,7 +229,7 @@ export function AccountSignInForm({
           disabled={passkeyBusy || busy}
           onClick={handlePasskeyLogin}
         >
-          {passkeyBusy ? "Čakám na Passkey…" : "Passkey"}
+          {passkeyBusy ? "Čakám na Passkey…" : "Prihlásiť sa cez Passkey"}
         </Button>
       )}
 

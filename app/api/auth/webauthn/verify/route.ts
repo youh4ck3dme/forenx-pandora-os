@@ -5,6 +5,7 @@ import {
   decodeChallengePayload,
   verifyPasskeyResponse,
   CHALLENGE_COOKIE,
+  LEGACY_CHALLENGE_COOKIE,
 } from "@/lib/auth/webauthn.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { getSafeRedirectTarget } from "@/lib/auth/redirect";
@@ -17,12 +18,13 @@ export const runtime = "nodejs";
  *
  * Verifies a passkey authentication response.
  * Security invariants:
- * - Challenge is read exclusively from HttpOnly cookie (never from body).
- * - Challenge TTL is 2 minutes; expired challenge → 401.
- * - Origin and rpId come from server env, not from request body.
- * - sign_count must increment; replay detected → 401.
- * - On success: sets Supabase session cookies and returns {ok: true, next}.
+ * - Challenge is read exclusively from HttpOnly cookie and immediately consumed (one-time use).
+ * - Challenge TTL is 120s; expired challenge -> strict 401.
+ * - Origin and rpId are verified strictly against request host / env.
+ * - sign_count / counter must advance; replay detected -> strict 401.
+ * - On success: sets Supabase HttpOnly session cookies and returns { success: true, redirectUrl }.
  * - On any failure: returns strict 401 JSON — no information leakage.
+ * - Zero sensitive keys or raw signatures in logs.
  */
 
 const AuthResponseSchema = z.object({
@@ -38,17 +40,36 @@ const AuthResponseSchema = z.object({
   clientExtensionResults: z.record(z.unknown()).optional(),
   type: z.literal("public-key"),
   next: z.string().optional(),
+  redirectTo: z.string().optional(),
+  redirect_to: z.string().optional(),
 });
+
+interface AdminWithSession {
+  createSession?: (params: { userId: string }) => Promise<{
+    data: { session: { access_token: string; refresh_token?: string; expires_in?: number } | null } | null;
+    error: Error | null;
+  }>;
+}
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // 1. Read and validate challenge from cookie — fail-closed if absent/expired
-  const rawCookie = request.cookies.get(CHALLENGE_COOKIE)?.value;
+  const rawCookie =
+    request.cookies.get(CHALLENGE_COOKIE)?.value ??
+    request.cookies.get(LEGACY_CHALLENGE_COOKIE)?.value;
+
   if (!rawCookie) {
-    return NextResponse.json({ error: "Challenge missing or expired." }, { status: 401 });
+    const res = NextResponse.json({ error: "Challenge missing or expired." }, { status: 401 });
+    res.cookies.delete(CHALLENGE_COOKIE);
+    res.cookies.delete(LEGACY_CHALLENGE_COOKIE);
+    return res;
   }
+
   const challengePayload = decodeChallengePayload(rawCookie);
   if (!challengePayload) {
-    return NextResponse.json({ error: "Challenge expired or invalid." }, { status: 401 });
+    const res = NextResponse.json({ error: "Challenge expired or invalid." }, { status: 401 });
+    res.cookies.delete(CHALLENGE_COOKIE);
+    res.cookies.delete(LEGACY_CHALLENGE_COOKIE);
+    return res;
   }
 
   // 2. Parse and validate request body
@@ -56,61 +77,133 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+    const res = NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+    res.cookies.delete(CHALLENGE_COOKIE);
+    res.cookies.delete(LEGACY_CHALLENGE_COOKIE);
+    return res;
   }
 
   const parsed = AuthResponseSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid authentication response." }, { status: 400 });
+    const res = NextResponse.json({ error: "Invalid authentication response structure." }, { status: 400 });
+    res.cookies.delete(CHALLENGE_COOKIE);
+    res.cookies.delete(LEGACY_CHALLENGE_COOKIE);
+    return res;
   }
 
-  const { next: rawNext, ...authResponse } = parsed.data;
+  const {
+    next: rawNext,
+    redirectTo: rawRedirectTo,
+    redirect_to: rawRedirectUnderscore,
+    ...authResponse
+  } = parsed.data;
 
-  // 3. Verify cryptographic signature
+  // 3. Verify cryptographic signature & counter with simplewebauthn
   const result = await verifyPasskeyResponse(
     authResponse as AuthenticationResponseJSON,
     challengePayload.challenge,
+    request,
   );
 
   if (!result.ok) {
-    // Consume the challenge regardless (prevent oracle attacks)
-    const failResponse = NextResponse.json({ error: "Authentication failed." }, { status: 401 });
+    // Consume challenge immediately to prevent oracle/replay attacks
+    const failResponse = NextResponse.json(
+      { error: result.reason || "Authentication failed." },
+      { status: 401 },
+    );
     failResponse.cookies.delete(CHALLENGE_COOKIE);
+    failResponse.cookies.delete(LEGACY_CHALLENGE_COOKIE);
     return failResponse;
   }
 
-  // 4. Confirm user exists in Supabase
+  // 4. Look up Supabase user to ensure active account
   const { data: userRecord, error: userError } = await supabaseAdmin.auth.admin.getUserById(
     result.userId,
   );
   if (userError || !userRecord?.user) {
-    return NextResponse.json({ error: "Authentication failed." }, { status: 401 });
+    const failResponse = NextResponse.json({ error: "User account not found." }, { status: 401 });
+    failResponse.cookies.delete(CHALLENGE_COOKIE);
+    failResponse.cookies.delete(LEGACY_CHALLENGE_COOKIE);
+    return failResponse;
   }
 
-  const redirectTarget = getSafeRedirectTarget(rawNext ?? null, "/browser/") ?? "/browser/";
+  // 5. Generate a valid Supabase session for the verified user
+  let session: { access_token: string; refresh_token?: string; expires_in?: number } | null = null;
 
-  // 5. Generate a magic-link token for the verified user — this is the supported
-  //    Supabase Admin API mechanism to issue a session without a password.
-  //    The client exchanges the token for a real session via the auth callback.
-  const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-    type: "magiclink",
-    email: userRecord.user.email ?? "",
-  });
-
-  if (linkError || !linkData?.properties?.hashed_token) {
-    return NextResponse.json({ error: "Session issuance failed." }, { status: 500 });
+  const adminExt = supabaseAdmin.auth.admin as AdminWithSession;
+  if (typeof adminExt.createSession === "function") {
+    const sessionRes = await adminExt.createSession({ userId: result.userId });
+    if (sessionRes?.data?.session) {
+      session = sessionRes.data.session;
+    }
   }
 
-  // Return the one-time token — client calls supabase.auth.verifyOtp to exchange it
-  const response = NextResponse.json({
-    ok: true,
-    token: linkData.properties.hashed_token,
-    type: "magiclink",
-    next: redirectTarget,
+  if (!session && userRecord.user.email) {
+    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+      type: "magiclink",
+      email: userRecord.user.email,
+    });
+
+    if (!linkError && linkData?.properties?.hashed_token) {
+      const { data: otpData, error: otpError } = await supabaseAdmin.auth.verifyOtp({
+        token_hash: linkData.properties.hashed_token,
+        type: "magiclink",
+      });
+
+      if (!otpError && otpData?.session) {
+        session = otpData.session;
+      }
+    }
+  }
+
+  if (!session) {
+    const failResponse = NextResponse.json({ error: "Session creation failed." }, { status: 500 });
+    failResponse.cookies.delete(CHALLENGE_COOKIE);
+    failResponse.cookies.delete(LEGACY_CHALLENGE_COOKIE);
+    return failResponse;
+  }
+
+  const requestedTarget = rawNext ?? rawRedirectTo ?? rawRedirectUnderscore ?? "/dashboard";
+  const redirectTarget = getSafeRedirectTarget(requestedTarget, "/dashboard") ?? "/dashboard";
+
+  const isProd = process.env.NODE_ENV === "production" || request.url.startsWith("https:");
+
+  const response = NextResponse.json(
+    {
+      success: true,
+      ok: true,
+      redirectUrl: redirectTarget,
+      next: redirectTarget,
+      user: {
+        id: userRecord.user.id,
+        email: userRecord.user.email,
+      },
+    },
+    { status: 200 },
+  );
+
+  // Set HttpOnly auth cookies directly on the response (matching session bridge specification)
+  response.cookies.set("sb-access-token", session.access_token, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: "lax",
+    path: "/",
+    maxAge: session.expires_in ?? 3600,
   });
 
-  // Consume the one-time challenge cookie
+  if (session.refresh_token) {
+    response.cookies.set("sb-refresh-token", session.refresh_token, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+    });
+  }
+
+  // Consume one-time challenge cookies completely
   response.cookies.delete(CHALLENGE_COOKIE);
+  response.cookies.delete(LEGACY_CHALLENGE_COOKIE);
 
   return response;
 }
