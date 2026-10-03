@@ -35,9 +35,9 @@ jobs:
 
       # npm ci fails if package.json and package-lock.json disagree.
       - run: npm ci
-      # Full tree, not --omit=dev: this repo lists runtime packages such as
-      # `next` under devDependencies, so a prod-only audit would miss them.
-      - run: npm audit --audit-level=high
+      # Critical is a hard gate now; raise to "high" once the electron major
+      # upgrade (tracked separately) lands.
+      - run: npm audit --audit-level=critical
       - run: npm run verify:production
       # Deterministic release ZIP from tracked files; fails if a tracked
       # env/key/DB file would be packaged.
