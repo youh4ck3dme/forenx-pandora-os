@@ -20,13 +20,13 @@ export const runtime = "nodejs";
  * Invariants:
  *  - Auth: Bearer token or x-forenzx-webhook-secret must equal FORENZX_WEBHOOK_SECRET.
  *  - ForenZX webhook/presign must NEVER accept caller-supplied downloadUrl.
+ *  - Caller-supplied bucket is rejected. The bucket comes from FORENZX_S3_BUCKET.
  *  - URL is composed on the server strictly from the verified ledger row.
  *  - Foreign or unallowlisted download URLs are rejected (Cudzia URL = odmietnuť).
  */
 
 const RequestSchema = z.object({
   s3_object_key: z.string().min(1).max(2048),
-  bucket: z.string().min(1).max(256).optional(),
 });
 
 function isAuthorized(request: NextRequest): boolean {
@@ -61,6 +61,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Bucket is server configuration (FORENZX_S3_BUCKET) or ledger metadata, never a caller override.
+  if (body && typeof body === "object" && "bucket" in body) {
+    return NextResponse.json(
+      { error: "Caller-supplied bucket is prohibited; bucket must come from server configuration" },
+      { status: 400 }
+    );
+  }
+
   const parsed = RequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
@@ -69,7 +77,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const { s3_object_key, bucket } = parsed.data;
+  const { s3_object_key } = parsed.data;
 
   if (s3_object_key.includes("..")) {
     return NextResponse.json({ error: "Invalid s3_object_key path traversal." }, { status: 400 });
@@ -96,7 +104,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const presigned = await generateEvidencePresignedUrl(s3_object_key, bucket);
+    const presigned = await generateEvidencePresignedUrl(s3_object_key);
 
     // Validate generated download URL (Cudzia URL = odmietnuť)
     const validation = isValidDownloadUrl(presigned.url);

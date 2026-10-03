@@ -125,7 +125,8 @@ async function setupAdBlocker() {
 }
 
 // IPC for AdBlocker Control
-ipcMain.handle('shield:toggle', (_, enabled: boolean) => {
+ipcMain.handle('shield:toggle', (event, enabled: boolean) => {
+    if (!isMainWindowSender(event)) return false
     const webTabsSession = getWebTabsSession()
     if (enabled) {
         if (adBlocker) {
@@ -142,11 +143,13 @@ ipcMain.handle('shield:toggle', (_, enabled: boolean) => {
 })
 
 // IPC for Shield Stats
-ipcMain.handle('shield:getStats', () => {
+ipcMain.handle('shield:getStats', (event) => {
+    if (!isMainWindowSender(event)) return null
     return { ...shieldStats }
 })
 
-ipcMain.handle('shield:getLogs', () => {
+ipcMain.handle('shield:getLogs', (event) => {
+    if (!isMainWindowSender(event)) return []
     return [...shieldLogs]
 })
 
@@ -486,7 +489,8 @@ function createWindow() {
     })
 
     // IPC for Proxy
-    ipcMain.on('proxy:set', async (_, config) => {
+    ipcMain.on('proxy:set', async (event, config) => {
+        if (!isMainWindowSender(event as Electron.IpcMainInvokeEvent)) return
         const webTabsSession = getWebTabsSession()
         if (!config || config.type === 'none') {
             await webTabsSession.setProxy({ mode: 'direct' })
