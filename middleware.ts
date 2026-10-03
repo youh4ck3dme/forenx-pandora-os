@@ -61,6 +61,9 @@ function getRouteCategory(pathname: string): { category: RouteCategory; pattern:
     // Machine-to-machine: Edge Function requests presigned URL from Pandora
     { pattern: '/api/forenzx/presign-for-hub', category: 'SYSTEM' },
     { pattern: '/api/forenzx/presign-for-hub/*', category: 'SYSTEM' },
+    // Machine-to-machine: cron drains the ForenZX dispatch outbox
+    { pattern: '/api/forenzx/dispatch-outbox', category: 'SYSTEM' },
+    { pattern: '/api/forenzx/dispatch-outbox/*', category: 'SYSTEM' },
     // Standard system routes
     { pattern: '/.well-known/*', category: 'SYSTEM' },
 

@@ -37,6 +37,11 @@ export type ObjectSource = (
 export type VerificationDeps = {
   openObject: ObjectSource;
   record: (result: VerificationResult) => Promise<void>;
+  /**
+   * Called after a successful `verified` record is committed.
+   * Must not throw in a way that rolls back verification: the runner swallows errors.
+   */
+  drainVerified?: (evidenceId: string) => Promise<void>;
 };
 
 /** SHA-256 a veľkosť streamu po častiach (pamäť nezávisí od veľkosti súboru). */
@@ -141,9 +146,34 @@ export async function runPendingEvidenceVerification(limit = 10): Promise<Verifi
     },
   };
 
+  return verifyAndDrain((data ?? []) as PendingEvidence[], {
+    ...deps,
+    drainVerified: async (evidenceId) => {
+      const { drainForenzxDispatchOutbox } = await import("@/lib/forza/forenzx-dispatch-drain.server");
+      // Short drain of the row the verified trigger just inserted. Errors stay on the outbox row.
+      await drainForenzxDispatchOutbox({ evidenceId, limit: 1, fetchTimeoutMs: 8_000 });
+    },
+  });
+}
+
+/**
+ * Verify each item, then drain the ForenZX outbox for rows that became verified.
+ * Drain failures are swallowed: the ledger status is already committed and the outbox row remains.
+ */
+export async function verifyAndDrain(
+  items: PendingEvidence[],
+  deps: VerificationDeps,
+): Promise<VerificationResult[]> {
   const results: VerificationResult[] = [];
-  for (const item of (data ?? []) as PendingEvidence[]) {
-    results.push(await verifyEvidenceItem(item, deps));
+  for (const item of items) {
+    const result = await verifyEvidenceItem(item, deps);
+    results.push(result);
+    if (result.status !== "verified" || !deps.drainVerified) continue;
+    try {
+      await deps.drainVerified(result.id);
+    } catch {
+      // Verified state must stand. The outbox row stays pending/failed with last_error.
+    }
   }
   return results;
 }
