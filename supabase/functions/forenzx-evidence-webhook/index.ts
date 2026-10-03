@@ -1,5 +1,6 @@
 /// <reference path="../deno.d.ts" />
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { collectSuppliedCaseIds, decideEvidenceCaseId } from "./ledger-case.ts";
 
 type EvidenceRecord = {
   id?: string;
@@ -24,7 +25,6 @@ type Input = {
   type?: string;
 };
 
-const CASE_ID = /^[A-Za-z0-9_.-]{1,128}$/;
 const EVIDENCE_ID = /^[A-Za-z0-9_.-]{1,128}$/;
 const SHA256 = /^[a-f0-9]{64}$/i;
 const INPUT_TYPES = new Set([
@@ -117,7 +117,7 @@ export function isValidDownloadUrl(rawUrl: string): { ok: boolean; reason?: stri
 
 function extractInput(body: Input) {
   const record = body.record ?? {};
-  const caseId = body.caseId ?? record.s3_object_key?.match(/^cases\/([^\/]+)\/evidence\//)?.[1];
+  // caseId is intentionally not taken from the caller or from the S3 key.
   const evidenceId = body.evidenceId ?? record.id;
   const inputType = body.inputType ?? Deno.env.get("FORENZX_DEFAULT_INPUT_TYPE")?.trim();
   const packId = body.packId ?? Deno.env.get("FORENZX_PACK_ID")?.trim() ?? "mobile_compromise";
@@ -125,7 +125,6 @@ function extractInput(body: Input) {
   const idempotencyKey = body.idempotencyKey ?? (evidenceId && claimedSha256 ? `pandora:evidence:${evidenceId}:${claimedSha256}` : undefined);
   return {
     record,
-    caseId,
     evidenceId,
     userId: body.userId ?? record.investigator_id,
     inputType,
@@ -184,6 +183,38 @@ async function callHub(name: string, arguments_: Record<string, unknown>) {
   return JSON.parse(text) as { job_id?: string; status?: string; deduplicated?: boolean };
 }
 
+
+type LedgerEvidenceRow = {
+  id?: string;
+  case_id?: string | null;
+  investigator_id?: string | null;
+};
+
+async function writeCaseMismatchAudit(
+  supabase: ReturnType<typeof createClient>,
+  evidenceRow: LedgerEvidenceRow,
+  suppliedCaseIds: unknown[] | null,
+  evidenceId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!evidenceRow.investigator_id) {
+    return { ok: false, error: "investigator_id missing; cannot write case_audit_log" };
+  }
+  const { error } = await supabase.from("case_audit_log").insert({
+    user_id: evidenceRow.investigator_id,
+    case_id: evidenceRow.case_id,
+    action: "forenzx_case_id_mismatch",
+    table_name: "evidence_items",
+    record_id: evidenceRow.id,
+    changes: {
+      ledger_case_id: evidenceRow.case_id ?? null,
+      supplied_case_ids: suppliedCaseIds,
+      evidence_id: evidenceId,
+    },
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
 Deno.serve(async (request: Request) => {
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
   if (!isAuthorized(request)) return json({ error: "Unauthorized" }, 401);
@@ -239,14 +270,28 @@ Deno.serve(async (request: Request) => {
       return json({ error: "Evidence ledger row contains invalid sha256_hash" }, 403);
     }
 
-    const caseId =
-      input.caseId ??
-      evidenceRow.case_id ??
-      s3Key.match(/^cases\/([^\/]+)\/evidence\//)?.[1];
-
-    if (!caseId || !CASE_ID.test(caseId)) {
-      return json({ error: "caseId is required and must be valid" }, 400);
+    // caseId is ledger-authoritative. Caller caseId/case_id is checked, never trusted.
+    // The S3 key is not a case identity.
+    const suppliedCaseIds = collectSuppliedCaseIds(body);
+    const caseDecision = decideEvidenceCaseId(evidenceRow.case_id, suppliedCaseIds);
+    if (!caseDecision.ok) {
+      if (caseDecision.code === "case_id_mismatch") {
+        const audit = await writeCaseMismatchAudit(
+          supabase,
+          evidenceRow,
+          suppliedCaseIds,
+          input.evidenceId,
+        );
+        if (!audit.ok) {
+          return json(
+            { error: `Caller caseId rejected and audit log failed: ${audit.error}` },
+            500,
+          );
+        }
+      }
+      return json({ error: caseDecision.error }, caseDecision.status);
     }
+    const caseId = caseDecision.caseId;
 
     const userId = evidenceRow.investigator_id ?? input.userId;
     if (!userId) {

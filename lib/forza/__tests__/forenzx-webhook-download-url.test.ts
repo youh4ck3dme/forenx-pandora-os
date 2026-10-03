@@ -257,6 +257,22 @@ describe("POST /api/forenzx/presign-for-hub", () => {
     expect(response.status).toBe(400);
   });
 
+  it("rejects caller-supplied bucket override with 400", async () => {
+    const { POST } = await import(
+      "../../../app/api/forenzx/presign-for-hub/route"
+    );
+
+    const request = makeRequest({
+      s3_object_key: VALID_S3_KEY,
+      bucket: "attacker-controlled-bucket",
+    });
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toContain("bucket");
+    expect(body.error).toContain("prohibited");
+  });
+
   it("rejects s3_object_key not found in evidence ledger with 404", async () => {
     const { POST } = await import(
       "../../../app/api/forenzx/presign-for-hub/route"
@@ -318,5 +334,12 @@ describe("POST /api/forenzx/presign-for-hub", () => {
     expect(body.filename).toBe("dump.tar.gz");
     expect(body.s3_key).toBe(VALID_S3_KEY);
     expect(body.expires_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
+    const command = vi.mocked(getSignedUrl).mock.calls.at(-1)?.[1] as {
+      input: { Bucket?: string; Key?: string };
+    };
+    expect(command.input.Bucket).toBe("forenx-vault-test");
+    expect(command.input.Key).toBe(VALID_S3_KEY);
   });
 });
