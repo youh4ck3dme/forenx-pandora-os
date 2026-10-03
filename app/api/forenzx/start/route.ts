@@ -105,7 +105,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // ── Idempotency check ──────────────────────────────────────────────────────
   // Use verified SHA-256 digest from evidence row
   const idempotencyKey = `pandora:evidence:${evidenceId}:${trustedSha256}`;
-  const { data: existing } = await (supabaseAdmin as any)
+  const { data: existing } = await supabaseAdmin
     .from("forenzx_analysis_jobs")
     .select("id, hub_job_id, status")
     .eq("evidence_id", evidenceId)
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // ── Persist job row (starting) ─────────────────────────────────────────────
-  const { data: row, error: insertError } = await (supabaseAdmin as any)
+  const { data: row, error: insertError } = await supabaseAdmin
     .from("forenzx_analysis_jobs")
     .upsert({
       case_id: resolvedCaseId,
@@ -152,7 +152,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       idempotencyKey,
     });
 
-    await (supabaseAdmin as any)
+    await supabaseAdmin
       .from("forenzx_analysis_jobs")
       .update({
         hub_job_id: result.job_id,
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({ jobId: result.job_id, deduplicated: result.deduplicated });
   } catch (error) {
-    await (supabaseAdmin as any)
+    await supabaseAdmin
       .from("forenzx_analysis_jobs")
       .update({
         status: "failed",

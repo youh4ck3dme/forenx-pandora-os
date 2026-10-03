@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { generateEvidencePresignedUrl } from "@/lib/forza/forenzx-evidence-presign.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
@@ -29,14 +30,22 @@ const RequestSchema = z.object({
   s3_object_key: z.string().min(1).max(2048),
 });
 
+function safeCompare(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
+}
+
 function isAuthorized(request: NextRequest): boolean {
   const secret = process.env.FORENZX_WEBHOOK_SECRET?.trim();
   if (!secret) return false;
 
   const authHeader = request.headers.get("authorization") ?? "";
-  if (authHeader.startsWith("Bearer ") && authHeader.slice(7) === secret) return true;
+  if (authHeader.startsWith("Bearer ") && safeCompare(authHeader.slice(7), secret)) return true;
 
-  if (request.headers.get("x-forenzx-webhook-secret") === secret) return true;
+  const customHeader = request.headers.get("x-forenzx-webhook-secret");
+  if (customHeader && safeCompare(customHeader, secret)) return true;
 
   return false;
 }
@@ -84,7 +93,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // ── Ledger validation: S3 key must exist in evidence_items and have verified status ──
-  const { data: evidenceRow, error: lookupError } = await (supabaseAdmin as any)
+  const { data: evidenceRow, error: lookupError } = await supabaseAdmin
     .from("evidence_items")
     .select("id, s3_object_key, hash_verification_status")
     .eq("s3_object_key", s3_object_key)
