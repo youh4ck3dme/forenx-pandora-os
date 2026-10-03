@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 type EvidenceRecord = {
   id?: string;
+  case_id?: string;
   investigator_id?: string;
   file_name?: string;
   mime_type?: string;
@@ -19,8 +20,6 @@ type Input = {
   packId?: string;
   claimedSha256?: string;
   idempotencyKey?: string;
-  downloadUrl?: string;
-  downloadFilename?: string;
   record?: EvidenceRecord;
   type?: string;
 };
@@ -44,6 +43,16 @@ const INPUT_TYPES = new Set([
   "file_generic",
 ]);
 
+const PRIVATE_IP_PATTERNS = [
+  /^10\./,
+  /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
+  /^192\.168\./,
+  /^169\.254\./,
+  /^fc00:/i,
+  /^fe80:/i,
+  /^::1$/,
+];
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -64,14 +73,56 @@ function isAuthorized(request: Request): boolean {
   return request.headers.get("x-forenzx-webhook-secret") === expected;
 }
 
+export function isValidDownloadUrl(rawUrl: string): { ok: boolean; reason?: string } {
+  if (!rawUrl || typeof rawUrl !== "string") {
+    return { ok: false, reason: "Empty download URL" };
+  }
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "https:") {
+      return { ok: false, reason: "HTTPS protocol required" };
+    }
+    if (parsed.username || parsed.password) {
+      return { ok: false, reason: "Credentials in URL are forbidden" };
+    }
+    const host = parsed.hostname.toLowerCase();
+    if (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "[::1]" ||
+      host === "::1" ||
+      host.endsWith(".local") ||
+      host.endsWith(".localhost")
+    ) {
+      return { ok: false, reason: `Loopback host forbidden: ${host}` };
+    }
+    for (const pattern of PRIVATE_IP_PATTERNS) {
+      if (pattern.test(host)) {
+        return { ok: false, reason: `Private IP host forbidden: ${host}` };
+      }
+    }
+    const allowedHostsEnv = Deno.env.get("FORENZX_ALLOWED_DOWNLOAD_HOSTS");
+    if (allowedHostsEnv) {
+      const allowedList = allowedHostsEnv.split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);
+      const isAllowed = allowedList.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+      if (!isAllowed) {
+        return { ok: false, reason: `Foreign host rejected: ${host}` };
+      }
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: "Malformed download URL" };
+  }
+}
+
 function extractInput(body: Input) {
   const record = body.record ?? {};
-  const caseId = body.caseId ?? record.s3_object_key?.match(/^cases\/([^/]+)\/evidence\//)?.[1];
+  const caseId = body.caseId ?? record.s3_object_key?.match(/^cases\/([^\/]+)\/evidence\//)?.[1];
   const evidenceId = body.evidenceId ?? record.id;
   const inputType = body.inputType ?? Deno.env.get("FORENZX_DEFAULT_INPUT_TYPE")?.trim();
   const packId = body.packId ?? Deno.env.get("FORENZX_PACK_ID")?.trim() ?? "mobile_compromise";
   const claimedSha256 = body.claimedSha256 ?? record.sha256_hash;
-  const idempotencyKey = body.idempotencyKey ?? `pandora:evidence:${evidenceId}:${claimedSha256}`;
+  const idempotencyKey = body.idempotencyKey ?? (evidenceId && claimedSha256 ? `pandora:evidence:${evidenceId}:${claimedSha256}` : undefined);
   return {
     record,
     caseId,
@@ -81,13 +132,11 @@ function extractInput(body: Input) {
     packId,
     claimedSha256,
     idempotencyKey,
-    downloadUrl: body.downloadUrl,
-    downloadFilename: body.downloadFilename,
   };
 }
 
 /**
- * Fetch a presigned GET URL from Pandora's M2M endpoint.
+ * Fetch a presigned GET URL from Pandora M2M endpoint.
  * The Edge Function (Deno) cannot use the AWS SDK directly, so Pandora
  * generates the URL and hands it back via /api/forenzx/presign-for-hub.
  */
@@ -140,78 +189,139 @@ Deno.serve(async (request: Request) => {
   if (!isAuthorized(request)) return json({ error: "Unauthorized" }, 401);
 
   try {
-    const body = (await request.json()) as Input;
-    const input = extractInput(body);
-    if (body.record?.hash_verification_status && body.record.hash_verification_status !== "verified") {
-      return json({ ignored: true, reason: "evidence_not_verified" }, 202);
+    const body = (await request.json()) as Input & { downloadUrl?: unknown; download_url?: unknown };
+
+    // Invariant: ForenZX webhook must NEVER accept downloadUrl from caller
+    if (body.downloadUrl !== undefined || body.download_url !== undefined) {
+      return json(
+        { error: "Caller-supplied downloadUrl is prohibited; download URL must be resolved from evidence ledger" },
+        400
+      );
     }
-    if (!input.caseId || !CASE_ID.test(input.caseId) || !input.evidenceId || !EVIDENCE_ID.test(input.evidenceId) || !input.userId) {
-      return json({ error: "caseId and evidenceId are required" }, 400);
+
+    const input = extractInput(body);
+
+    if (!input.evidenceId || !EVIDENCE_ID.test(input.evidenceId)) {
+      return json({ error: "evidenceId is required" }, 400);
     }
     if (!input.inputType || !INPUT_TYPES.has(input.inputType)) {
       return json({ ignored: true, reason: "inputType_required_or_unsupported" }, 202);
     }
-    if (!input.claimedSha256 || !SHA256.test(input.claimedSha256)) {
-      return json({ error: "claimedSha256 must be a SHA-256 digest" }, 400);
-    }
 
     const supabase = createClient(requiredEnv("SUPABASE_URL"), requiredEnv("SUPABASE_SERVICE_ROLE_KEY"));
+
+    // ── Load verified ledger row from evidence_items table ─────────────────
+    const { data: evidenceRow, error: evidenceLookupError } = await supabase
+      .from("evidence_items")
+      .select("id, case_id, investigator_id, s3_object_key, sha256_hash, hash_verification_status, file_name")
+      .eq("id", input.evidenceId)
+      .maybeSingle();
+
+    if (evidenceLookupError) {
+      return json({ error: `Ledger lookup failed: ${evidenceLookupError.message}` }, 500);
+    }
+    if (!evidenceRow) {
+      return json({ error: "Evidence row not found in ledger" }, 404);
+    }
+
+    // Fail-closed verification: only verified evidence is allowed
+    if (evidenceRow.hash_verification_status !== "verified") {
+      return json({ ignored: true, reason: "evidence_not_verified" }, 202);
+    }
+
+    const s3Key = evidenceRow.s3_object_key;
+    if (!s3Key || typeof s3Key !== "string" || s3Key.includes("..")) {
+      return json({ error: "Evidence ledger row contains invalid s3_object_key" }, 403);
+    }
+
+    const trustedSha256 = (evidenceRow.sha256_hash ?? "").toLowerCase();
+    if (!SHA256.test(trustedSha256)) {
+      return json({ error: "Evidence ledger row contains invalid sha256_hash" }, 403);
+    }
+
+    const caseId =
+      input.caseId ??
+      evidenceRow.case_id ??
+      s3Key.match(/^cases\/([^\/]+)\/evidence\//)?.[1];
+
+    if (!caseId || !CASE_ID.test(caseId)) {
+      return json({ error: "caseId is required and must be valid" }, 400);
+    }
+
+    const userId = evidenceRow.investigator_id ?? input.userId;
+    if (!userId) {
+      return json({ error: "userId is required" }, 400);
+    }
+
+    const idempotencyKey = input.idempotencyKey ?? `pandora:evidence:${input.evidenceId}:${trustedSha256}`;
+
+    // ── Idempotency deduplication check ────────────────────────────────────
     const { data: existing } = await supabase
       .from("forenzx_analysis_jobs")
       .select("id, hub_job_id, status")
       .eq("evidence_id", input.evidenceId)
       .eq("pack_id", input.packId)
-      .eq("idempotency_key", input.idempotencyKey)
+      .eq("idempotency_key", idempotencyKey)
       .maybeSingle();
-    if (existing?.hub_job_id) return json({ accepted: true, deduplicated: true, jobId: existing.hub_job_id });
+
+    if (existing?.hub_job_id) {
+      return json({ accepted: true, deduplicated: true, jobId: existing.hub_job_id });
+    }
 
     const { data: row, error: insertError } = await supabase
       .from("forenzx_analysis_jobs")
       .upsert({
-        case_id: input.caseId,
+        case_id: caseId,
         evidence_id: input.evidenceId,
-        user_id: input.userId ?? input.record.investigator_id,
+        user_id: userId,
         pack_id: input.packId,
         input_type: input.inputType,
-        idempotency_key: input.idempotencyKey,
+        idempotency_key: idempotencyKey,
         status: "starting",
       }, { onConflict: "evidence_id,pack_id,idempotency_key" })
       .select("id")
       .single();
-    if (insertError || !row) throw new Error(`forenzx job persistence failed: ${insertError?.message ?? "no row"}`);
+
+    if (insertError || !row) {
+      throw new Error(`forenzx job persistence failed: ${insertError?.message ?? "no row"}`);
+    }
 
     try {
-      let download_url = input.downloadUrl;
-      let filename = input.downloadFilename ?? input.record.file_name ?? "evidence.bin";
+      // ── Compose presigned download URL on server from ledger row ─────────
+      const pandoraUrl = requiredEnv("PANDORA_URL");
+      const webhookSecret = requiredEnv("FORENZX_WEBHOOK_SECRET");
+      const presigned = await fetchPresignedDownloadUrl(s3Key, pandoraUrl, webhookSecret);
 
-      if (!download_url) {
-        const s3Key = input.record.s3_object_key;
-        if (!s3Key) throw new Error("evidence_items.s3_object_key is required to generate download URL");
+      const download_url = presigned.download_url;
+      const filename = presigned.filename || evidenceRow.file_name || "evidence.bin";
 
-        const pandoraUrl = requiredEnv("PANDORA_URL");
-        const webhookSecret = requiredEnv("FORENZX_WEBHOOK_SECRET");
-        const presigned = await fetchPresignedDownloadUrl(s3Key, pandoraUrl, webhookSecret);
-        download_url = presigned.download_url;
-        filename = presigned.filename;
+      // ── Cudzia URL = odmietnuť ───────────────────────────────────────────
+      const urlCheck = isValidDownloadUrl(download_url);
+      if (!urlCheck.ok) {
+        return json(
+          { error: `Download URL rejected: ${urlCheck.reason}` },
+          403
+        );
       }
 
       const result = await callHub("forenzx_analysis_start", {
-        case_id: input.caseId,
+        case_id: caseId,
         evidence_id: input.evidenceId,
         pack_id: input.packId,
         input_type: input.inputType,
-        claimed_sha256: input.claimedSha256,
-        idempotency_key: input.idempotencyKey,
-        // Pass download_url so Hub can self-download the evidence file
+        claimed_sha256: trustedSha256,
+        idempotency_key: idempotencyKey,
         download_url,
         download_filename: filename,
       });
+
       if (!result.job_id) throw new Error("ForenZX did not return a job_id");
 
       await supabase.from("forenzx_analysis_jobs").update({
         hub_job_id: result.job_id,
         status: result.status?.toLowerCase() === "queued" ? "queued" : "running",
       }).eq("id", row.id);
+
       return json({ accepted: true, jobId: result.job_id, deduplicated: result.deduplicated ?? false });
     } catch (error) {
       await supabase.from("forenzx_analysis_jobs").update({

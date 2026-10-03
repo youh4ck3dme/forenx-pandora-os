@@ -243,6 +243,8 @@ verified evidence
 
 Kanonický webhook header je `x-forenzx-webhook-secret`. Edge Function musí overiť secret, evidence status, idempotency key a serverové údaje. Presigned download musí používať iba povolený hostname; HTTP, localhost, private IP, neoverené redirecty a nepovolené hosty sú odmietnuté.
 
+**ForenZX webhook a presign-for-hub nesmú nikdy akceptovať `downloadUrl` (ani `download_url`) od volajúceho.** Download URL sa výhradne skladá na serveri z overeného ledger riadku `evidence_items` (s3_object_key, hash_verification_status = verified). Cudzia, nepovolená alebo neoverená URL je odmietnutá s HTTP 400/403. Validátor `isValidDownloadUrl` (`lib/forza/forenzx-download-guard.ts`) odmieta HTTP, localhost, private IP rozsahy (RFC 1918/3927/4193), embedded credentials a hosty mimo allowlistu.
+
 MCP kontrakt musí obsahovať nástroj `forenzx_analysis_start` s `download_url` a `download_filename`. Hash mismatch alebo bezpečnostné odmietnutie nesmie skončiť ako úspešný job.
 
 ## 7. UI, PWA a mobile pravidlá
