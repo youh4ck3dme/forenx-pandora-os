@@ -250,10 +250,14 @@ describe('HistoryManager - Second Brain Encrypt-At-Rest', () => {
       // Step 1: write encrypted entry with encryption on
       const manager1 = new HistoryManager(storagePath);
       manager1.addEntry({ url: 'https://case.local/doc', title: 'Doc', content: 'ORIGINAL_BODY' });
+      const originalCiphertext = JSON.parse(fs.readFileSync(storagePath, 'utf8'))
+        .find((r: any) => r.url === 'https://case.local/doc')?.encryptedContent;
+      expect(originalCiphertext).toBeDefined();
 
       // Step 2: turn encryption off, reload (decrypt unavailable) and add a new entry
       mockSafeStorage.setEncryptionAvailable(false);
       const manager2 = new HistoryManager(storagePath);
+      expect(manager2.getContent('https://case.local/doc')?.content).toBe('');
       manager2.addEntry({ url: 'https://case.local/doc2', title: 'Doc2', content: 'NEW_BODY' });
       // NEW_BODY cannot be encrypted — must not appear on disk
       const raw2 = fs.readFileSync(storagePath, 'utf8');
@@ -261,7 +265,7 @@ describe('HistoryManager - Second Brain Encrypt-At-Rest', () => {
       // Original ciphertext must still be present on disk (round-tripped)
       const parsed2 = JSON.parse(raw2);
       const originalOnDisk = parsed2.find((r: any) => r.url === 'https://case.local/doc');
-      expect(originalOnDisk?.encryptedContent).toBeDefined();
+      expect(originalOnDisk?.encryptedContent).toBe(originalCiphertext);
 
       // Step 3: turn encryption back on, reload — old body decrypts correctly
       mockSafeStorage.setEncryptionAvailable(true);
@@ -274,17 +278,20 @@ describe('HistoryManager - Second Brain Encrypt-At-Rest', () => {
       // Step 1: write encrypted entry
       const manager1 = new HistoryManager(storagePath);
       manager1.addEntry({ url: 'https://case.local/secure', title: 'Secure', content: 'DECRYPT_ME' });
+      const originalCiphertext = JSON.parse(fs.readFileSync(storagePath, 'utf8'))
+        .find((r: any) => r.url === 'https://case.local/secure')?.encryptedContent;
+      expect(originalCiphertext).toBeDefined();
 
       // Step 2: make decryptString throw, reload
-      const originalDecrypt = mockSafeStorage.decryptString.getMockImplementation?.();
       mockSafeStorage.decryptString.mockImplementationOnce(() => { throw new Error('mock decrypt failure') });
       const manager2 = new HistoryManager(storagePath);
       // content is empty in memory
       expect(manager2.getContent('https://case.local/secure')?.content).toBe('');
-      // ciphertext must still be on disk
+      // Saving another entry must round-trip the opaque ciphertext unchanged
+      manager2.addEntry({ url: 'https://case.local/new', title: 'New', content: 'NEW_BODY' });
       const raw2 = fs.readFileSync(storagePath, 'utf8');
       const parsed2 = JSON.parse(raw2);
-      expect(parsed2.find((r: any) => r.url === 'https://case.local/secure')?.encryptedContent).toBeDefined();
+      expect(parsed2.find((r: any) => r.url === 'https://case.local/secure')?.encryptedContent).toBe(originalCiphertext);
 
       // Step 3: decrypt works again — reload and recover
       const manager3 = new HistoryManager(storagePath);
