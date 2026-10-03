@@ -10,7 +10,7 @@ const mockSelect = vi.fn(() => ({ eq: mockEqId }));
 const mockFrom = vi.fn(() => ({ select: mockSelect }));
 
 vi.mock("@/integrations/supabase/client.server", () => ({
-  getAdminDb: () => ({ from: mockFrom }),
+  supabaseAdmin: { from: mockFrom },
 }));
 
 vi.mock("@/lib/storage/vault-auth", () => ({
