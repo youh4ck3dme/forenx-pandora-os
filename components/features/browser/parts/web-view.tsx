@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { isElectron } from "@/lib/api";
 
 import React, { memo } from "react";
+import { WelcomeDashboard } from "./welcome-dashboard";
 
 const GL = dynamic(() => import("@/components/gl").then((mod) => mod.GL), {
   ssr: false,
@@ -62,7 +63,7 @@ const TabContent = memo(
           !isActive && "hidden",
         )}
       >
-        {/* 3D Background / Clean Welcome Animation (pure animation for empty/new tabs) */}
+        {/* 3D Background & Sovereign Welcome Dashboard for empty/new tabs */}
         {isNewTab && (
           <div
             className="w-full h-full relative bg-black overflow-hidden flex items-center justify-center select-none"
@@ -70,6 +71,7 @@ const TabContent = memo(
             onMouseLeave={() => setHovering(false)}
           >
             {isActive && <GL hovering={hovering} />}
+            {isActive && <WelcomeDashboard tabId={tab.id} />}
           </div>
         )}
 
