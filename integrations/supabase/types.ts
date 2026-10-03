@@ -1135,6 +1135,7 @@ export type Database = {
       };
       current_plan: { Args: { _user: string }; Returns: string };
       db_health_stats: { Args: never; Returns: Json };
+      public_health_snapshot: { Args: never; Returns: Json };
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"];
