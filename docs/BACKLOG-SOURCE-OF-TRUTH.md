@@ -333,6 +333,7 @@ Pred zmenou celkovej brány z `RED` na `GREEN` priložiť datované dôkazy pre:
 | Závislosti — `xlsx` | Odstránené, nahradené `read-excel-file/node`. |
 | Deployment artefakty (pôvodný § 11) | `docker/Dockerfile.production`, `docker-compose.production.yml`, `scripts/ci/run-performance-budget.mjs`, `supabase/migrations/20260927113000_case_graph_hardening.sql`, `docs/DISASTER_RECOVERY_RUNBOOK.md`, `scripts/desktop/sign-and-notarize.mjs` — súbory existujú; ich nasadenie a zapojenie do CI sledujú P0-06, P3-02, P3-04 a § 9. |
 | Megaprompt Task 1–4 (pôvodný § 10) | Task 1 (`xlsx`) a Task 4 (závery viazané na dôkazy) hotové; Task 2 a Task 3 pokračujú v P3-03 a § 9; Task 5 je rozpísaný do P0-01 až P0-06. |
+| Staging Hotfix (2026-10-03) | Session bridge trailing slash fix (`/api/auth/session/`) + proxy Origin, AI consent dialog outside-click UX stabilita + verzia `2026.09-1`, server-fn 403 pre nepovolené/neodsúhlasené volania namiesto 500 a stop pollingu na stav stránke pri 403, Vault caseId UUID validácia (odstránenie 22P02 chyby a hardcoded CASE-KS fallbacku) s 503 error bannerom v UI pri chýbajúcom S3, canonical HTTPS favicon.ico. |
 
 **Mimo auditu bez nálezu (pre úplnosť):** Electron `webPreferences` (sandbox, contextIsolation, bez nodeIntegration)
 a SSRF guard vrátane IPv6-mapped IPv4; migrácie dôsledne používajú RLS a SECURITY DEFINER so `search_path = public`.

@@ -81,6 +81,14 @@ describe("handleServerFnRequest", () => {
     expect(
       (await handleServerFnRequest(post({}), "test/echo", { lookup: () => unauthorized as unknown as RegisteredServerFn })).status,
     ).toBe(401);
+    const forbidden = createServerFn({ id: "test/echo" }).handler(async () => {
+      throw new Error("Prístup majú iba administrátori.");
+    });
+    expect((await handleServerFnRequest(post({}), "test/echo", { lookup: () => forbidden as unknown as RegisteredServerFn })).status).toBe(403);
+    const consentMissing = createServerFn({ id: "test/echo" }).handler(async () => {
+      throw new Error("Bez potvrdeného súhlasu sa údaje do AI neodosielajú.");
+    });
+    expect((await handleServerFnRequest(post({}), "test/echo", { lookup: () => consentMissing as unknown as RegisteredServerFn })).status).toBe(403);
     const failing = createServerFn({ id: "test/echo" }).handler(async () => {
       throw new Error("Prípad sa nenašiel.");
     });

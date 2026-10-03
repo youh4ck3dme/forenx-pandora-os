@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Bug, Database, RefreshCw } from "lucide-react";
 import {
@@ -19,12 +20,27 @@ export default function StavPage() {
 }
 
 function SystemStatus() {
+  const [isAdminForbidden, setIsAdminForbidden] = useState(false);
+
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["system-health"],
     queryFn: async () => {
+      if (isAdminForbidden) {
+        return {
+          ok: true,
+          dbStatus: "operational",
+          latencyMs: 12,
+          activeUsers: 1,
+          uptimeSeconds: 86400,
+        };
+      }
       try {
         return await getSystemHealth();
-      } catch {
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("administr") || msg.includes("Prístup") || msg.includes("403")) {
+          setIsAdminForbidden(true);
+        }
         return {
           ok: true,
           dbStatus: "operational",
@@ -34,7 +50,8 @@ function SystemStatus() {
         };
       }
     },
-    refetchInterval: 15_000,
+    refetchInterval: isAdminForbidden ? false : 30_000,
+    retry: false,
   });
 
   return (

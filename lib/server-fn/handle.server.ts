@@ -66,6 +66,9 @@ function errorResponse(error: unknown): ServerFnResponse {
   }
   const message = error instanceof Error ? error.message : "";
   if (message.startsWith("Unauthorized")) return fail(401, "Neprihlásený alebo neplatný token.");
+  if (/administr|Prístup majú iba|permission denied|insufficient privilege|Bez potvrdeného súhlasu/i.test(message)) {
+    return fail(403, (message || "Prístup zamietnutý.").slice(0, MAX_ERROR_LENGTH));
+  }
   // Chyby konfigurácie (názvy env premenných) klientovi neprezrádzame.
   if (/environment variable/i.test(message)) return fail(500, "Server nie je správne nakonfigurovaný.");
   return fail(500, (message || "Serverová funkcia zlyhala.").slice(0, MAX_ERROR_LENGTH));

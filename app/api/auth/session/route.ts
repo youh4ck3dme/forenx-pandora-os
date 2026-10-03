@@ -18,7 +18,8 @@ function getClientIp(request: NextRequest): string {
 
 function validateOrigin(request: NextRequest): boolean {
   const origin = request.headers.get("origin");
-  const host = request.headers.get("host");
+  const host =
+    request.headers.get("x-forwarded-host") || request.headers.get("host");
 
   if (!origin) {
     // If origin header is missing, check referer header

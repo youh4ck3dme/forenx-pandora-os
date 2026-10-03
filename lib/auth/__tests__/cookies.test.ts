@@ -22,7 +22,7 @@ describe('Client Auth Cookie Synchronization (Server Bridge)', () => {
     });
 
     expect(success).toBe(true);
-    expect(global.fetch).toHaveBeenCalledWith('/api/auth/session', {
+    expect(global.fetch).toHaveBeenCalledWith('/api/auth/session/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -43,7 +43,7 @@ describe('Client Auth Cookie Synchronization (Server Bridge)', () => {
     const success = await clearAuthCookies();
 
     expect(success).toBe(true);
-    expect(global.fetch).toHaveBeenCalledWith('/api/auth/session', {
+    expect(global.fetch).toHaveBeenCalledWith('/api/auth/session/', {
       method: 'DELETE',
       credentials: 'same-origin',
     });
@@ -57,10 +57,10 @@ describe('Client Auth Cookie Synchronization (Server Bridge)', () => {
       refresh_token: 'active-refresh',
     });
     expect(setSuccess).toBe(true);
-    expect(global.fetch).toHaveBeenCalledWith('/api/auth/session', expect.objectContaining({ method: 'POST' }));
+    expect(global.fetch).toHaveBeenCalledWith('/api/auth/session/', expect.objectContaining({ method: 'POST' }));
 
     const clearSuccess = await syncAuthCookies(null);
     expect(clearSuccess).toBe(true);
-    expect(global.fetch).toHaveBeenCalledWith('/api/auth/session', expect.objectContaining({ method: 'DELETE' }));
+    expect(global.fetch).toHaveBeenCalledWith('/api/auth/session/', expect.objectContaining({ method: 'DELETE' }));
   });
 });

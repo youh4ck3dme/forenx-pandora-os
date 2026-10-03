@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getPresignedUploadUrl } from "@/lib/storage/s3-vault";
+import { getPresignedUploadUrl, isS3Configured } from "@/lib/storage/s3-vault";
 import { evidenceStorageKey } from "@/lib/storage/evidence-ledger";
 import { tracedError, withTraceRoute } from "@/lib/forza/trace";
 import {
   accessContext,
   authenticateVaultRequest,
+  isUuidCaseId,
   logVaultAccess,
 } from "@/lib/storage/vault-auth";
 
@@ -55,6 +56,16 @@ const PresignResponseSchema = z.object({
  */
 async function handlePost(request: NextRequest, traceId: string): Promise<NextResponse> {
   try {
+    if (process.env.NODE_ENV === "production" && !isS3Configured()) {
+      return NextResponse.json(
+        {
+          error: "Evidence Vault nie je nakonfigurovaný pre produkčné S3 úložisko.",
+          details: "Chýbajú S3 kľúče (S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY). Kontaktujte administrátora.",
+        },
+        { status: 503 },
+      );
+    }
+
     // 1. Autentifikácia vyšetrovateľa (P1-04: zdieľaná fail-closed vrstva)
     const auth = await authenticateVaultRequest(request);
     if (auth.userId === null) {
@@ -82,6 +93,13 @@ async function handlePost(request: NextRequest, traceId: string): Promise<NextRe
     const { caseId, fileName, fileSizeBytes, mimeType, sha256Hash } =
       validation.data;
 
+    if (!isUuidCaseId(caseId)) {
+      return NextResponse.json(
+        { error: "Identifikátor spisu musí byť platné UUID." },
+        { status: 400 },
+      );
+    }
+
     // 3. RLS Kontrola vlastníctva spisu (Ochrana pred IDOR - Flaw 3)
     // P0-08: kontrolu preskakuje iba lokálny dev obchvat. Bez konfigurácie
     // (service rola) sa vlastníctvo nedá overiť → fail-closed, nie preskočiť.
@@ -106,6 +124,12 @@ async function handlePost(request: NextRequest, traceId: string): Promise<NextRe
           .maybeSingle();
 
         if (caseError) {
+          if (caseError.code === "22P02") {
+            return NextResponse.json(
+              { error: "Identifikátor spisu musí byť platné UUID." },
+              { status: 400 },
+            );
+          }
           tracedError(
             traceId,
             `[Vault Presign] Chyba pri overovaní prípadu ${caseId}:`,

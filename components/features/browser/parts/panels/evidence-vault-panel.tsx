@@ -51,9 +51,13 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
   caseId: propCaseId,
   onSendToAiAnalysis,
 }) => {
-  // Ak nie je caseId explicitne predané v prope, vezmeme aktívny spis z kontextu
+  // Ak nie je caseId explicitne predané v prope, vezmeme aktívny spis z kontextu (bez hardcoded fallbacku)
   const activeCaseContext = useActiveCase();
-  const effectiveCaseId = propCaseId || activeCaseContext?.activeCaseId || "CASE-KS-2026-881";
+  const effectiveCaseId =
+    propCaseId ||
+    activeCaseContext?.activeCaseId ||
+    activeCaseContext?.activeCase?.id ||
+    null;
 
   const [ingestState, setIngestState] = useState<IngestProgressState>({ status: "idle" });
   const [items, setItems] = useState<readonly ForensicEvidenceItem[]>([]);
@@ -61,6 +65,7 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const [isLoadingList, setIsLoadingList] = useState<boolean>(false);
+  const [vaultConfigError, setVaultConfigError] = useState<string | null>(null);
 
   const activeAbortControllerRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -75,10 +80,14 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
   }, []);
 
   // Načítanie zoznamu zaistených dôkazov pre daný spis
-  const loadVaultItems = useCallback(async (cId: string) => {
-    if (!cId) return;
+  const loadVaultItems = useCallback(async (cId: string | null) => {
+    if (!cId) {
+      setItems([]);
+      return;
+    }
     try {
       setIsLoadingList(true);
+      setVaultConfigError(null);
       const token = await getSupabaseSessionToken();
       const res = await fetch(`/api/vault?caseId=${encodeURIComponent(cId)}`, {
         headers: token ? { authorization: `Bearer ${token}` } : undefined,
@@ -87,6 +96,13 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
         const data = (await res.json()) as { items: ForensicEvidenceItem[] };
         if (Array.isArray(data.items)) {
           setItems(data.items);
+        }
+      } else {
+        const errJson = (await res.json().catch(() => null)) as { error?: string } | null;
+        if (res.status === 503) {
+          setVaultConfigError(
+            errJson?.error || "Evidence Vault nie je nakonfigurovaný pre produkčné S3 úložisko.",
+          );
         }
       }
     } catch {
@@ -99,6 +115,8 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
   useEffect(() => {
     if (effectiveCaseId) {
       void loadVaultItems(effectiveCaseId);
+    } else {
+      setItems([]);
     }
   }, [effectiveCaseId, loadVaultItems]);
 
@@ -293,7 +311,12 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
             Hetzner S3 Evidence Vault
           </h2>
           <p className="text-[11px] text-zinc-400 font-mono mt-0.5 truncate max-w-50">
-            Spis: <span className="text-zinc-200 font-semibold">{effectiveCaseId}</span>
+            Spis:{" "}
+            {effectiveCaseId ? (
+              <span className="text-zinc-200 font-semibold">{effectiveCaseId}</span>
+            ) : (
+              <span className="text-amber-400 font-semibold">Nie je vybraný</span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[10px] font-mono text-emerald-400">
@@ -301,6 +324,17 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
           S3 hel1
         </div>
       </div>
+
+      {/* ─── UPOZORNENIE: CHÝBAJÚCA S3 KONFIGURÁCIA (503) ─────────────── */}
+      {vaultConfigError && (
+        <div className="p-2.5 rounded-lg border border-amber-500/30 bg-amber-950/20 text-xs flex items-start gap-2 text-amber-300">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+          <div className="space-y-0.5">
+            <p className="font-semibold text-xs">S3 úložisko nie je nakonfigurované</p>
+            <p className="text-[11px] text-zinc-400">{vaultConfigError}</p>
+          </div>
+        </div>
+      )}
 
       {/* ─── DRAG & DROP ZÓNA ──────────────────────────────────────── */}
       <div
@@ -414,16 +448,22 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
         ) : items.length === 0 ? (
           <EmptyState
             icon={HardDrive}
-            title="Zatiaľ žiadne zaistené dôkazy"
-            detail="Nahrajte prvý súbor spisu (PDF, CSV, obrázok). Systém mu vypočíta SHA-256 a uloží ho do S3 trezora."
+            title={effectiveCaseId ? "Zatiaľ žiadne zaistené dôkazy" : "Nie je zvolený aktívny spis"}
+            detail={
+              effectiveCaseId
+                ? "Nahrajte prvý súbor spisu (PDF, CSV, obrázok). Systém mu vypočíta SHA-256 a uloží ho do S3 trezora."
+                : "Pre nahrávanie a zobrazenie dôkazov v trezore najprv vyberte alebo otvorte vyšetrovací spis."
+            }
             action={
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="rounded-full border border-border px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-foreground/10 cursor-pointer"
-              >
-                Nahrať prvý dôkaz
-              </button>
+              effectiveCaseId ? (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="rounded-full border border-border px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-foreground/10 cursor-pointer"
+                >
+                  Nahrať prvý dôkaz
+                </button>
+              ) : undefined
             }
           />
         ) : (

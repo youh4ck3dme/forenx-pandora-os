@@ -35,7 +35,7 @@ export async function setAuthCookies(
   }
 
   try {
-    const response = await fetch("/api/auth/session", {
+    const response = await fetch("/api/auth/session/", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -63,7 +63,7 @@ export async function clearAuthCookies(): Promise<boolean> {
   if (typeof window === "undefined") return false;
 
   try {
-    const response = await fetch("/api/auth/session", {
+    const response = await fetch("/api/auth/session/", {
       method: "DELETE",
       credentials: "same-origin",
     });
