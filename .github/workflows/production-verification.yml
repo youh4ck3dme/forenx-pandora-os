@@ -47,10 +47,9 @@ jobs:
     name: E2E smoke tests (routing & auth)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Runs only when a live deployment URL is available: set BASE_URL as a
-    # repository secret or pass it via workflow_dispatch input.
-    # Skip silently if the secret is absent so PRs without a deploy are not blocked.
-    if: ${{ vars.E2E_BASE_URL != '' || secrets.E2E_BASE_URL != '' }}
+    # Runs only when a live deployment URL is configured in repository vars.
+    # Skip silently if absent so PRs without a deploy are not blocked.
+    if: vars.E2E_BASE_URL != ''
     needs: verify
     steps:
       - uses: actions/checkout@v5
