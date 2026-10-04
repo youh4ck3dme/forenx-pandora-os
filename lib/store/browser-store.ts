@@ -125,7 +125,7 @@ export const useBrowserStore = create<BrowserState>()(
       // Initial State
       tabs: [{ id: '1', title: 'New Tab', url: 'pandora://newtab', lastAccessed: Date.now(), spaceId: 'default' }],
       activeTabId: '1',
-      sidebarOpen: true,
+      sidebarOpen: false,
       sidebarView: 'bookmarks',
       commandPaletteOpen: false,
       copilotOpen: false,

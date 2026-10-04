@@ -1,7 +1,7 @@
 "use client"
 import { GL } from "@/components/gl"
 import { useState, useEffect, useRef } from "react"
-import { Shield, Fingerprint, Sparkles, ChevronDown, Eye, Zap } from "lucide-react"
+import { Shield, Fingerprint, Sparkles, Eye, Zap } from "lucide-react"
 import { PandoraLogo } from "@/components/ui/branding/pandora-logo"
 
 export function WelcomePage() {
@@ -43,9 +43,6 @@ export function WelcomePage() {
     return () => clearInterval(interval)
   }, [features.length])
 
-  const scrollToContent = () => {
-    window.scrollTo({ top: window.innerHeight, behavior: "smooth" })
-  }
 
   const handleMouseMove = (e: React.MouseEvent) => {
     const rect = e.currentTarget.getBoundingClientRect()
@@ -57,7 +54,7 @@ export function WelcomePage() {
   if (!mounted) return null
 
   return (
-    <div ref={containerRef} className="relative min-h-svh w-full overflow-hidden">
+    <div ref={containerRef} className="relative h-dvh w-full overflow-hidden">
       {/* Particle Background */}
       <GL hovering={hovering} />
 
@@ -68,7 +65,7 @@ export function WelcomePage() {
       </div>
 
       {/* Main Content */}
-      <div className="relative z-10 flex flex-col items-center justify-center min-h-svh px-6">
+      <div className="relative z-10 flex flex-col items-center justify-center h-full px-6">
         {/* Logo & Badge */}
         <div
           className={`transition-all duration-1000 ${showContent ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
@@ -143,7 +140,7 @@ export function WelcomePage() {
 
         {/* Feature Pills */}
         <div
-          className={`flex flex-wrap justify-center gap-3 mb-16 transition-all duration-1000 delay-600 ${showContent ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+          className={`flex flex-wrap justify-center gap-3 mb-8 transition-all duration-1000 delay-600 ${showContent ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
             }`}
         >
           {features.map((feature, index) => {
@@ -168,16 +165,6 @@ export function WelcomePage() {
             )
           })}
         </div>
-
-        {/* Scroll Indicator */}
-        <button
-          onClick={scrollToContent}
-          className={`absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-foreground/40 hover:text-purple-400 transition-all duration-1000 delay-800 ${showContent ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
-            }`}
-        >
-          <span className="text-xs font-mono tracking-widest uppercase">Explore</span>
-          <ChevronDown className="w-5 h-5 animate-bounce" />
-        </button>
 
         {/* Floating Elements */}
         <div className="absolute top-1/4 left-8 sm:left-16 opacity-20 animate-float">
