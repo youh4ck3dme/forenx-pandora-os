@@ -102,7 +102,7 @@ export default async function RootLayout({
           nonce={nonce}
           suppressHydrationWarning
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem("malte:theme")||"light";var d=t==="dark"||(t==="system"&&window.matchMedia("(prefers-color-scheme:dark)").matches);document.documentElement.classList.toggle("dark",d);document.documentElement.style.colorScheme=d?"dark":"light";if(window.self!==window.top){document.documentElement.classList.add("is-embedded")}}catch(e){}})()`,
+            __html: `(function(){try{var t=localStorage.getItem("malte:theme")||"light";var root=document.documentElement;root.classList.remove("amber");if(t==="amber"){root.classList.add("dark","amber");root.style.colorScheme="dark";}else{var d=t==="dark"||(t==="system"&&window.matchMedia("(prefers-color-scheme:dark)").matches);root.classList.toggle("dark",d);root.style.colorScheme=d?"dark":"light";}if(window.self!==window.top){root.classList.add("is-embedded")}}catch(e){}})()`,
           }}
         />
       </head>

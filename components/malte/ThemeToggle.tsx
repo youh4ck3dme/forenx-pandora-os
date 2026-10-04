@@ -1,4 +1,4 @@
-import { Monitor, Moon, Sun } from "lucide-react";
+import { Flame, Monitor, Moon, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCaseStore, type ThemeMode } from "@/hooks/useCaseStore";
 import { useLayoutEffect, useState } from "react";
@@ -6,6 +6,7 @@ import { useLayoutEffect, useState } from "react";
 const modes: { id: ThemeMode; label: string; icon: typeof Sun }[] = [
   { id: "light", label: "Svetlá téma", icon: Sun },
   { id: "dark", label: "Tmavá téma", icon: Moon },
+  { id: "amber", label: "Zlatý Jantár", icon: Flame },
   { id: "system", label: "Podľa systému", icon: Monitor },
 ];
 
@@ -28,33 +29,18 @@ export function ThemeToggle({ className }: { className?: string }) {
           className,
         )}
       >
-        <button
-          type="button"
-          title="Svetlá téma"
-          aria-label="Svetlá téma"
-          className="relative flex items-center justify-center rounded-full p-1.5 transition-all duration-200"
-          disabled
-        >
-          <Sun className="h-3.5 w-3.5" aria-hidden />
-        </button>
-        <button
-          type="button"
-          title="Tmavá téma"
-          aria-label="Tmavá téma"
-          className="relative flex items-center justify-center rounded-full p-1.5 transition-all duration-200"
-          disabled
-        >
-          <Moon className="h-3.5 w-3.5" aria-hidden />
-        </button>
-        <button
-          type="button"
-          title="Podľa systému"
-          aria-label="Podľa systému"
-          className="relative flex items-center justify-center rounded-full p-1.5 transition-all duration-200"
-          disabled
-        >
-          <Monitor className="h-3.5 w-3.5" aria-hidden />
-        </button>
+        {modes.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            title={label}
+            aria-label={label}
+            className="relative flex items-center justify-center rounded-full p-1.5 transition-all duration-200"
+            disabled
+          >
+            <Icon className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        ))}
       </div>
     );
   }
@@ -81,11 +67,13 @@ export function ThemeToggle({ className }: { className?: string }) {
             className={cn(
               "relative flex items-center justify-center rounded-full p-1.5 transition-all duration-200 active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               isSelected
-                ? "bg-foreground text-background shadow-xs"
+                ? id === "amber"
+                  ? "bg-amber-400 text-slate-950 shadow-xs shadow-amber-400/30"
+                  : "bg-foreground text-background shadow-xs"
                 : "text-muted-foreground hover:text-foreground hover:bg-surface-2/60",
             )}
           >
-            <Icon className="h-3.5 w-3.5" aria-hidden />
+            <Icon className={cn("h-3.5 w-3.5", id === "amber" && !isSelected && "hover:text-amber-400")} aria-hidden />
           </button>
         );
       })}

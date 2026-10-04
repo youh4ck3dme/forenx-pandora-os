@@ -21,7 +21,7 @@ export type RunLogEntry = {
   flagCount: number;
 };
 
-export type ThemeMode = "light" | "dark" | "system";
+export type ThemeMode = "light" | "dark" | "system" | "amber";
 
 export type CaseState = {
   riskFilter: Severity[];
@@ -37,7 +37,7 @@ export function readStoredTheme(): ThemeMode | null {
   if (typeof window === "undefined") return null;
   try {
     const saved = localStorage.getItem(THEME_STORAGE_KEY);
-    if (saved === "light" || saved === "dark" || saved === "system")
+    if (saved === "light" || saved === "dark" || saved === "system" || saved === "amber")
       return saved;
   } catch {
     // ignore
@@ -53,9 +53,18 @@ export function applyDocumentTheme(theme: ThemeMode) {
   } catch {
     // ignore
   }
+  const root = document.documentElement;
+  root.classList.remove("amber");
+
+  if (theme === "amber") {
+    root.classList.add("dark", "amber");
+    root.style.colorScheme = "dark";
+    return;
+  }
+
   const dark = theme === "dark" || (theme === "system" && systemDark);
-  document.documentElement.classList.toggle("dark", dark);
-  document.documentElement.style.colorScheme = dark ? "dark" : "light";
+  root.classList.toggle("dark", dark);
+  root.style.colorScheme = dark ? "dark" : "light";
 }
 
 function getInitialTheme(): ThemeMode {
@@ -145,7 +154,7 @@ export function CaseStoreProvider({ children }: { children: ReactNode }) {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== THEME_STORAGE_KEY || !e.newValue) return;
       const newTheme = e.newValue as ThemeMode;
-      if (newTheme === "light" || newTheme === "dark" || newTheme === "system") {
+      if (newTheme === "light" || newTheme === "dark" || newTheme === "system" || newTheme === "amber") {
         setState((prev) => ({ ...prev, theme: newTheme }));
         applyDocumentTheme(newTheme);
       }
