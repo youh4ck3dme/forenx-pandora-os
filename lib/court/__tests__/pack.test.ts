@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { evaluateStixBundle, parseStixDigestAllowlist, sha256Hex } from "@/lib/court/stix";
 import { assertEvidenceAiAllowed, resolveForensicAiEndpoint } from "@/lib/court/ai-boundary";
-import { buildTimeStampRequest, verifyTimestampToken } from "@/lib/court/timestamp";
+import { buildTimeStampRequest, requestTimestampToken, verifyTimestampToken } from "@/lib/court/timestamp";
 import { buildCourtReportPdf } from "@/lib/court/report";
 import { buildCourtPack } from "@/lib/court/pack-builder";
 import { parseKeyring, FileSigningKeyProvider } from "@/lib/court/signing";
@@ -55,6 +55,43 @@ describe("RFC 3161 timestamp (lib/court/timestamp.ts) — INV-031", () => {
   it("rejects a malformed timestamp token offline", async () => {
     const result = await verifyTimestampToken(new Uint8Array([1, 2, 3, 4]), sha256Hex(enc("x")));
     expect(result.ok).toBe(false);
+  });
+
+  it("refuses a TSA token whose messageImprint is not the requested digest", async () => {
+    const { webcrypto } = await import("node:crypto");
+    const asn1js = await import("asn1js");
+    const pkijs = await import("pkijs");
+    pkijs.setEngine("node-webcrypto", new pkijs.CryptoEngine({ name: "node-webcrypto", crypto: webcrypto as unknown as Crypto }));
+    const digest = Buffer.from(sha256Hex(enc("other-manifest")), "hex");
+    const tst = new pkijs.TSTInfo({
+      version: 1,
+      policy: "1.2.3.4",
+      messageImprint: new pkijs.MessageImprint({
+        hashAlgorithm: new pkijs.AlgorithmIdentifier({ algorithmId: "2.16.840.1.101.3.4.2.1" }),
+        hashedMessage: new asn1js.OctetString({ valueHex: digest.buffer.slice(digest.byteOffset, digest.byteOffset + digest.byteLength) }),
+      }),
+      serialNumber: new asn1js.Integer({ value: 1 }),
+      genTime: new Date("2026-01-01T00:00:00Z"),
+    });
+    const content = new Uint8Array(tst.toSchema().toBER(false));
+    const signed = new pkijs.SignedData({
+      version: 3,
+      encapContentInfo: new pkijs.EncapsulatedContentInfo({
+        eContentType: "1.2.840.113549.1.9.16.1.4",
+        eContent: new asn1js.OctetString({ valueHex: content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength) }),
+      }),
+      signerInfos: [],
+    });
+    const token = new pkijs.ContentInfo({ contentType: "1.2.840.113549.1.7.2", content: signed.toSchema() });
+    const response = new pkijs.TimeStampResp({
+      status: new pkijs.PKIStatusInfo({ status: 0 }),
+      timeStampToken: token,
+    });
+    const body = new Uint8Array(response.toSchema().toBER(false));
+    const fetchImpl = (async () => new Response(body)) as unknown as typeof fetch;
+    await expect(requestTimestampToken("https://tsa.test/ts", sha256Hex(enc("requested-manifest")), fetchImpl)).rejects.toThrow(
+      /messageImprint/,
+    );
   });
 });
 

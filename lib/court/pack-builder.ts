@@ -7,7 +7,8 @@
  *                      execution.json, VERIFY.md, verify.mjs)
  *   signature.json  = Ed25519 over the canonical manifest  (derived from manifest)
  *   merkle.json     = Merkle tree view of the manifest       (derived from manifest)
- *   timestamp.tsr   = RFC 3161 token over the Merkle root     (derived from manifest)
+ *   timestamp.tsr   = RFC 3161 token over the SHA-256 of the canonical manifest
+ *                     (signature.manifestSha256), which commits to the Merkle root
  * signature.json / merkle.json / timestamp.tsr are NEVER listed in the manifest,
  * so the signed bytes never depend on them. The offline verifier rebuilds the
  * manifest from the content artifacts, excluding exactly those three control
@@ -75,7 +76,7 @@ function verifyMarkdown(caseId: string, kid: string): string {
     "2. The Merkle root is recomputed and compared.",
     "3. The Ed25519 signature in `signature.json` is verified over the canonical manifest.",
     "4. A revoked signing `kid` is rejected.",
-    "5. If present, `timestamp.tsr` binds the Merkle root to an RFC 3161 time.",
+    "5. If present, `timestamp.tsr` must bind the SHA-256 of the canonical manifest.",
     "",
     "Any tampered byte makes verification fail and names the exact failing artifact.",
     "",
@@ -125,8 +126,8 @@ export async function buildCourtPack(input: CourtPackInput): Promise<CourtPackRe
   };
 
   // INV-031 fail-closed: court-grade packs MUST be timestamped. The RFC 3161
-  // token is bound to the SIGNED digest (the canonical-manifest SHA-256), which
-  // is exactly what signature.json signs — no circular dependency.
+  // token is bound to signature.manifestSha256 (SHA-256 of the canonical
+  // manifest). A token that timestamps anything else is rejected.
   if (input.requireTimestamp && !input.tsaUrl) {
     throw new Error(
       "Court-grade Court Pack requires a TSA (FORENZX_TSA_URL); refusing to build an un-timestamped pack (fail-closed).",
