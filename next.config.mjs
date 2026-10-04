@@ -84,6 +84,17 @@ const nextConfig = {
       };
     }
 
+    // Upstream warning z reťazca workflow → @workflow/world-* → @vercel/queue,
+    // ktorý používa výrazový require(). Je neškodný (runtime správanie nemení),
+    // len zahlcuje build/dev log — potlačíme ho cielene pre @vercel/queue.
+    config.ignoreWarnings = [
+      ...(config.ignoreWarnings ?? []),
+      {
+        module: /@vercel[\\/]queue/,
+        message: /Critical dependency: the request of a dependency is an expression/,
+      },
+    ];
+
     return config;
   },
   async headers() {

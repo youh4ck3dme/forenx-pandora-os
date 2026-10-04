@@ -504,11 +504,28 @@ function createWindow() {
     })
 
     // IPC for Extensions
-    ipcMain.handle('extension:load', async (event, path) => {
+    ipcMain.handle('extension:load', async (event, extensionPath: unknown) => {
         if (!isMainWindowSender(event)) return { ok: false, code: 'FORBIDDEN' }
+        if (typeof extensionPath !== 'string' || !extensionPath.trim()) {
+            return { ok: false, code: 'INVALID_PATH' }
+        }
+
+        // Strict allowlist: extension must reside strictly inside verified extensions directory
+        const allowedBaseDirs = [
+            path.resolve(app.getPath('userData'), 'extensions'),
+            path.resolve(app.getAppPath(), 'extensions'),
+        ]
+        const resolvedPath = path.resolve(extensionPath)
+        const isAllowed = allowedBaseDirs.some(base => resolvedPath.startsWith(base + path.sep) || resolvedPath === base)
+
+        if (!isAllowed) {
+            console.warn('[PΛND0RΛ Security] Blocked unauthorized extension load attempt:', resolvedPath)
+            return { ok: false, code: 'UNAUTHORIZED_EXTENSION_PATH' }
+        }
+
         try {
             const webTabsSession = getWebTabsSession()
-            const ext = await webTabsSession.loadExtension(path)
+            const ext = await webTabsSession.loadExtension(resolvedPath)
             return { id: ext.id, name: ext.name }
         } catch (e: any) {
             console.error('[PΛND0RΛ] Failed to load extension:', e)

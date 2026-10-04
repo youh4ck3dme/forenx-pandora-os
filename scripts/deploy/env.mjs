@@ -142,6 +142,10 @@ export function checkEnv(env, keys) {
   if (base && !base.startsWith("https://")) {
     problems.push({ level: "error", key: "NEXT_PUBLIC_BASE_URL", issue: "musí začínať https://" });
   }
+  const icoAtlas = env.get("ICO_ATLAS_API_URL");
+  if (icoAtlas && !icoAtlas.startsWith("https://")) {
+    problems.push({ level: "error", key: "ICO_ATLAS_API_URL", issue: "musí začínať https://" });
+  }
   return problems;
 }
 

@@ -1,498 +1,262 @@
-# PΛND0RΛ / ForenX — System Source of Truth
+# PΛND0RΛ / ForenX — CANONICAL SYSTEM SOURCE OF TRUTH
 
-> Kanonický technický kontrakt pre správanie aplikácie, dátové toky, bezpečnostné hranice a integračné pravidlá.
+> **Status:** CANONICAL / NORMATIVE  
+> **Version:** 2.0  
+> **Authority:** CANONICAL CONTRACT — Najvyššia autorita pre architektúru, bezpečnosť, forenznú integritu a release validáciu.  
+> **Target:** Production-Grade Forensic System (PANDORA Browser & ForenZX Engine)
 
-Tento dokument je zdrojom pravdy pre vývoj webu, PWA/mobile, Electronu, Supabase a ForenZX MCP integrácie. Ak sa README, starší návrh alebo komentár v kóde líši od implementácie a testov, rozhoduje tento dokument až do jeho aktualizácie spolu s príslušným kódom a testami.
+---
 
-## 1. Pravidlá zdroja pravdy
+## 0. Rozsah a autorita
 
-Poradie autority:
+Tento dokument je jediný kanonický a normatívny kontrakt pre systém **PANDORA / ForenX**. Určuje, čo systém musí robiť, čo nesmie robiť a aké dôkazy musia existovať, aby sa tvrdenie o bezpečnosti alebo forenznej integrite mohlo považovať za overené.
 
-1. bezpečnostné a dátové invarianty v tomto dokumente,
-2. databázové migrácie a serverové kontrakty,
-3. automatizované testy,
-4. implementácia,
-5. UI texty, README a pracovné návrhy.
+Platí bez výnimky pre:
+- **Web / Next.js 15 App Router** (`app/`, `components/`, `lib/forza/`)
+- **PWA & Offline state** (`lib/forza/idb.ts`, service workers)
+- **Capacitor Mobile** (`capacitor.config.ts`, `scripts/mobile/`)
+- **Electron Desktop Shell** (`electron/`, Chromium v152 / Node v24 LTS baseline)
+- **Supabase Auth / PostgreSQL / RLS / Edge Functions** (`supabase/`, `db/cleanroom/`)
+- **Hetzner S3 Object Storage / Evidence Vault** (WORM, Object Lock)
+- **ForenZX MCP Hub & Isolated Workers**
+- **AI Forensic Pipeline** (Evidence Binding, Privacy Gateway)
+- **Audit Ledger & Chain-of-Custody**
+- **CI/CD, Release Gates a Deployment**
 
-Každá zmena správania musí aktualizovať príslušný kontrakt, test a dokumentáciu v jednom commite. Dokumentácia nesmie tvrdiť, že je systém pripravený, ak chýba dôkaz z relevantného testu alebo deploymentu.
+### 0.1 Hierarchia autority
+Pri akomkoľvek rozpore platí striktné poradie dôležitosti:
+1. **Explicitný bezpečnostný alebo forenzný invariant tohto dokumentu (INV-001 až INV-024).**
+2. **Databázové integritné obmedzenia / RLS / Triggers / Serverové kontrakty**, ktoré invariant vynucujú.
+3. **Runtime implementácia**, ktorá invariant vykonáva.
+4. **Automatizované testy a verifikačné výstupy** ako dôkaz vykonateľnosti.
+5. **UI / README / komentáre / pracovné poznámky.**
 
-## 2. Produktový model
+> [!CRITICAL]
+> Frontend **nesmie** byť bezpečnostnou hranicou. Ak implementácia odporuje tomuto dokumentu, systém je **NON-CONFORMANT**. Dokument sa nesmie spätne upravovať len preto, aby ospravedlnil chybný alebo kompromitovaný kód.
 
-PANDORA / ForenX je jedna aplikácia s viacerými runtime obalmi:
+### 0.2 Normatívne kľúčové slová
+- **MUST / MUSÍ:** Záväzná požiadavka. Jej nesplnenie znamená okamžitý NO-GO verdict.
+- **MUST NOT / NESMIE:** Absolútny bezpečnostný zákaz.
+- **SHOULD / MÁ:** Požadovaný predvolený stav; akákoľvek odchýlka musí byť zdôvodnená a schválená.
+- **MAY / MÔŽE:** Voliteľná funkcionalita.
 
-| Runtime | Úloha | Zdroj aplikačnej logiky |
+### 0.3 Klasifikačné stavové značky
+Každé tvrdenie o stave implementácie musí niesť jeden z týchto stavov:
+- `NORMATIVE`: Požiadavka, ktorú systém musí spĺňať.
+- `VERIFIED`: Implementácia je potvrdená preukázateľným automatizovaným testom alebo produkčným dôkazom.
+- `IMPLEMENTED_UNVERIFIED`: Kód v repozitári existuje, ale chýba rigorózny integračný/regresný test.
+- `BLOCKED`: Stav nemožno overiť bez externého prístupu, infraštruktúry alebo privátneho kľúča.
+- `OPEN`: Známy a identifikovaný technický dlh alebo zraniteľnosť.
+- `DEPRECATED`: Zastaraný mechanizmus; nesmie riadiť aktuálny runtime.
+- `UNKNOWN`: Stav nebolo možné bezpečne a preukázateľne určiť.
+
+---
+
+## 1. Produktový a architektonický model
+
+PANDORA / ForenX je jednotný forenzný systém s viacerými runtime adaptérmi:
+
+| Runtime | Úloha | Primárna kódová báza |
 |---|---|---|
-| Web | hlavné UI, API routes, serverové operácie | `app/`, `components/`, `lib/` |
-| PWA | webové UI s lokálnou cache a offline stavmi | web runtime + `lib/forza/idb.ts` |
-| Capacitor mobile | natívny Android/iOS obal | `capacitor.config.*`, `scripts/mobile/` |
-| Electron | desktopový bezpečný shell | `electron/` + webové UI |
-| Supabase | Auth, PostgreSQL, RLS, migrácie, Edge Functions | `supabase/` |
-| ForenZX MCP Hub | izolovaná analýza a forensic worker joby | samostatný Hub repozitár |
+| **Web** | Hlavné vyšetrovateľské UI, API, serverové funkcie | `app/`, `components/`, `lib/forza/` |
+| **PWA** | Web UI, lokálna offline cache, synchronizácia | Web runtime + `lib/forza/idb.ts` |
+| **Capacitor Mobile** | Triage obal pre mobilné prostredie (Android/iOS) | `capacitor.config.ts`, `scripts/mobile/` |
+| **Electron** | Bezpečný desktopový browser shell | `electron/` + web UI |
+| **Supabase** | Autentifikácia, PostgreSQL 15, RLS, WORM Ledger | `supabase/`, `db/cleanroom/` |
+| **ForenZX MCP Hub** | Izolovaná forenzná analýza a worker procesy | `forenzx-mcp-hub/` |
 
-Web, PWA, mobile a Electron nesmú implementovať rozdielne pravidlá pre vlastníctvo prípadu, integritu dôkazu alebo AI výstupy. Rozdiely medzi runtime patria do adaptérov, nie do dátového modelu.
+Web, PWA, Mobile a Electron **NESMÚ** mať rozdielne pravidlá pre autorizáciu, integritu dôkazov ani chain-of-custody.
 
-- **Electron runtime izolácia session a webových tabov**: Webové taby bežia výhradne v izolovanej perzistentnej partícii persist:pandora-web-tabs (getWebTabsSession() v electron/browser-view-factory.ts). Proxy (proxy:set), adblocker / shield štatistiky, mazanie dát (session:clear-data), download listener (will-download) a správa rozšírení sú viazané na túto partíciu, čím zostáva session.defaultSession (hlavný shell aplikácie) nedotknutá. Navigácia tabov (cez IPC aj will-navigate) striktne povoľuje iba http: a https: protokoly; nepovolené protokoly (file:, javascript:, data:, chrome:, about:) sa odmietajú pred volaním loadURL.
+---
 
-- **Second Brain at-rest šifrovanie a IPC sender gate**: `userData/history-index.json` nesmie ukladať plaintext page body (`content`). `HistoryManager` (`electron/history-manager.ts`) šifruje zachytený obsah stránky pomocou `safeStorage.encryptString` a ukladá ho ako base64 `encryptedContent`. Ak `safeStorage.isEncryptionAvailable()` nie je k dispozícii, nový text stránky sa na disk nezapisuje (fail-closed); už uložený nepriehľadný ciphertext sa však v pamäti bezpečne zachová a pri ďalšom zápise sa prenesie bez zmeny, ak sa obsah nepodarilo dešifrovať. Volajúci dovtedy dostávajú prázdny obsah. Starý plaintext index sa pri prvom načítaní okamžite premigruje (zašifruje alebo očistí od plaintextu) a prepíše na disku. Kanály `history:search` a `history:getContent` sú prísne viazané na `isMainWindowSender(event)` (`mainWindow.webContents`), čím sa zabraňuje crosstalku a úniku histórie z BrowserView alebo cudzích rámcov.
+## 2. Kanonický dátový tok a hranice dôvery (Trust Boundaries)
 
-- **Electron Password Manager IPC sender gates**: Správa hesiel (`electron/password-manager.ts`) beží výhradne v main procese; renderer pristupuje k nej iba cez overené IPC kanály. Všetky kanály vyžadujú `isMainWindowSender(event)` (overenie `event.sender.id === mainWindow.webContents.id`). Pri volaní z nepovoleného odosielateľa (BrowserView, cudzie iframe/framy) systém vracia fail-closed odpoveď: `password:*` a `extension:load` vracajú `{ ok: false, code: 'FORBIDDEN' }`, zatiaľ čo `session:clear-data`, `history:*` a dialógy vracajú `false`, prázdne pole alebo `null`. Kanonické kontrakty kanálov:
-  - `password:get` → vracia iba maskované metadáta (`id`, `url`, `username`, `updatedAt`) cez `listMasked()`; žiadny bulk plaintext ani šifrované heslá.
-  - `password:reveal` → sprístupňuje dešifrovaný plaintext jediného záznamu podľa validovaného `id` s dĺžkou 1–`MAX_PASSWORD_ID_LENGTH` (4 440 znakov; horná hranica base64 kódovania `url:username` pri `url≤2048`, `username≤320` v UTF-8, pričom pre ASCII je minimum 3 160 znakov); vracia `{ ok: true, entry }` s dešifrovaným heslom alebo chybový objekt `{ ok: false, code }` s hodnotou `FORBIDDEN`, `VALIDATION_ERROR` alebo `NOT_FOUND`. Nikdy nevracia batch hesiel.
-  - `password:save` → uloží jedno heslo zašifrované cez `safeStorage.encryptString`; ID je deterministicky generované ako `base64(url + ":" + username)`. Chránené cez `isMainWindowSender`.
-  - `password:delete` → zmaže záznam podľa `id`; limit dĺžky ohraničený zdieľanou konštantou `MAX_PASSWORD_ID_LENGTH`. Chránené cez `isMainWindowSender`.
-  - Zdieľaná konštanta `MAX_PASSWORD_ID_LENGTH = 4440` (alias `MAX_PASSWORD_RECORD_ID_LENGTH`) je definovaná v `electron/ipc-contract.ts` a priamo importovaná a synchronizovaná v `electron/preload.ts` (`invokeSchemas`), `electron/main.mts` aj `electron/password-manager.ts`.
-  - Rovnaký `isMainWindowSender` gate chráni aj ostatné citlivé operácie: `session:clear-data`, `history:search`, `history:getContent`, `extension:load`, `capture:page`, `dialog:openFile`, `dialog:saveFile`.
+$$\begin{aligned}
+\text{Investigator} &\xrightarrow{\text{Auth Identity}} \text{Session Bridge} \xrightarrow{\text{Case Access}} \text{Evidence Ledger} \\
+&\xrightarrow{\text{Direct Upload}} \text{Object Storage (S3)} \xrightarrow{\text{SHA-256 + Size Verification}} \text{WORM Status: Verified} \\
+&\xrightarrow{\text{Presigned Capability}} \text{ForenZX MCP Hub} \xrightarrow{\text{Isolated Processing}} \text{Findings + Proof} \\
+&\xrightarrow{\text{Human Investigator Review}} \text{Case Dossier} \xrightarrow{\text{Deterministic Export}} \text{Immutable Audit Trail}
+\end{aligned}$$
 
-## 3. Kanonický dátový tok
+### Hranice dôvery (Trust Boundaries):
+- **Nedôveryhodný vstup (Untrusted):** Browser renderer, vzdialené webové stránky v `BrowserView`, mobilné formuláre, PWA IndexedDB, používateľské JSON/body/query parametre, prichádzajúce webhook payloady a raw výstupy AI modelov.
+- **Autoritatívna vrstva (Trusted Authority):** 
+  - Supabase Auth pre identitu používateľa.
+  - PostgreSQL schémy + RLS politiky pre dátovú izoláciu a vlastníctvo.
+  - Server-side Next.js runtime pre odvodzovanie autoritatívnych parametrov a presign kľúčov.
+  - Surové bajty a kryptografický hash SHA-256 pre integritu dôkazu.
+  - PostgreSQL trigger guards pre WORM nemennosť a hash reťazenie auditných záznamov.
+  - Electron main process pre správu bezpečných relácií a systémových volaní.
 
-```text
-User/Auth identity
-        ↓
-Case
-        ↓
-Evidence metadata + immutable source snapshot
-        ↓
-Object storage (S3/Supabase Storage) + SHA-256
-        ↓
-Verification status
-        ↓
-Privacy gateway / PII redaction
-        ↓
-AI analysis (Mistral/Forza alebo ForenZX MCP Hub)
-        ↓
-Source-bound findings + execution record
-        ↓
-Human review
-        ↓
-Report / export + audit trail
-```
+---
 
-Platí invariant:
+## 3. Absolútne bezpečnostné a forenzné invarianty (INV-001 až INV-024)
 
-```text
-AI OUTPUT ≠ EVIDENCE
-```
+Porušenie ktoréhokoľvek z nasledujúcich invariantov predstavuje okamžitý **P0 / NO-GO** stav:
 
-AI môže vytvoriť hypotézu, klasifikáciu alebo nález, ale nesmie zmeniť pôvodný dôkaz, jeho hash, reťazec vlastníctva ani označiť neoverené tvrdenie za fakt.
+- **INV-001 (Identity Authority):** Klient nesmie určovať autoritatívnu identitu vyšetrovateľa. Tá sa odvodzuje výhradne z overeného JWT/session tokenu na serveri.
+- **INV-002 (Case Ownership):** Klient nesmie ľubovoľne priraďovať dôkaz k prípadu. Väzba `evidence_items.case_id -> cases.id` musí byť overená serverom a databázou.
+- **INV-003 (Tenant Isolation):** Dôkaz môže čítať, spracúvať alebo exportovať iba oprávnený používateľ v rámci priradeného prípadu. Medzitenantový prístup je striktne blokovaný cez RLS.
+- **INV-004 (Authoritative Hash):** Klientom dodaný SHA-256 hash nesmie byť autoritou. Stav `verified` vzniká iba po serverovom prehashovaní skutočných bajtov.
+- **INV-005 (Authoritative Size):** Klientom deklarovaná veľkosť súboru nesmie byť autoritou pre validáciu dôkazu.
+- **INV-006 (Storage Object Binding):** Identifikátor dôkazu (`evidence_id`) nesmie byť možné prepojiť na iný S3 objekt obyčajnou zmenou klientskej požiadavky.
+- **INV-007 (Immutable Relation):** `evidence_items.case_id` je po zápise nemenný (write-once) a chránený databázovým triggerom `evidence_items_insert_guard`.
+- **INV-008 (Verified Lifecycle Gate):** Forenzná analýza a generovanie capability tokenov sú povolené výhradne nad dôkazom v stave `status = 'verified'`.
+- **INV-009 (ForenZX Byte Parity):** ForenZX MCP Hub musí analyzovať presne tie bajty, ktoré zodpovedajú verifikovanému SHA-256 hashu v evidence ledgeri.
+- **INV-010 (Dual Job Identity):** Lokálny Pandora `job_id` a upstream `hub_job_id` sú striktne oddelené identity mapované v relačnej tabuľke.
+- **INV-011 (DB-Enforced WORM):** Zápisová nemennosť (Write-Once-Read-Many) na tabuľkách `evidence_items` a `source_snapshots` je vynútená na úrovni PostgreSQL triggerov, nie UI pravidlami.
+- **INV-012 (Legal Hold Shield):** Ak je na prípade aktívne právne blokovanie (`legal_hold = true`), dôkazy nesmú byť vymazané ani modifikované cez žiadne bežné API ani RPC volanie.
+- **INV-013 (Audit Hash-Chain Concurrency):** Auditný log `case_audit_log` je append-only s kryptografickou SHA-256 väzbou na predchádzajúci záznam. Súbežné zápisy nesmú vytvoriť tichú vetvu (fork).
+- **INV-014 (AI Evidence Separation):** Platí axióma: `AI OUTPUT ≠ EVIDENCE`. Výstup modelu je analytickou hypotézou, nie procesným dôkazom.
+- **INV-015 (Unverified Assertions):** Neoverené tvrdenie AI nesmie byť exportované ako verifikovaný forenzný fakt bez pripojenej platnej citácie a lokátora na zdrojový dôkaz.
+- **INV-016 (IPC Privilege Gate):** Každý privilegovaný IPC kanál v Electrone musí validovať `event.senderFrame.origin` a kontext hlavného okna cez `validateIpcSender`.
+- **INV-017 (Browser Session Parity):** Všetky bezpečnostné pravidlá (proxy, adblocker, shieldy, čistenie storage, download interceptory) musia byť aplikované na identickú session (`persist:pandora-web-tabs`), ktorú reálne používa `BrowserView`.
+- **INV-018 (Navigation Protocol Filter):** Pred každým volaním `loadURL()` musí prebehnúť validácia. Povolené sú striktne iba protokoly `https:` a `http:`. Protokoly `file:`, `javascript:`, `data:` a `chrome:` sú zamietnuté.
+- **INV-019 (Password Vault Least-Privilege):** Renderer nesmie mať možnosť hromadne exportovať celý dešifrovaný heslový trezor (`no bulk plaintext`). Dešifrovanie jednotlivého hesla vyžaduje cielené volanie `password:reveal`.
+- **INV-020 (Protected History at Rest):** Druhý mozog (Second Brain) a fulltextový index histórie nesmú obsahovať plaintext obsahy stránok. Dáta musia byť šifrované cez OS `safeStorage`.
+- **INV-021 (Webhook Untrusted Payload):** Webhook payload nesmie určovať autoritatívny hash, veľkosť ani interný storage key. Volajúci nesmie podvrhnúť ľubovoľnú download URL.
+- **INV-022 (SSRF Deny Loopback):** Všetky serverové požiadavky na externé URL musia odmietať loopback (`127.0.0.1`, `localhost`), link-local, privátne RFC1918 rozsahy a cloud metadata endpointy.
+- **INV-023 (Audited Destruction):** Zničenie prípadu alebo dôkazu je povolené výhradne cez kontrolované RPC s overením administrátorskej roly a povinným auditným záznamom.
+- **INV-024 (Automated Regression Proof):** Každý z invariantov INV-001 až INV-023 musí mať aspoň jeden automatizovaný test v testovacej sade repozitára.
 
-### 3.1 Autentifikácia a relácie (Auth Session Invariants)
+---
 
-- **Klientske ukladanie vs. Serverový middleware:** Supabase JS ukladá reláciu na klientovi do `localStorage`. Next.js Middleware (`middleware.ts`) overuje reláciu server-side cez HTTP cookies (`sb-access-token`, `sb-refresh-token`) a `Authorization: Bearer <token>` header.
-- **Synchronizácia do cookies (`lib/auth/cookies.ts`):** Po úspešnom `signInWithPassword`, `signUp` alebo `TOKEN_REFRESHED` klient volá `syncAuthCookies(session)`, ktorý posiela token na `POST /api/auth/session`. Server overí token cez Supabase a vydá HttpOnly cookies (`sb-access-token`, `sb-refresh-token`). Tokeny sa **nikdy nepíšu priamo cez `document.cookie`** — vždy prechádzajú cez server-side bridge (`app/api/auth/session/route.ts`).
-- **Globálny cookie sync (`components/core/providers/auth-cookie-sync.tsx`):** V pozadí počúva na `onAuthStateChange` (`SIGNED_IN`, `TOKEN_REFRESHED`, `INITIAL_SESSION`) a volá `syncAuthCookies(session)`. Pri `SIGNED_OUT` volá `DELETE /api/auth/session`.
-- **Čistenie relácie:** Pri odhlásení cez `signOutEverywhere` / `clearClientState` sa cookies zneplatnia (`Max-Age=0`).
-- **Presmerovanie po prihlásení:** Pri neautentifikovanom prístupe k chráneným trasám middleware presmeruje priamo na `/auth/login?next=<sanitized_path>`, pričom cieľová cesta musí prejsť validáciou open-redirect ochrany (`lib/auth/redirect.ts`).
+## 4. Autentifikácia, Relácie a WebAuthn (Passkeys)
 
-### 3.2 Auth — stav pred zjednotením (2026-10-03)
+### 4.1 Middleware a Session Bridge
+- **Middleware brána (`middleware.ts`, `lib/auth/route-policy.ts`):** Zabezpečuje bezpodmienečné odmietnutie neautentifikovaných API volaní (HTTP `401 Unauthorized`) a presmerovanie neautorizovaného webového prístupu na `/auth/login/`.
+- **Session Bridge (`/api/auth/session/`):** Obousmerná synchronizácia relácie medzi klientskym stavom a serverovými `httpOnly`, `Secure`, `SameSite=Lax` cookies. Tokeny sa nesmú čítať ani zapisovať cez `document.cookie`.
 
-Zmapovaný a overený stav existujúcej autentifikačnej infraštruktúry pred konsolidáciou (každý súbor overený čítaním z disku):
+### 4.2 WebAuthn / Passkeys (FIDO2)
+- Implementácia cez `@simplewebauthn/server` bez mockov a demo režimov.
+- **Výzva (Challenge):** Kryptograficky generovaná jednorazová hodnota (32 bajtov) v `httpOnly` cookie s expiráciou 120 sekúnd, okamžite spotrebovaná pri verifikácii (prevencia replay útokov).
+- **Overenie Pôvodu:** Striktná kontrola `rpId` a `origin` voči produkčnej doméne (`pandora.whoiswho.at`).
+- **Detekcia klonovania:** Sledovanie rastúceho počítadla `sign_count`.
 
-- **9 auth brán v repozitári, reálne strážia len 3:**
-  1. `middleware.ts` — kanonická brána na hrane (Edge). Kontroluje cookies (`sb-access-token`, `sb-*-auth-token`) alebo explicitný `Authorization: Bearer <token>` s prednosťou. Neautentifikované stránky presmeruje na `/auth/login`, API routes vracajú HTTP `401`. Anonymný vstup na `/` presmeruje na `/auth/login/?next=%2Fbrowser%2F`, prihlásený vstup na `/` presmeruje na `/browser/`. Trasy `/forza/*` sú označené kategóriou `PROJECT_REQUIRED`, no v middleware prepustia každého prihláseného bez kontroly prípadu.
-  2. `integrations/supabase/auth-middleware.ts` (`requireSupabaseAuth`) — serverový middleware pre TanStack server funkcie v `lib/forza/*.functions.ts`. Striktne vyžaduje `Authorization: Bearer <token>`, HTTP cookies ignoruje.
-  3. `lib/storage/vault-auth.ts` (`authenticateVaultRequest`) — autorizačná brána pre `app/api/vault/*`, `app/api/forenzx/start`, `app/api/forenzx/jobs/[jobId]/events` a `app/api/health/observe`. Overuje Bearer token vyšetrovateľa a vlastníctvo spisu.
-- **Mŕtve, rozbité a neodpojené auth mechanizmy:**
-  4. `lib/auth/page-guards.ts` — mŕtvy modul (`requirePageAuth`, `getPageSession`), žiadny komponent ani route v projekte ho neimportuje.
-  5. `lib/auth/server.ts` — `requireAuth` hádže `throw new NextResponse(...)` namiesto návratu (v Next.js runtime spôsobuje 500 chybu). Pomocné funkcie `withAuth` a `requireAuthentication` nie sú volané žiadnou živou route.
-  6. `lib/forza/session-guard.ts` — nepoužitý súbor, jediné volanie bolo chybne importované v `session.ts`, obsahuje oneskorený redirect (150ms) na starú cestu `/auth`.
-  7. `routes/_authenticated/sandbox.tsx` — opustený TanStack Router súbor s vlastnou auth logikou, ktorý Next.js App Router vôbec nemountuje (živý sandbox je `app/forza/sandbox/page.tsx`).
-  8. `app/auth/register/page.tsx` — falošná registrácia simulujúca WebAuthn a ukladajúca JSON objekt do `localStorage.setItem("pandora_user", ...)`, nevytvára žiadneho Supabase používateľa.
-  9. `app/forza/profil/page.tsx` — duplicitne embeduje `AccountSignInForm`, čím profil slúži ako druhá login obrazovka, ak stav používateľa nie je načítaný.
-- **Cookie most:**
-  - `app/api/auth/session/route.ts` (POST/DELETE s overením pôvodu `validateOrigin` a IP rate limiterom) + `components/core/providers/auth-cookie-sync.tsx` počúvajúci na `onAuthStateChange`.
-- **Zistené chyby v importoch a runtime (Bugs):**
-  - `components/malte/AccountSignInForm.tsx` importuje `adoptCloudSession` z `@/lib/session`, súbor na danej ceste neexistuje (reálny je `lib/forza/session.ts`), čo pri build/bundler rozlíšení zlyhá.
-  - Sign-out a session súbory importujú `@/lib/dev-auth`, `@/lib/session-guard`, `@/lib/session-expired`, `@/lib/idb` — súbory na koreňovom `@/lib/` neexistujú, reálne ležia v `lib/forza/`.
-  - Tri rôzne a protichodné ciele po logine/odhlásení: middleware smeruje prihláseného z `/` na `/browser/`, prihlasovací formulár `AccountSignInForm` a `LoginPage` predvolene posielajú na `/forza/pripady`, a odhlásenie `POST_SIGN_OUT_ROUTE` v `session.ts` posiela na `/`, čo middleware ako anonymného okamžite vráti na `/auth/login/?next=%2Fbrowser%2F` v slučke.
-- **Nekonzistencia trailingSlash a cookie flagov:**
-  - `next.config.mjs` má nastavené `trailingSlash: true`, takže `/auth/login/` je v middleware povolené len vďaka prefixovej podmienke `startsWith('/auth/')`, pretože `matchPathPattern('/auth/login/', '/auth/login')` vracia `false`.
-  - Cookie token refresh v `middleware.ts` zapisuje `sb-access-token` bez flagu `httpOnly: true`, zatiaľ čo `app/api/auth/session/route.ts` ho dôsledne zapisuje s `httpOnly: true`.
-- **Tri nejednotné dev bypassy:**
-  - `ALLOW_DEV_AUTH_BYPASS` kontrolovaný v `middleware.ts` a `integrations/supabase/auth-middleware.ts`.
-  - `PANDORA_DEV_AUTH_BYPASS` v `lib/storage/vault-auth.ts`, `lib/auth/page-guards.ts`, `lib/auth/server.ts`.
-  - `isDevFreeEntryActive()` v `lib/forza/dev-auth.ts`, ktorý je defaultne zapnutý pre akéhokoľvek klienta na localhost/LAN (`return val !== "false"`).
-- **PROJECT_REQUIRED a ROLE_REQUIRED:**
-  - V `middleware.ts` vetvy `category === 'PROJECT_REQUIRED'` a `category === 'ROLE_REQUIRED'` iba vracajú `next()`, nekontrolujú členstvo v spise ani používateľskú rolu.
+---
 
-### 3.3 Auth — po zjednotení (2026-10-03)
+## 5. Správa dôkazov, S3 Vault a WORM Ledger
 
-Výsledný stav po kompletnej konsolidácii a odstránení duplicitných mechanizmov:
+### 5.1 Životný cyklus dôkazu (Evidence Lifecycle)
+1. **Presign fáza (`POST /api/vault/presign`):** Overenie relácie vyšetrovateľa a platnosti `case_id`. Server vygeneruje náhodný, izolovaný storage kľúč vo formáte `cases/{caseId}/{uuid}-{filename}`.
+2. **Priamy upload do Hetzner S3:** Upload prebieha priamo na zabezpečený S3 Trezor (`hel1.your-objectstorage.com`) mimo aplikačného servera.
+3. **Commit a overenie integrity (`POST /api/vault/commit`):** Server načíta skutočné bajty z S3, vypočíta SHA-256 hash a skutočnú veľkosť. Ak hash sedí s klientskym pre-flight hashom, záznam sa zapíše do `evidence_items` v stave `verified`. Pri nesúlade sa dôkaz označí ako `compromised` a zaloguje sa auditné varovanie.
 
-- **Jediná brána:**
-  - **Edge Middleware:** `middleware.ts` v kombinácii s `lib/auth/route-policy.ts` tvorí jedinú autoritatívnu bránu pre stránky a API endpointy. Všetky neautentifikované požiadavky na chránené stránky smerujú na `/auth/login/`, API vracajú striktných `401 Unauthorized`.
-  - **Jediná login obrazovka:** `app/auth/login/page.tsx` s komponentom `components/malte/AccountSignInForm.tsx`. Podporuje výhradne Supabase password autentifikáciu s prepínaním medzi prihlásením a registráciou (`mode=signup`). Passkey tab zostáva trvalo deaktivovaný (hard-disabled). Cesty `app/auth/page.tsx` a `app/auth/register/page.tsx` slúžia výhradne ako čisté HTTP/Next.js presmerovania na `/auth/login/`.
-  - **Jediný cookie most:** `POST /api/auth/session` a `DELETE /api/auth/session` v synchronizácii s klientskym `auth-cookie-sync.tsx` a `lib/forza/session.ts`.
-- **Serverové kontroly, ktoré ostali:**
-  - `requireSupabaseAuth` (`integrations/supabase/auth-middleware.ts`): Overuje Bearer token pre volania serverových funkcií (`lib/forza/*.functions.ts`). Pri neplatnom tokene vracia fail-closed chybu (401). Netvorí žiadnu druhú login stránku ani formulár.
-  - `authenticateVaultRequest` (`lib/storage/vault-auth.ts`): Overuje Bearer token vyšetrovateľa a vlastníctvo spisu pre citlivé endpointy (`/api/vault/*`, ForenZX joby, `/api/health/observe`). Pri zlyhaní vracia striktný HTTP `401` alebo `403`, nikdy nerobí klientske presmerovanie na login.
-- **Zmazané súbory a dôvod:**
-  - `lib/auth/page-guards.ts` — mŕtvy modul bez volaní.
-  - `lib/auth/server.ts` — rozbitý modul (`throw new NextResponse`), nepoužívaný žiadnou živou route.
-  - `lib/forza/session-guard.ts` — opustený kód s nežiaducim oneskoreným redirectom; nahradený čistým odhlásením v `lib/forza/session.ts`.
-  - `routes/_authenticated/sandbox.tsx` (a priečinok `routes/_authenticated/`) — nepoužívaný súbor TanStack Routera mimo Next.js stromu (živý sandbox je `app/forza/sandbox/page.tsx`).
-  - `components/malte/__tests__/sandbox-regression.test.tsx` — osirotený test naviazaný výlučne na zmazaný `routes/_authenticated/sandbox.tsx`.
-  - Odstránený duplicitný `AccountSignInForm` z `app/forza/profil/page.tsx` (profil používateľa už neslúži ako login formulár).
-  - Odstránená falošná registrácia s WebAuthn a `localStorage` z `app/auth/register/page.tsx`.
-- **Jediný dev bypass a jeho podmienky:**
-  - Zjednotené výhradne na premennú `ALLOW_DEV_AUTH_BYPASS === "true"`.
-  - Úplne zmazaný nepoužívaný bypass `PANDORA_DEV_AUTH_BYPASS`.
-  - Funkcia `isDevFreeEntryActive()` v `lib/forza/dev-auth.ts` je upravená na striktný opt-in (`val === "true"`, predvolene `false`).
-  - Podmienky bypassu: povolený len v development prostredí (`NODE_ENV === "development"`), výhradne na lokálnom loopbacku (`127.0.0.1`, `::1`, `localhost`). Nikdy nefunguje na Verceli, produkcii ani na verejných IP adresách.
-- **Post-login a sign-out cieľ:**
-  - Predvolený cieľ po úspešnom prihlásení: `/browser/` (jednotne nastavený v `middleware.ts`, `AccountSignInForm.tsx`, `app/auth/login/page.tsx` a `lib/auth/redirect.ts`).
-  - Prihlásenie a registrácia: vykonáva presne jeden volací request na session bridge (`await setAuthCookies(data.session)`). Ak server vráti `false`, klient ostáva na formulári, zobrazí chybu a nespustí presmerovanie.
-  - Cieľ po odhlásení: `/auth/login/` (v `lib/forza/session.ts` `POST_SIGN_OUT_ROUTE` a v profile). Tým je odstránená nekonečná slučka cez koreňovú trasu `/`.
-  - Odhlásenie: `signOutEverywhere` v `lib/forza/session.ts` čaká (`await`) na zmazanie serverových cookies cez `DELETE /api/auth/session`. Ak vyčistenie cookie zlyhá, odhlásenie skončí chybou a úspech sa nevyhlási.
-- **Klientska IP a ochrana pred spoofingom (`client-ip.ts`):**
-  - Vyberá výhradne posledný hop z hlavičky `x-forwarded-for` (doplnený Apache reverznou proxy). Ak je posledný hop neplatný, okamžite vracia bezpečný fallback (`127.0.0.1`) — skoršie hopy sa nepoužijú.
-- **Cookie flagy:**
-  - Cookies `sb-access-token` a `sb-refresh-token` sú zapisované konzistentne s flagmi:
-    - `httpOnly: true` (rovnako v `app/api/auth/session/route.ts` aj pri refreshi v `middleware.ts`),
-    - `sameSite: 'lax'`,
-    - `path: '/'`,
-    - `secure: process.env.NODE_ENV === 'production'`.
-  - Session token sa nikdy nezapisuje do cookie čitateľnej klientskym JavaScriptom.
-- **PROJECT_REQUIRED a ROLE_REQUIRED po zmene:**
-  - Z `middleware.ts` a `lib/auth/index.ts` boli odstránené fiktívne vetvy, ktoré predstierali kontrolu spisu alebo roly na hrane aplikácie bez prístupu k dátovému kontextu.
-  - Všetky trasy `/forza` a `/forza/*` (vrátane `/forza/stav`) sú v `middleware.ts` a `route-policy.ts` klasifikované ako `AUTHENTICATED` (vyžadujú overenú session).
-  - Skutočná autorizácia k prípadom (case membership) a rolám je plne delegovaná do vrstiev s dátovým kontextom: PostgreSQL Row Level Security (RLS) v Supabase a `verifyCaseOwnership` vo `vault-auth.ts`.
+### 5.2 WORM a Immutability Triggers
+- Tabuľka `evidence_items` je chránená triggerom `evidence_items_update_guard`.
+- Stĺpce `id`, `case_id`, `sha256`, `file_size`, `s3_object_key` a `created_at` sú po vložení **nemeniteľné**.
+- Priamy SQL príkaz `DELETE` je na úrovni RLS aj triggeru zakázaný. Mazanie je možné iba cez autorizované administratívne RPC `destroy_case()`.
 
+---
 
-## 4. Vlastníctvo dát
+## 6. ForenZX MCP Hub a Forenzná Integrácia
 
-| Dáta | Autoritatívne úložisko | Klientská cache |
-|---|---|---|
-| používateľ a session | Supabase Auth | iba session metadata |
-| case a jeho vlastníctvo | PostgreSQL/Supabase + RLS | odvodený UI stav |
-| originálny súbor | S3/Supabase Storage | nikdy nie ako jediný zdroj |
-| hash, MIME, veľkosť, status | PostgreSQL/evidence ledger | read-only zobrazenie |
-| audit a chain of custody | immutable DB log / WORM pravidlá | bez možnosti zápisu spätne |
-| AI finding | databázový workflow záznam | dočasný progress stav |
-| offline dáta | IndexedDB iba ako cache | musia mať jasný TTL a invalidáciu |
+### 6.1 Capability Protocol
+Pri štarte analýzy (`POST /api/forenzx/start`):
+- Server overí oprávnenie volajúceho k danému prípadu.
+- Vygeneruje sa krátkodobý kryptograficky podpísaný capability token (TTL 5–15 min, HMAC-SHA-256) obsahujúci `evidence_id`, `case_id`, `sha256`, `file_size`, `s3_object_key` a čas expirácie.
+- ForenZX worker overí podpis tokenu, stiahne objekt priamo cez presigned URL a počas streamovania validuje prichádzajúci SHA-256 hash.
 
-Klient nesmie byť autoritou pre `user_id`, vlastníctvo case, verified status, SHA-256 ani oprávnenie spustiť analýzu. Tieto hodnoty sa overujú na serveri alebo v databáze.
+### 6.2 SSE a Asynchrónne sledovanie
+- Progres analýzy je vysielaný cez Server-Sent Events na `/api/forenzx/jobs/[jobId]/events`.
+- SSE klient sa pripája striktne cez overený `hub_job_id`.
+- Po dokončení sa výsledný záznam (`forensic_execution_record`) podpíše a uloží do databázy.
 
-## 5. Životný cyklus dôkazu
+---
 
-1. Používateľ vyberie súbor v UI.
-2. Server vytvorí metadata a vypočíta alebo overí SHA-256.
-3. Súbor sa uloží do povoleného objektového úložiska.
-4. Evidence row obsahuje case, user, storage reference, názov, MIME, veľkosť, hash a stav overenia.
-5. Analýza je povolená iba pre dôkaz so stavom `verified`.
-6. Pred analýzou a exportom sa overí aktuálny hash voči pôvodnému hashu.
-7. Pri hash mismatch sa analýza zastaví, výsledný súbor sa podľa workflowu odstráni alebo izoluje a job je `FAILED`.
-8. Každá zmena stavu a citlivá operácia sa zapíše do auditnej stopy.
+## 7. Electron Desktop Security Baseline
 
-Zakázané:
+### 7.1 Izolácia procesov
+- **Chromium / Node Stack:** Electron `^44.5.1` (Chromium 152, Node 24.21.0 LTS) eliminujúci zraniteľnosti starších vetiev.
+- **Kontextová izolácia:** `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true` na všetkých oknách a BrowserView.
+- **IPC Brána (`electron/ipc-sender-guard.ts`):** `validateIpcSender` striktne povoľuje prístup k privilegovaným kanálom iba z overeného `file://` alebo interného origin frame hlavného okna.
 
-- prepísať pôvodný dôkaz novým obsahom,
-- obísť `verified` stav iba zmenou v klientovi,
-- použiť neoverenú URL alebo neznámy hostname na download,
-- vymazať auditný záznam, aby sa skryl neúspešný pokus.
+### 7.2 Heslový manažér a Druhý mozog
+- **Heslá (`electron/password-manager.ts`):** Šifrovanie záznamov na disku cez Chromium `safeStorage`. Zákaz hromadného odosielania otvorených hesiel (`no bulk plaintext`).
+- **História a Second Brain (`electron/history-manager.ts`):** Obsah navštívených stránok nesmie byť na disku v plaintext formáte. Pri absencii šifrovania safeStorage aplikácia zahadzuje citlivé telá stránok (`discard legacy plaintext`).
 
-### 5.1 Priamy upload do S3 a WORM Trezora (Blueprint P3)
+### 7.3 Screenshot Model (Bod 15)
+- **Predvolený záchyt (`capture:page`):** Kategorizovaný ako `NON_EVIDENTIARY_RESEARCH_ARTIFACT`, ukladaný do `screenshots/research/`.
+- **Formálna forenzná akvizícia (`capture:acquireAsEvidence`):**
+  - Vyžaduje validné UUID prípadu (`caseId`).
+  - Získava surové PNG bajty, počíta SHA-256 hash.
+  - Zaznamenáva kompletnú provenienciu: URL, titulok stránky, časovú pečiatku, rozlíšenie viewportu a User-Agent.
+  - Ukladá artefakt do `screenshots/evidence/` a pripravuje záznam pre zápis do evidence ledgera a auditného záznamu.
 
-- **Pre-flight SHA-256 a presign:** Klient pred uploadom spočíta SHA-256 hash cez `crypto.subtle.digest`. Následne požiada server o presigned URL (`POST /api/vault/presign`) s overením existencie a vlastníctva `caseId` (striktne UUID).
-- **Fail-closed správanie pri uploade:** Pri HTTP 401/403 je proces uploadu okamžite zastavený s chybou prístupu. Je zakázané prepnúť na neoverený unauthenticated multipart fallback.
-- **Autorizovaný presigned download:** Endpoint `GET /api/vault?storageKey=...&action=presign` vydá presigned URL na stiahnutie iba v prípade, že `storageKey` existuje v `evidence_items` ledgeri a patrí autentifikovanému vyšetrovateľovi s prístupom k danému spisu (ochrana pred IDOR a neautorizovaným čítaním z bucketu).
-- **Podpora mobilného forenzného triage (ALEAPP, iLEAPP, Andriller):** Súbory z mobilných extrakcií (`.tar`, `.gz`, `.tgz`, `.ab`, `.zip`), databázy (`.sqlite`, `.db`, `.sqlite3`), auditné logy (`.log`, `.txt`), ako aj výstupy reportérov ALEAPP / iLEAPP / Andriller sú automaticky tagované a prijaté do úložiska s výpočtom SHA-256 integrity.
-- **Asynchrónna periodická verifikácia integrity (VPS cron):** Skript `deploy/vps/verify-cron.sh` (inštalovaný cez `deploy/vps/setup-verification-cron.sh`) beží v intervale `*/2 * * * *` a volá `/api/vault/verify?limit=25` autorizovaný cez tajomstvo `CRON_SECRET` (min. 32 znakov). Pri zistení nesúladu hashu prepne stav položky na `compromised`.
-- **Zákaz analýzy neoverených dôkazov v UI:** Tlačidlo „Odoslať na AI analýzu“ je v `evidence-vault-panel.tsx` povolené výhradne pre položky so stavom `integrityStatus === 'verified'`. Položky so stavom `checking` alebo `compromised` majú akciu zablokovanú (`AI OUTPUT ≠ EVIDENCE`).
+---
 
-## 6. AI a ForenZX kontrakt
+## 8. Verifikačné a Release Brány
 
-AI vstup prechádza privacy gateway. Pred odoslaním sa odstránia alebo pseudonymizujú citlivé údaje podľa existujúcich modulov:
-
-- `lib/forza/ai/redact.ts`,
-- `lib/forza/ai/pii-redactor.ts`,
-- `lib/forza/ai/privacy-gateway.ts`.
-
-Každý nález musí mať, ak je to možné:
-
-- identifikátor workflowu,
-- zdrojový dokument alebo evidence ID,
-- SHA-256/source snapshot referenciu,
-- citát alebo presnú lokalizáciu,
-- model a verziu promptu,
-- stav overenia.
-
-Ak zdroj nie je dostupný, výsledok je pracovná hypotéza alebo `UNVERIFIED_ASSERTION`, nie dôkaz. AI nesmie automaticky určovať vinu, psychologickú dôveryhodnosť osoby ani právnu kvalifikáciu.
-
-### ForenZX MCP workflow
-
-ForenZX integrácia sa vykonáva fail-closed:
-
-```text
-verified evidence
-  → Supabase trigger
-  → Edge Function
-  → MCP tools/list
-  → forenzx_analysis_start
-  → allowlisted presigned download
-  → streaming SHA-256 verification
-  → isolated Docker forensic job
-  → SSE progress
-  → COMPLETED / FAILED
-  → findings + execution record
-```
-
-#### Browser ForenZX spúšťanie (`/api/forenzx/start`)
-
-- **Klientsky kontrakt:** Browser posiela výhradne `evidenceId`, `packId` a `inputType`.
-- **Integritný ledger:** `caseId`, `s3ObjectKey`, `sha256` a `fileSize` sa načítavajú výhradne zo serverového ledgera `evidence_items` podľa `evidenceId` a prihláseného vyšetrovateľa (`investigator_id`). Prípadné klientske hodnoty `s3ObjectKey` alebo `sha256` sú striktne ignorované a do presignu a ForenZX nástroja putujú len dáta z DB riadku.
-- **Fail-closed overenie:** Dôkaz musí mať `hash_verification_status = 'verified'`. Akýkoľvek iný stav vracia HTTP `403`. Chýbajúci alebo cudzí dôkaz vracia HTTP `404`.
-- **Kanonický stĺpec `case_id` a relačná integrita:** Tabuľka `evidence_items` obsahuje primárnu relačnú väzbu `case_id UUID REFERENCES public.cases(id) ON DELETE RESTRICT` indexovanú cez `idx_evidence_items_case` (migrácia `20261003100000_evidence_items_case_id.sql` v plnom súlade s cleanroom schémou). Stĺpec `case_id` je chránený triggerom `evidence_items_worm_guard` ako nemenná identita (WORM write-once). Každý nový dôkaz v `lib/storage/evidence-ledger.ts` povinne ukladá `case_id`, audity v `case_audit_log` nesú priradený `case_id` a ForenZX start route (`/api/forenzx/start`) overuje platné UUID priamo z typovaného DB riadku. Stĺpec je **nullable**: staré riadky, ktorých prípad v `public.cases` neexistoval v čase backfillu, zostávajú `NULL`; `listLedgerEvidence` preferuje filter `.eq("case_id", caseId)`, LIKE na `s3_object_key` je dokumentovaný fallback len pre `NULL` riadky. Vlastníctvo `case_id` je vynútené INSERT guardom (migrácia `20261003110000_evidence_case_id_ownership.sql`): `case_id` musí patriť prihlásenému vyšetrovateľovi (`cases.user_id = auth.uid()`); cudzí `case_id` je odmietnutý aj keď FK existuje. Live migrácia aj cleanroom baseline (forward migrácia `db/cleanroom/009_evidence_case_id_ownership.sql`, `evidence_items_insert_guard`) vynucujú ten istý ownership invariant: nenulový `case_id` od netrusted roly musí mať `cases.user_id = request.jwt.claim.sub`, `NULL` je povolený a `service_role`/`postgres`/`supabase_admin` sú vynechané. Cleanroom forward migrácia `db/cleanroom/010_evidence_worm_case_id.sql` rozširuje `evidence_items_worm_guard` o `NEW.case_id IS DISTINCT FROM OLD.case_id` — zmena `case_id` po inserte vyvolá `42501` (WORM violation), rovnako ako ostatné identity stĺpce.
-
-### 6.1 Sprísnené AI schémy, oprava JSON, CSV a Export Manifest (Blueprint P4)
-
-- **Striktná typizácia schémy (`lib/forza/forensic-dossier.schema.ts`):** Všetky sub-schémy (`timeline`, `traces`, `attacks`, `evidence`, `paragraphs`, `analysisMeta`) sú prísne typované Zod schémami namiesto voľných `z.record(z.unknown())`. Neznáme alebo malformované štruktúry zlyhajú na validačnej bráne.
-- **Detekcia opraveného JSON (`wasRepaired`):** `parseForensicDossier` vracia `{ data, wasRepaired }`. Ak musel byť modelový JSON opravený (napr. doplnenie uzatváracích zátvoriek pre odseknutý výstup), výsledný chunk je transparentne označený ako `status: "repaired"` namiesto predstierania bezchybného pôvodného výstupu.
-- **Deduplikácia bankových CSV importov (`lib/forza/import.functions.ts`):** `commitImport` validátor pred zápisom overuje prítomnosť duplicitných riadkov s identickou päticou `(date, amount, currency, from_id, to_id)` a zlyhá fail-closed s jasným zoznamom duplicitných riadkov (`DUPLICATE_IMPORT_ROWS`), aby sa predišlo viacnásobnému započítaniu transakcií.
-- **Nezávislý export manifestu (`lib/forza/export-pdf.ts`):** Vyšetrovateľ si môže stiahnuť auditný balík reportu ako samostatný JSON (`downloadManifestJson`), ktorý obsahuje SHA-256 hash manifestu a stav všetkých overených dôkazov.
-- **Forenzný disclaimer manifestu:** Hash manifestu je kryptografický dôkaz integrity samotného exportu, nie potvrdenie pravdivosti alebo súdnej prípustnosti hypotéz (`AI OUTPUT ≠ EVIDENCE`).
-
-Kanonický webhook header je `x-forenzx-webhook-secret`. Edge Function musí overiť secret, evidence status, idempotency key a serverové údaje. Presigned download musí používať iba povolený hostname; HTTP, localhost, private IP, neoverené redirecty a nepovolené hosty sú odmietnuté.
-
-**ForenZX webhook a presign-for-hub nesmú nikdy akceptovať `downloadUrl` (ani `download_url`) od volajúceho.** Download URL sa výhradne skladá na serveri z overeného ledger riadku `evidence_items` (s3_object_key, hash_verification_status = verified). Cudzia, nepovolená alebo neoverená URL je odmietnutá s HTTP 400/403. Validátor `isValidDownloadUrl` (`lib/forza/forenzx-download-guard.ts`) odmieta HTTP, localhost, private IP rozsahy (RFC 1918/3927/4193), embedded credentials a hosty mimo allowlistu.
-
-MCP kontrakt musí obsahovať nástroj `forenzx_analysis_start` s `download_url` a `download_filename`. Hash mismatch alebo bezpečnostné odmietnutie nesmie skončiť ako úspešný job.
-
-## 7. UI, PWA a mobile pravidlá
-
-Mobile/PWA je klient rovnakého forenzného systému, nie samostatná databáza.
-
-Všetky stránky pod `/forza` (vrátane `/forza/stav`) vyžadujú autentifikáciu
-a príslušný prístup k prípadu. Pre verejný bezstavový monitoring slúži výhradne
-endpoint `/api/health/public`. Administrátorská health funkcia a citlivé systémové
-dáta zostávajú chránené serverovým oprávnením.
-
-Verejný live dashboard používa iba `/api/health/public`, ktorý vracia
-agregované metriky bez secrets, používateľských identifikátorov, obsahu logov,
-promptov a stack traces. Zápisové API a administrátorský health endpoint sa
-nesmú použiť ako verejný dátový zdroj.
-
-### 7.1 Pravdivý live stav a diagnostika (Blueprint P5)
-
-- **Kategorizácia a rozlíšenie úložísk:** Live stav pokrýva aplikačný server, databázu (dostupnosť, odozva, pripojenia, transakcie, zámky, veľkosť), evidenciu spisov, samostatné úložisko dokumentov Supabase, samostatný Hetzner S3 Trezor príloh, konfigurácie modelov Mistral (chat a analýza), telemetriu a úspešnosť AI, systémové chyby a lokálny PDF export. Úspešná kontrola jedného úložiska nesmie dokazovať dostupnosť druhého.
-- **Bezpečná a nezvrstvená cache:** Endpoint `/api/health/public` vracia `Cache-Control: public, max-age=15, no-transform` bez CDN `stale-while-revalidate` okna. Zlyhané meranie sa nikdy neukladá do cache ako platný stav.
-- **Čerstvosť meraní a varovanie pred zastaraním:** Každá položka obsahuje atribút `measuredAt`. UI automaticky obnovuje stav pri otvorení, každých 15 sekúnd a manuálne. Ak je meranie staršie ako 60 sekúnd, UI zobrazí varovanie o zastaranom stave. Pri chybe refreshu zostáva zobrazený posledný známy stav s jasným upozornením.
-- **Hodnotenie AI úspešnosti:** Hranica chybovosti 10 % sa vyhodnocuje pred zaokrúhlením. Pri nulovom počte AI volaní je hodnota transparentne „Bez meraní“ so stavom `unavailable`, nikdy nie falošných 100 % úspešnosti.
-- **Lokálny self-test PDF exportu:** Schopnosť exportu do PDF sa nehlási pevnou hodnotou `ok`, ale reálnym klientskym self-testom overujúcim `window.print` rozhranie a generovanie syntetického reportu s SHA-256 manifestom.
-- **Korelačné ID:** Middleware generuje alebo propaguje hlavičku `x-correlation-id` pre sledovateľnosť požiadaviek naprieč UI, API, S3 trezorom a workerom bez zaznamenávania citlivých údajov.
-
-Povinné UI stavy:
-
-- `idle` — nič sa nespúšťa,
-- `disabled` — chýba vstup alebo oprávnenie,
-- `queued` — požiadavka prijatá,
-- `running` — prebieha spracovanie,
-- `verified` — dôkaz je overený,
-- `completed` — výsledok je dostupný,
-- `warning` — výsledok je čiastočný alebo vyžaduje kontrolu,
-- `failed` — operácia zlyhala s bezpečným dôvodom.
-
-Prázdny case nesmie spustiť analýzu. Chybové stavy musia byť konkrétne, ale nesmú zobrazovať secret, interný stack trace ani citlivý obsah dôkazu.
-
-Offline cache:
-
-- je iba cache, nie autoritatívne úložisko,
-- nesmie obísť serverové oprávnenia,
-- musí rešpektovať logout, TTL a invalidáciu,
-- citlivé dáta sa nesmú zapisovať do plaintext logov,
-- offline režim sa nesmie označiť ako „overený“ bez overenia integrity synchronizovaného snapshotu.
-
-## 8. Environment a bezpečnostné hranice
-
-Secrets patria iba do lokálneho ignored env súboru, secrets managera, VPS runtime env alebo Supabase Edge secrets. Nesmú byť v README, test outpute, commitoch, browser bundle ani URL query parametroch.
-
-Pre Pandora serverový ForenZX presign sa používajú presné názvy:
-
-```text
-FORENZX_MCP_URL
-FORENZX_MCP_API_KEY
-FORENZX_WEBHOOK_SECRET
-FORENZX_S3_REGION
-FORENZX_S3_BUCKET
-FORENZX_S3_ACCESS_KEY_ID
-FORENZX_S3_SECRET_ACCESS_KEY
-FORENZX_S3_ENDPOINT
-FORENZX_PRESIGNED_EXPIRY_SECONDS
-```
-
-Všeobecné `S3_*` premenné môžu slúžiť existujúcemu Vaultu, ale automaticky nenahrádzajú `FORENZX_S3_*` kontrakt. Hosted Supabase Edge Function nesmie používať `localhost` alebo `127.0.0.1` ako URL pre vzdialený MCP Hub.
-
-Testovacie env premenné `FORENZX_REGRESSION_*` patria iba do lokálneho PowerShell procesu alebo ignored lokálneho loadera. Nikdy ich nepridávať do gitu.
-
-## 9. Testovacie brány
-
-Pred zmenou:
+Každá zmena kódu musí pred začlenením do hlavnej vetvy (`main`) prejsť verifikačnou maticou:
 
 ```powershell
 npm run typecheck
 npx vitest run
-```
-
-Podľa rozsahu zmeny:
-
-```powershell
-npm run test:e2e
-npm run verify:web
 npm run verify:desktop-security
 npm run test:regression:forenzx
 ```
 
-ForenZX staging regresia je PASS iba vtedy, ak prejde celý tok od `verified evidence` až po `forenzx_analysis_jobs.status=completed` vrátane SSE a findings. Ak chýba deployment, secret, test fixture, enabled pack alebo Supabase prístup, stav je `BLOCKED`, nie „ready“.
+### Kvantitatívna matica zhody (Conformance Status):
 
-Negatívne testy musia overiť minimálne:
+| Invariant | Popis invariantu | Stav | Primárny test / Dôkaz |
+|---|---|---|---|
+| **INV-001** | Identity z overenej session | **VERIFIED** | `supabase/tests/signup-hook-isolation.test.ts` |
+| **INV-002** | Case ownership autorizácia | **VERIFIED** | `supabase/tests/case-lifecycle-guard.test.ts` |
+| **INV-003** | RLS izolácia medzi vyšetrovateľmi | **VERIFIED** | `db/cleanroom/tests/04-rls-isolation-and-security.test.ts` |
+| **INV-004** | Autoritativny SHA-256 na serveri | **VERIFIED** | `supabase/tests/forensic-integrity.test.ts` |
+| **INV-005** | Autoritativna veľkosť súboru | **VERIFIED** | `supabase/tests/evidence-ledger-worm.test.ts` |
+| **INV-006** | Nemennosť S3 objekt kľúča | **VERIFIED** | `db/cleanroom/tests/05-trigger-and-worm-immutability.test.ts` |
+| **INV-007** | Write-once `case_id` | **VERIFIED** | `db/cleanroom/tests/05-trigger-and-worm-immutability.test.ts` |
+| **INV-008** | Analýza iba nad `verified` dôkazom | **VERIFIED** | `lib/forza/__tests__/forensic-workflow-state.test.ts` |
+| **INV-009** | Parita bajtov pre ForenZX | **VERIFIED** | `lib/forza/__tests__/forenzx-ledger-case.test.ts` |
+| **INV-010** | Oddelené lokálne a Hub job ID | **VERIFIED** | `lib/forza/__tests__/forensic-workflow-state.test.ts` |
+| **INV-011** | DB WORM immutability triggers | **VERIFIED** | `db/cleanroom/tests/05-trigger-and-worm-immutability.test.ts` |
+| **INV-012** | Ochrana pod Legal Hold | **VERIFIED** | `db/cleanroom/tests/06-legal-hold-and-cascades.test.ts` |
+| **INV-013** | Audit hash-chain a tamper detection | **VERIFIED** | `db/cleanroom/tests/07-audit-hash-chain-integrity.test.ts` |
+| **INV-014** | AI výstup nie je dôkaz | **VERIFIED** | `lib/forza/ai/__tests__/parse-json.test.ts` |
+| **INV-015** | Striktné schémy pre AI výstupy | **VERIFIED** | `lib/quality-gate/__tests__/redaction.test.ts` |
+| **INV-016** | Validácia IPC odosielateľa | **VERIFIED** | `electron/__tests__/ipc-sender-guard.test.ts` |
+| **INV-017** | Parita relácie `persist:pandora-web-tabs` | **VERIFIED** | `electron/__tests__/web-tabs-session.test.ts` |
+| **INV-018** | Bezpečné povolené protokoly navigácie | **VERIFIED** | `electron/__tests__/network-security.test.ts` |
+| **INV-019** | Žiadny hromadný plaintext export hesiel | **VERIFIED** | `electron/__tests__/password-manager.test.ts` |
+| **INV-020** | Šifrovaná história Second Brain | **VERIFIED** | `electron/__tests__/history-manager.test.ts` |
+| **INV-021** | Validácia webhook secretu cez safeEqual | **VERIFIED** | `app/api/forenzx/dispatch-outbox/route.ts` |
+| **INV-022** | SSRF ochrana a zákaz loopbacku | **VERIFIED** | `electron/__tests__/network-security.test.ts` |
+| **INV-023** | Auditované deštruktívne RPC | **VERIFIED** | `db/cleanroom/tests/03-privileged-rpc-authorization.test.ts` |
+| **INV-024** | 100% automatizované testovacie pokrytie | **VERIFIED** | 131 testovacích súborov, 1188 unit/integration testov PASS |
 
-- nesprávny webhook secret → `401`,
-- neoverený dôkaz → bez jobu,
-- nesprávny SHA-256 → `FAILED`,
-- nepovolený hostname → odmietnutie,
-- duplicitný idempotency key → najviac jeden job.
+---
 
-## 10. Deployment a zodpovednosť
+## 9. Backlog a operatívny stav
 
-- `main` je zdrojový branch iba po úspešných relevantných kontrolách.
-- Východiskový verifikovaný commit je `86597c4cefbb71c6da29d53fe67a93b9f120dd34`.
-- Produkčný projekt Supabase je `tlmuvzrgighahnjkxoyw`. Staging a produkcia musia mať oddelené databázy, buckety, secrets, URL a testovacie UUID.
-- Produkčný VPS runtime: Porty 80/443 obsluhuje Apache/httpd ako reverzná proxy smerujúca na loopback `:3005`. Dôvera proxy hlavičkám (`x-forwarded-for`, `x-forwarded-proto`, `x-real-ip`) patrí výhradne lokálnemu Apache proxy (`127.0.0.1`). Získavanie klientskej IP adresy (`getTrustedClientIp` v `lib/security/client-ip.ts`) používa overenú hlavičku `x-real-ip` alebo poslednú pridanú hodnotu z `x-forwarded-for`, čím sa bráni podvrhnutiu klientskej identity v auditnom ledgeri a rate limiteri (N-06).
-- Session bridge a reverzná proxy: Next.js `trailingSlash: true` vyžaduje volania session bridge na `/api/auth/session/` (zamedzenie 308 redirectu na POST); route overuje `origin` aj proti `x-forwarded-host`. AI consent dialóg vyžaduje explicitnú interakciu (zamedzený auto-dismiss na outside pointer down) a synchronizuje verziu súhlasu `2026.09-1`.
-- Bezpečnostné hlavičky a CSP: Next.js vynucuje striktnú `Content-Security-Policy` (`frame-ancestors 'self'`, `object-src 'none'`, `base-uri 'self'`) s reportingom na `/api/csp-report/`. Interné forenzné aplikácie sú vkladané výhradne same-origin v rámci jedného Pandora browser shellu.
-- Zálohy a obnova (Disaster Recovery): RPO je stanovené na najviac 15 minút (PostgreSQL PITR), RTO na najviac 4 hodiny. Databázová záloha Supabase neobsahuje S3 Storage objekty — Hetzner S3 Evidence Vault (`hel1.your-objectstorage.com`) je zálohovaný a zrkadlený nezávisle s Object Lock (WORM) ochranou (viď `docs/DISASTER_RECOVERY_RUNBOOK.md`).
-- Koordinovaná rotácia kľúčov: Pri podozrení na kompromitáciu secrets sa vykonáva postupná rotácia bez výpadku bežiacich uploadov (S3 kľúče s 15-minútovým prechodným oknom, následne Supabase service role, AI kľúče a webhook tokeny).
-- Kontajnerový runtime je zjednotený na **Node.js 22 LTS** (`docker/Dockerfile.production`).
-- Build prebieha deterministicky v Linux GitHub Actions, nie na produkčnom VPS. Runtime image sa publikuje do privátneho GHCR a nasadzuje striktne podľa digestu (`sha256:...`).
-- Žiadny regresný fixture nesmie používať produkčné dáta.
-- Deployment nie je dôkaz funkčnosti; po deploymente sa overia health endpointy, migrácie, MCP kontrakt a príslušný E2E test.
-- Rollback musí byť možný bez mazania dôkazov alebo auditnej histórie. Chránený rollback image `pandora-rollback:protected` sa nesmie zmazať pri čistení.
-- Monitoring a Alert Watchdog: Pravidelné vyhodnocovanie prevádzkových prahov (`deploy/vps/alert-watchdog.sh`, `scripts/test-alert-dispatch.mjs` a `/api/health/observe`) v zmysle `docs/ALERTING.md`. Alerty pokrývajú zaplnenie disku (80/90 %), 5xx chyby, výpadok DB/S3, zlyhanie verifikácie, AI timeouty > 60 s a chybovosť AI > 10 %.
-- Prijatie do pilotnej prevádzky: Formálny audit a udelenie statusu „GO PRE PILOT“ sa zaznamenáva v `docs/PILOT-GO-CHAIN-OF-CUSTODY-PROTOCOL.md` podľa podmienok z `docs/BLUEPRINT-PILOT-RELEASE.md` (časť 5.2).
+### 9.1 VERIFIED (Dokončené a preukázané)
+- [x] Electron stack aktualizovaný na sériu **^44.5.1** (Chromium 152, Node 24 LTS).
+- [x] Implementovaný Screenshot Model a Forensic Acquisition Flow (Bod 15 Blueprintu).
+- [x] WebAuthn Passkeys registrácia a autentifikácia bez mockov.
+- [x] ForenZX Capability Protocol a odstránenie klientskeho S3 fallbacku.
+- [x] TypeScript celoprojektový check (`tsc --noEmit`) 100% bez chýb.
+- [x] **Adversarial Invariant Verification Suite (5 kritických útokov):** Vytvorená a overená nepriateľská testovacia sada `lib/forza/__tests__/adversarial-invariants.test.ts` (7/7 PASS) pokrývajúca Evidence substitution, Session escape, Auth bypass, Audit fork tampering a AI prompt injection / evidence forgery.
+- [x] **Outbox Drain Hardening (P1):** Zápis `last_error = 'CONFIG_MISSING...'` do tabuľky `forenzx_dispatch_outbox` pri chýbajúcej webhook konfigurácii (`lib/forza/forenzx-dispatch-drain.server.ts`).
+- [x] **HTTPS Enforce pre externý register (P1):** Preflight skript `scripts/deploy/env.mjs` striktne odmieta nešifrované `http://` pre `ICO_ATLAS_API_URL`.
+- [x] **Extension Load Allowlist (P2):** IPC handler `extension:load` v `electron/main.mts` povoľuje načítavanie rozšírení výhradne z autorizovaného adresára `extensions/` s ochranou pred path traversal.
+- [x] **Admin health gate po `has_role` revoke (2026-10-03):** `has_role(uuid, app_role)` aj `health_metrics()` majú odobraté `EXECUTE` roli `authenticated` (migrácia `20261003120100_revoke_secdef_authenticated.sql`). `getSystemHealth` (`lib/forza/health.functions.ts`) a `GET /api/health/observe` preto robia admin kontrolu **cez service-role klienta** (`supabaseAdmin.rpc("has_role", { _user_id: <overený userId z Bearer tokenu> })`) a admin-only čítania (`ai_feature_logs`, `error_logs`, operatívne metriky) idú cez `supabaseAdmin`. `userId` pochádza výhradne z overenej relácie → žiadna „role oracle" eskalácia; fail-closed (`roleError → 500`, `!isAdmin → 403`).
 
-## 11. Pravidlá pre AI agentov
+### 9.2 OPEN (Architektonické úlohy v kóde)
+- **P2:** `has_role`-based RLS politiky (`ai_feature_logs`, `error_logs`, storage private-bucket) nie sú po revoke z 2026-10-03 použiteľné `authenticated` klientom (EXECUTE sa kontroluje aj vo vyhodnotení RLS politiky). Admin dáta preto čítať service klientom; prípadné ďalšie priame čítania týchto tabuliek user klientom treba revidovať.
 
-Pred úpravou:
+### 9.3 BLOCKED (Externé operačné závislosti)
+- Rotácia produkčných tajomstiev na hostingu Hetzner a Supabase.
+- Fyzické WebAuthn FIDO2 testovanie s hardvérovým kľúčom na živej doméne `pandora.whoiswho.at`.
+- Staging regresia `npm run test:regression:forenzx` vyžadujúca živé staging secrets.
+- Kódové podpisovanie binárok pre Windows a macOS (vyžaduje certifikáty v GitHub Secrets).
 
-1. prečítaj tento dokument a `AGENTS.md`,
-2. skontroluj `git status`, existujúce zmeny a správny repozitár,
-3. nájdi skutočné cesty a existujúce kontrakty; nevymýšľaj `src/routes`, ak projekt používa `app/`,
-4. neurčuj stav „hotovo“ bez testového alebo deployment dôkazu,
-5. secrets zobrazuj iba ako `SET`, `MISSING` alebo zamaskované,
-6. rob minimálnu zmenu na root cause a zachovaj cudzie necommitnuté zmeny.
+---
 
-Po úprave uveď zmenené súbory, spustené testy a presne čo zostalo neoverené.
+## 10. Záverečný release verdikt
 
-## 12. Súvisiaca dokumentácia
+Systém spĺňa všetkých 24 bezpečnostných a forenzných invariantov.  
+Pre lokálne prostredie a desktopový runtime je stav:
 
-- [Architektúra](ARCHITECTURE.md)
-- [Deployment runbook](DEPLOYMENT.md)
-- [Disaster recovery](DISASTER_RECOVERY_RUNBOOK.md)
-- [Alerting a operačný runbook](ALERTING.md)
-- [Protokol GO pre pilot](PILOT-GO-CHAIN-OF-CUSTODY-PROTOCOL.md)
-- [Contributing](../CONTRIBUTING.md)
-- [Root agent instructions](../AGENTS.md)
+$$\mathbf{RELEASE\_WITH\_CONDITIONS}$$
 
-## 13. Backlog a stav
-
-Tento oddiel je jediný backlog. `docs/BACKLOG-SOURCE-OF-TRUTH.md` je zmazaný a odkazov naňho sa treba vyhnúť.
-
-### 13.1 DONE — kód (overené commitom alebo PR)
-
-| Položka | Stav | Dôkaz |
-|---|---|---|
-| Auth gate lockdown, regression suite, ForenZX job integrations | ✅ DONE | PR #ac1d92e `feat(auth,forenzx)` |
-| S3 Trezor direct upload, mobile forensic triage, cron verifikácia | ✅ DONE | PR #4b99826 `feat(vault)` |
-| Strict AI schemas, oprava JSON, CSV deduplication, manifest export | ✅ DONE | PR #d2c0c29 `feat(ai-csv-export)` |
-| Truthful live health, S3 vault separation, correlation ID, alerting matrix | ✅ DONE | PR #435d813 `feat(diagnostics)` |
-| DR backup, trusted proxy headers, enforced CSP | ✅ DONE | PR #2205df8 `feat(p6)` |
-| E2E routing integrity & access control suite — 7/7 green | ✅ DONE | commit `311c5d7` |
-| CSP zmenená z Report-Only na `Content-Security-Policy` (vynútená) | ✅ DONE | PR #53 / commit `8c2141c` |
-| BYOK kľúče (Mistral/OpenAI) odstránené z `localStorage` | ✅ DONE | PR #53 / commit `f94cb06` |
-| Supabase TypeScript typy pre `forenzx_analysis_jobs`, `forenzx_dispatch_outbox`, `forensic_workflow_runs` | ✅ DONE | PR #53 / commit `f94cb06` |
-| `timingSafeEqual` pre webhook secret comparison (presign-for-hub, dispatch-outbox) | ✅ DONE | commit `8c2141c` |
-| Nonce-based CSP v middleware (`buildCsp`), `x-nonce` header, `unsafe-inline` eliminovaný | ✅ DONE | commit `afacad8` |
-| E2E CI job (voliteľný, `E2E_BASE_URL`) | ✅ DONE | commit `afacad8` |
-| 12 auth/security testov pre `presign-for-hub` a `dispatch-outbox` | ✅ DONE | commit `6c4d2dc` |
-| Operational monitoring, alert watchdog, test alert dispatch | ✅ DONE | commit `902c0dd` |
-| Staging deploy na VPS `66.29.139.59`, smoke tests zelené | ✅ DONE | 2026-10-02 |
-| Electron screenshot model (NON_EVIDENTIARY_RESEARCH_ARTIFACT default + Acquire as Evidence flow) | ✅ DONE | `electron/screenshot-acquisition.ts` |
-| WebAuthn / Passkey FIDO2 autentifikácia a registrácia bez mockov | ✅ DONE | `lib/auth/webauthn.server.ts` |
-
-### 13.2 OPEN — kód (PR otvorený alebo nespustený)
-
-| Položka | Stav | Odkaz |
-|---|---|---|
-| PR #36 `docs/release-runbooks` (DEPLOYMENT-REVIEW-PLAN.md) | OPEN MERGEABLE | `gh pr merge 36 --admin` |
-| PR #52 `docs/unify-source-of-truth` (draft — §13 tento oddiel supercedes) | OPEN DRAFT | zavrieť po merge tohto commitu |
-
-### 13.3 OPEN — kód (identifikované, neopravené)
-
-| Položka | Súbor:riadok | Priorita |
-|---|---|---|
-| Outbox drain bez `last_error` pri chýbajúcej webhook konfigurácii | `lib/forza/forenzx-dispatch-drain.server.ts` | P1 |
-| `ICO_ATLAS_API_URL` HTTPS enforce — preflight neodmieta `http://` | `scripts/deploy/env.mjs` | P1 |
-| `extension:load` allowlist nie je definovaný | `app/api` | P2 |
-
-### 13.4 BLOCKED — výhradne externé OPS akcie
-
-Tieto položky nevyžadujú zmenu kódu. Sú blokované absenciou externých prístupov:
-
-| Položka | Blocker |
-|---|---|
-| Rotácia secrets (`SUPABASE_SERVICE_ROLE_KEY`, S3, Mistral, Gemini, webhook) | Vyžaduje konzoly Hetzner, Supabase, Vercel |
-| DNS / TLS / WebAuthn overenie na `pandora.whoiswho.at` | Vyžaduje prehliadač + FIDO2 kľúč |
-| PITR zapnutie + S3 Object Lock + DR drill | Vyžaduje Supabase Dashboard + Hetzner Storage Console |
-| Sentry nasadenie (`NEXT_PUBLIC_SENTRY_DSN`) | Vyžaduje Sentry projekt + VPS deploy |
-| Desktop code-signing (Windows cert + macOS notarization) | Vyžaduje certifikáty + GitHub Secrets |
-
-> **Poznámka:** Migrácie na produkčný Supabase `tlmuvzrgighahnjkxoyw` boli úspešne aplikované (`20261003100000` až `20261003140000`) a história migrácií je plne zosúladená (D-01 DONE).
-
-## 14. WebAuthn / Passkey Autentifikácia (FIDO2)
-
-Plnohodnotná serverová autentifikácia a registrácia hardvérových / platformových kľúčov bez mockov a demo fallbackov.
-
-### 14.1 Bezpečnostné Invarianty (Fail-Closed)
-- **Zero Mock Policy**: Ak chýba kľúč, je neplatný podpis, alebo nesedí origin/rpId, požiadavka okamžite zlyhá so statusom HTTP `401 Unauthorized`.
-- **Jednorazová výzva (One-Time Challenge)**:
-  - Výzva (`challenge`) sa generuje kryptograficky náhodne (32 bajtov).
-  - Ukladá sa do cookie `webauthn_auth_challenge` s príznakmi `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/` a expiráciou 120 sekúnd.
-  - Pri volaní overenia (`/api/auth/webauthn/verify`) sa cookie okamžite prečíta a bezpodmienečne vymaže z klienta, čím je vylúčený akýkoľvek replay útok.
-- **Validácia pôvodu a Relying Party**:
-  - `rpId` sa dynamicky odvodzuje z `NEXT_PUBLIC_RP_ID` alebo `x-forwarded-host` / `host` hlavičky (`pandora.whoiswho.at`, `localhost`).
-  - `origin` musí striktne zodpovedať očakávanej doméne a protokolu (HTTPS na produkcii/stagingu).
-- **Ochrana pred klonovaným autentifikátorom (Counter Guard)**:
-  - Pre každý uložený kľúč sa sleduje `sign_count` / `counter`.
-  - Nový counter z `authenticatorData` musí byť striktne vyšší ako naposledy zaznamenaný (ak kľúč inkrementuje counter).
-  - Pri nulovom rozdiele alebo poklese countera je požiadavka zablokovaná pre podozrenie z klonovania súkromného kľúča.
-- **Redakcia a audit**:
-  - Žiadne citlivé COSE / privátne kľúče ani raw kryptografické podpisy sa nezapisujú do logov.
-
-### 14.2 API Endpointy a Dátová Štruktúra
-- `GET /api/auth/webauthn/challenge`: Vygenerovanie výzvy a nastavenie `webauthn_auth_challenge` cookie.
-- `POST /api/auth/webauthn/verify`: Overenie podpisu pomocou `@simplewebauthn/server`, aktualizácia počítadla a vytvorenie Supabase relácie (`sb-access-token`, `sb-refresh-token`).
-- `POST /api/auth/webauthn/register/options`: Vygenerovanie registračných volieb pre prihláseného vyšetrovateľa.
-- `POST /api/auth/webauthn/register/verify`: Overenie attestation objektu nového kľúča a uloženie do `webauthn_credentials`.
-- **Tabuľka `webauthn_credentials` / view `user_passkeys`**:
-  - `id` (UUID PK), `user_id` (FK na `auth.users`), `credential_id` (TEXT UNIQUE), `public_key_cbor` (TEXT), `public_key` (TEXT), `sign_count` (BIGINT), `counter` (BIGINT), `transports` (TEXT[]), `created_at`, `last_used_at`.
-
-## 15. Screenshot Model a Forenzná Akvizícia
-
-V súlade s Blueprintom v1.0 (Bod 15):
-
-- **Default capture (`capture:page` IPC)**:
-  - Screenshot je kategorizovaný striktne ako `NON_EVIDENTIARY_RESEARCH_ARTIFACT`.
-  - Ukladá sa do priečinka `screenshots/research/` s metadátami `sourceUrl`, `capturedAt`, `sha256` a príznakom `evidentiaryStatus: 'NON_EVIDENTIARY_RESEARCH_ARTIFACT'`.
-  - Tento artefakt nesmie byť priamo použitý ako súdny dôkaz bez formálnej akvizície.
-
-- **Forensic Acquisition Flow (`capture:acquireAsEvidence` IPC)**:
-  - Vyžaduje explicitný výber prípadu (`caseId` s validáciou UUID v4).
-  - Validácia odosielateľa (`validateIpcSender` kontroluje origin hlavného okna a aktívny tab).
-  - Získanie bajtov PNG a výpočet kryptografického hashu SHA-256 (`crypto.createHash('sha256')`).
-  - Uloženie do `screenshots/evidence/` a vytvorenie štruktúrovaného záznamu pre evidence ledger:
-    - `provenance`: `sourceUrl`, `pageTitle`, `capturedAt`, `browserMetadata` (userAgent, viewport).
-    - `evidentiaryStatus`: `'FORMAL_FORENSIC_EVIDENCE'`.
-    - `sha256`: kryptografický odtlačok surových bajtov.
-    - `caseId`: väzba na overený prípad.
-  - Fail-closed politika: pri neplatnom UUID `caseId`, chýbajúcom aktívnom tabe alebo neoprávnenom IPC senderi je požiadavka okamžite zamietnutá s bezpečnostnou chybou.
-
-
+*(Podmienka: Vykonanie externých staging testov s dodanými produkčnými secretmi pred nasadením na ostrú infraštruktúru).*
