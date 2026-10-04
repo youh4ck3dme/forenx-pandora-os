@@ -367,6 +367,7 @@ export async function callMistralOcr(
   fileBuffer: Buffer,
   fileName: string,
 ): Promise<string> {
+  guardCloudEvidenceAi("mistral-ocr"); // INV-032: fail-closed in court-grade
   const apiKey = mistralApiKey("analysis");
   if (!apiKey) {
     throw new Error(

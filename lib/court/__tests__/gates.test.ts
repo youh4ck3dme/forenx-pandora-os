@@ -6,10 +6,10 @@ import { dirname, join } from "node:path";
 import JSZip from "jszip";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { buildManifest } from "@/lib/court/manifest";
-import { signCourtPackManifest, verifyCourtPackSignature, parseKeyring, FileSigningKeyProvider, type Keyring } from "@/lib/court/signing";
-import { buildCourtPack } from "@/lib/court/pack-builder";
-import { guardCloudEvidenceAi, isCourtGradeRuntime } from "@/lib/court/ai-boundary";
+import { buildManifest } from "../manifest";
+import { signCourtPackManifest, verifyCourtPackSignature, parseKeyring, FileSigningKeyProvider, type Keyring } from "../signing";
+import { buildCourtPack } from "../pack-builder";
+import { guardCloudEvidenceAi, isCourtGradeRuntime } from "../ai-boundary";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const VERIFY_MJS = join(process.cwd(), "lib", "court", "verify.mjs");
@@ -40,8 +40,32 @@ describe("Gate 4 — INV-032 cloud AI boundary is wired fail-closed", () => {
 
   it("the real cloud provider call site (callMistral) is blocked in court-grade", async () => {
     process.env.FORENZX_COURT_GRADE = "true";
-    const { callMistral } = await import("@/lib/forza/ai/mistral.server");
+    const { callMistral } = await import("../../forza/ai/mistral.server");
     await expect((callMistral as (o: unknown) => Promise<unknown>)({ messages: [] })).rejects.toThrow(/INV-032/);
+  });
+
+  it("callGemini is blocked in court-grade", async () => {
+    process.env.FORENZX_COURT_GRADE = "true";
+    const { callGemini } = await import("../../forza/ai/gemini.server");
+    await expect((callGemini as (o: unknown) => Promise<unknown>)({ messages: [] })).rejects.toThrow(/INV-032/);
+  });
+
+  it("callMistralOcr is blocked in court-grade", async () => {
+    process.env.FORENZX_COURT_GRADE = "true";
+    const { callMistralOcr } = await import("../../forza/ai/mistral.server");
+    await expect(callMistralOcr(Buffer.from("dummy"), "test.pdf")).rejects.toThrow(/INV-032/);
+  });
+
+  it("generateMistralImage is blocked in court-grade", async () => {
+    process.env.FORENZX_COURT_GRADE = "true";
+    const { generateMistralImage } = await import("../../ai/mistral-client");
+    await expect(generateMistralImage("forensic prompt", "fake-key")).rejects.toThrow(/INV-032/);
+  });
+
+  it("generateCompletionStream is blocked in court-grade", async () => {
+    process.env.FORENZX_COURT_GRADE = "true";
+    const { generateCompletionStream } = await import("../../services/ai-service");
+    await expect(generateCompletionStream([], "fake-key")).rejects.toThrow(/INV-032/);
   });
 });
 
@@ -145,5 +169,74 @@ describe("Gate 1/2/3 — Court Pack TSA fail-closed, self-contained trust, revoc
     expect(run([])).not.toBe(0); // revoked, no trusted time -> reject
     expect(run(["--as-of", "2026-03-01T00:00:00Z"])).toBe(0); // signed before revocation -> accept
     expect(run(["--as-of", "2026-09-01T00:00:00Z"])).not.toBe(0); // after revocation -> reject
+  });
+
+  it("offline verifier rejects tampered manifest.json", async () => {
+    const pack = await buildCourtPack(baseInput());
+    const dir = join(tmp, "tampered-manifest");
+    await extractTo(pack.zip, dir);
+    const manifestPath = join(dir, "manifest.json");
+    const manifestObj = JSON.parse(readFileSync(manifestPath, "utf8"));
+    manifestObj.merkleRoot = "0000000000000000000000000000000000000000000000000000000000000000";
+    writeFileSync(manifestPath, JSON.stringify(manifestObj));
+
+    expect(() =>
+      execFileSync("node", [VERIFY_MJS, dir], { encoding: "utf8", stdio: "pipe" }),
+    ).toThrow();
+  });
+
+  it("offline verifier rejects tampered signature.json", async () => {
+    const pack = await buildCourtPack(baseInput());
+    const dir = join(tmp, "tampered-sig");
+    await extractTo(pack.zip, dir);
+    const sigPath = join(dir, "signature.json");
+    const sigObj = JSON.parse(readFileSync(sigPath, "utf8"));
+    sigObj.signature = Buffer.from("invalidsignaturebytes").toString("base64");
+    writeFileSync(sigPath, JSON.stringify(sigObj));
+
+    expect(() =>
+      execFileSync("node", [VERIFY_MJS, dir], { encoding: "utf8", stdio: "pipe" }),
+    ).toThrow();
+  });
+
+  it("offline verifier rejects unknown KID when checked against keyring", async () => {
+    const pack = await buildCourtPack(baseInput());
+    const dir = join(tmp, "unknown-kid");
+    await extractTo(pack.zip, dir);
+    const otherKeyringPath = join(tmp, "other-keyring.json");
+    writeFileSync(
+      otherKeyringPath,
+      JSON.stringify([{ kid: "different-kid", version: 1, status: "active", validFrom: "2020-01-01T00:00:00Z", publicKeyPem }]),
+    );
+
+    expect(() =>
+      execFileSync("node", [VERIFY_MJS, dir, "--keyring", otherKeyringPath], { encoding: "utf8", stdio: "pipe" }),
+    ).toThrow();
+  });
+
+  it("offline verifier rejects when public key does not match trusted keyring", async () => {
+    const pack = await buildCourtPack(baseInput());
+    const dir = join(tmp, "wrong-pubkey");
+    await extractTo(pack.zip, dir);
+    const { publicKey: otherPub } = freshKey();
+    const wrongKeyringPath = join(tmp, "wrong-keyring.json");
+    writeFileSync(
+      wrongKeyringPath,
+      JSON.stringify([{ kid: KID, version: 1, status: "active", validFrom: "2020-01-01T00:00:00Z", publicKeyPem: otherPub }]),
+    );
+
+    expect(() =>
+      execFileSync("node", [VERIFY_MJS, dir, "--keyring", wrongKeyringPath], { encoding: "utf8", stdio: "pipe" }),
+    ).toThrow();
+  });
+
+  it("offline verifier fails closed when --require-timestamp is passed but timestamp.tsr is missing", async () => {
+    const pack = await buildCourtPack(baseInput());
+    const dir = join(tmp, "missing-tsa");
+    await extractTo(pack.zip, dir);
+
+    expect(() =>
+      execFileSync("node", [VERIFY_MJS, dir, "--require-timestamp"], { encoding: "utf8", stdio: "pipe" }),
+    ).toThrow(/timestamp\.tsr/);
   });
 });
