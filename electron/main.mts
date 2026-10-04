@@ -589,18 +589,53 @@ function createWindow() {
 
         try {
             const image = await tab.view.webContents.capturePage()
-            const date = new Date().toISOString().replace(/[:.]/g, '-')
-            const filename = `screenshot-${date}.png`
-            const savePath = path.join(app.getPath('downloads'), filename)
-            fs.writeFileSync(savePath, image.toPNG() as any)
+            const { createResearchArtifact } = await import('./screenshot-acquisition.js')
+            const artifact = createResearchArtifact(image.toPNG(), app.getPath('downloads'))
 
-            // Open in shell to show user
-            shell.showItemInFolder(savePath)
-
-            return savePath
+            shell.showItemInFolder(artifact.filePath)
+            return {
+                path: artifact.filePath,
+                fileName: artifact.fileName,
+                evidentiaryStatus: artifact.evidentiaryStatus,
+                sha256: artifact.sha256,
+            }
         } catch (e) {
             console.error('Screenshot failed:', e)
             return null
+        }
+    })
+
+    ipcMain.handle('capture:acquireAsEvidence', async (event, payload: { caseId: string; title?: string; notes?: string }) => {
+        if (!isMainWindowSender(event)) return { ok: false, error: 'Unauthorized IPC sender' }
+        if (!mainWindow || !activeTabId) return { ok: false, error: 'No active window or tab' }
+        const tab = tabs.find(t => t.id === activeTabId)
+        if (!tab?.view) return { ok: false, error: 'Tab view not found' }
+
+        try {
+            const image = await tab.view.webContents.capturePage()
+            const sourceUrl = tab.view.webContents.getURL()
+            const tabTitle = tab.view.webContents.getTitle()
+            const userAgent = tab.view.webContents.getUserAgent()
+            const { createForensicEvidenceArtifact } = await import('./screenshot-acquisition.js')
+
+            const evidenceDir = path.join(app.getPath('userData'), 'evidence_captures')
+            fs.mkdirSync(evidenceDir, { recursive: true })
+
+            const record = createForensicEvidenceArtifact(
+                image.toPNG(),
+                payload,
+                {
+                    sourceUrl,
+                    tabTitle,
+                    userAgent,
+                    evidenceDir,
+                }
+            )
+
+            return { ok: true, evidence: record }
+        } catch (e) {
+            console.error('Forensic acquisition failed:', e)
+            return { ok: false, error: e instanceof Error ? e.message : 'Acquisition failed' }
         }
     })
 

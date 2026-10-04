@@ -415,7 +415,8 @@ Tento oddiel je jediný backlog. `docs/BACKLOG-SOURCE-OF-TRUTH.md` je zmazaný a
 | 12 auth/security testov pre `presign-for-hub` a `dispatch-outbox` | ✅ DONE | commit `6c4d2dc` |
 | Operational monitoring, alert watchdog, test alert dispatch | ✅ DONE | commit `902c0dd` |
 | Staging deploy na VPS `66.29.139.59`, smoke tests zelené | ✅ DONE | 2026-10-02 |
-| GO PRE PILOT protokol podpísaný | ✅ DONE | `docs/PILOT-GO-CHAIN-OF-CUSTODY-PROTOCOL.md` |
+| Electron screenshot model (NON_EVIDENTIARY_RESEARCH_ARTIFACT default + Acquire as Evidence flow) | ✅ DONE | `electron/screenshot-acquisition.ts` |
+| WebAuthn / Passkey FIDO2 autentifikácia a registrácia bez mockov | ✅ DONE | `lib/auth/webauthn.server.ts` |
 
 ### 13.2 OPEN — kód (PR otvorený alebo nespustený)
 
@@ -431,7 +432,6 @@ Tento oddiel je jediný backlog. `docs/BACKLOG-SOURCE-OF-TRUTH.md` je zmazaný a
 | Outbox drain bez `last_error` pri chýbajúcej webhook konfigurácii | `lib/forza/forenzx-dispatch-drain.server.ts` | P1 |
 | `ICO_ATLAS_API_URL` HTTPS enforce — preflight neodmieta `http://` | `scripts/deploy/env.mjs` | P1 |
 | `extension:load` allowlist nie je definovaný | `app/api` | P2 |
-| Electron screenshot — nie je označený ako nie-dôkaz ani nezapisuje do ledgera | `electron/` | P2 |
 
 ### 13.4 BLOCKED — výhradne externé OPS akcie
 
@@ -474,4 +474,25 @@ Plnohodnotná serverová autentifikácia a registrácia hardvérových / platfor
 - `POST /api/auth/webauthn/register/verify`: Overenie attestation objektu nového kľúča a uloženie do `webauthn_credentials`.
 - **Tabuľka `webauthn_credentials` / view `user_passkeys`**:
   - `id` (UUID PK), `user_id` (FK na `auth.users`), `credential_id` (TEXT UNIQUE), `public_key_cbor` (TEXT), `public_key` (TEXT), `sign_count` (BIGINT), `counter` (BIGINT), `transports` (TEXT[]), `created_at`, `last_used_at`.
+
+## 15. Screenshot Model a Forenzná Akvizícia
+
+V súlade s Blueprintom v1.0 (Bod 15):
+
+- **Default capture (`capture:page` IPC)**:
+  - Screenshot je kategorizovaný striktne ako `NON_EVIDENTIARY_RESEARCH_ARTIFACT`.
+  - Ukladá sa do priečinka `screenshots/research/` s metadátami `sourceUrl`, `capturedAt`, `sha256` a príznakom `evidentiaryStatus: 'NON_EVIDENTIARY_RESEARCH_ARTIFACT'`.
+  - Tento artefakt nesmie byť priamo použitý ako súdny dôkaz bez formálnej akvizície.
+
+- **Forensic Acquisition Flow (`capture:acquireAsEvidence` IPC)**:
+  - Vyžaduje explicitný výber prípadu (`caseId` s validáciou UUID v4).
+  - Validácia odosielateľa (`validateIpcSender` kontroluje origin hlavného okna a aktívny tab).
+  - Získanie bajtov PNG a výpočet kryptografického hashu SHA-256 (`crypto.createHash('sha256')`).
+  - Uloženie do `screenshots/evidence/` a vytvorenie štruktúrovaného záznamu pre evidence ledger:
+    - `provenance`: `sourceUrl`, `pageTitle`, `capturedAt`, `browserMetadata` (userAgent, viewport).
+    - `evidentiaryStatus`: `'FORMAL_FORENSIC_EVIDENCE'`.
+    - `sha256`: kryptografický odtlačok surových bajtov.
+    - `caseId`: väzba na overený prípad.
+  - Fail-closed politika: pri neplatnom UUID `caseId`, chýbajúcom aktívnom tabe alebo neoprávnenom IPC senderi je požiadavka okamžite zamietnutá s bezpečnostnou chybou.
+
 
