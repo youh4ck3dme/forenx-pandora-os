@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock3, Loader2 } from "lucide-react";
 import { Card } from "@/components/malte/Shell";
 import type { ForensicWorkflowRun } from "@/lib/forza/forensic-workflow.types";
-import type { ForenZXJob } from "@/lib/forza/forenzx-mcp.functions";
+import type { ForenZXJob } from "@/lib/forenzx/client";
 import { ForenzxJobProgress } from "@/components/malte/ForenzxJobProgress";
 
 type Props = {

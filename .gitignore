@@ -39,6 +39,8 @@ next-env.d.ts
 *.keystore
 id_rsa
 id_ed25519
+docs/*key*.txt
+docs/*Key*.txt
 
 # Supabase local development
 .supabase/
@@ -102,3 +104,4 @@ tmp_*
 preflight.sql
 
 /.swc
+forenzx-mcp-hub/

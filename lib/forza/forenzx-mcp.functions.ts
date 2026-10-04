@@ -1,8 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { callForenZXTool, listForenZXTools } from "./forenzx-mcp.server";
-export type { ForenZXTool } from "./forenzx-mcp.server";
+export type ForenZXTool = {
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+};
 
 const JobRow = z.object({
   id: z.string(),
@@ -21,14 +24,20 @@ export type ForenZXJob = z.infer<typeof JobRow>;
 
 export const listTools = createServerFn({ method: "GET", id: "forenzx/listTools" })
   .middleware([requireSupabaseAuth])
-  .handler(async () => listForenZXTools());
+  .handler(async () => {
+    const { listForenZXTools } = await import("./forenzx-mcp.server");
+    return listForenZXTools();
+  });
 
 export const callTool = createServerFn({ method: "POST", id: "forenzx/callTool" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) =>
     z.object({ name: z.string().min(1).max(128), arguments: z.record(z.string(), z.unknown()).default({}) }).parse(input),
   )
-  .handler(async ({ data }) => callForenZXTool(data.name, data.arguments));
+  .handler(async ({ data }) => {
+    const { callForenZXTool } = await import("./forenzx-mcp.server");
+    return callForenZXTool(data.name, data.arguments);
+  });
 
 export const listJobs = createServerFn({ method: "GET", id: "forenzx/listJobs" })
   .middleware([requireSupabaseAuth])

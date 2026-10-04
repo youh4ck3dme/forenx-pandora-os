@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { guardCloudEvidenceAi } from "@/lib/court/ai-boundary";
 import { applyPrivacyGateway, type GatewayMessage } from "@/lib/forza/ai/privacy-gateway";
 import { redactPii } from "@/lib/forza/ai/pii-redactor";
 import {
@@ -58,6 +59,7 @@ export async function createChatCompletionStream(
   rawApiKey: string,
   options: CompletionStreamOptions = {}
 ): Promise<Result<ReadableStream<Uint8Array>, MistralError>> {
+  guardCloudEvidenceAi("mistral-client.stream"); // INV-032: fail-closed in court-grade
   const keyValidation = ApiKeySchema.safeParse(rawApiKey);
   if (!keyValidation.success) {
     return err({
@@ -259,6 +261,7 @@ export async function generateMistralImage(
   rawApiKey: string,
   options: ImageGenerationOptions = {}
 ): Promise<Result<ImageUrl, MistralError>> {
+  guardCloudEvidenceAi("mistral-client.image"); // INV-032: fail-closed in court-grade
   const keyValidation = ApiKeySchema.safeParse(rawApiKey);
   if (!keyValidation.success) {
     return err({

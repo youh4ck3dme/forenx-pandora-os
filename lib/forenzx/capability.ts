@@ -8,6 +8,7 @@
  *  - TTL is max 15 minutes (900 s), independent of the S3 URL expiry.
  *  - The Hub MUST verify the HMAC signature before acting on the capability.
  */
+import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 export const CAPABILITY_TTL_SECONDS = 900; // 15 minutes

@@ -8,7 +8,7 @@
  * - reader.releaseLock() vo finally bloku
  * - Zod validácia chunkov za behu
  */
-
+import { guardCloudEvidenceAi } from "@/lib/court/ai-boundary";
 import {
   ApiKey,
   ImageUrl,
@@ -144,6 +144,7 @@ export async function generateCompletionStream(
   apiKey: ApiKey | string,
   options: CompletionOptions = {}
 ): Promise<Result<ReadableStream<Uint8Array>, AppError>> {
+  guardCloudEvidenceAi("ai-service.stream"); // INV-032: fail-closed in court-grade
   if (!apiKey || apiKey.trim().length === 0) {
     return err({ kind: "AuthMissing", message: "API kľúč chýba." });
   }
@@ -305,6 +306,7 @@ export async function generateImage(
   apiKey: ApiKey | string,
   options: { timeoutMs?: number } = {}
 ): Promise<string> {
+  guardCloudEvidenceAi("ai-service.image"); // INV-032: fail-closed in court-grade
   if (!apiKey || apiKey.trim().length === 0) {
     throw new Error("API kľúč chýba.");
   }

@@ -39,14 +39,22 @@ export type PublicKeyRecord = {
   publicKeyPem: string; // SPKI PEM
 };
 
+export type SignatureKeyRecord = {
+  version: number;
+  status: KeyStatus;
+  validFrom: string; // ISO-8601
+  revokedAt: string | null; // ISO-8601 when the key was revoked, else null
+};
+
 export type CourtPackSignature = {
   algorithm: "Ed25519";
   kid: string;
   keyringVersion: string;
   publicKeyPem: string; // travels with the pack so verification is fully offline
+  keyRecord: SignatureKeyRecord; // full trust metadata so the pack self-describes revocation
   manifestSha256: string; // hex, over the canonical manifest bytes
   signature: string; // base64
-  signedAt: string; // ISO-8601
+  signedAt: string; // ISO-8601, SELF-ASSERTED sign time (not a trusted clock)
 };
 
 /** Pluggable resolver for a private-key reference. `file:` is the first backend. */
@@ -222,6 +230,12 @@ export function signCourtPackManifest(options: SignOptions): CourtPackSignature 
     kid: options.kid,
     keyringVersion: options.keyring.version,
     publicKeyPem: record.publicKeyPem,
+    keyRecord: {
+      version: record.version,
+      status: record.status,
+      validFrom: record.validFrom,
+      revokedAt: record.revokedAt ?? null,
+    },
     manifestSha256: sha256Hex(bytes),
     signature,
     signedAt: now.toISOString(),
@@ -237,23 +251,38 @@ export type VerifyResult = { ok: true } | { ok: false; reason: string };
 export function verifyCourtPackSignature(
   manifest: CourtPackManifest,
   signature: CourtPackSignature,
-  options?: { revoked?: Set<string>; keyring?: Keyring },
+  options?: { revoked?: Set<string>; keyring?: Keyring; asOf?: Date },
 ): VerifyResult {
   if (signature.algorithm !== "Ed25519") {
     return { ok: false, reason: `unsupported signature algorithm: ${signature.algorithm}` };
   }
   const revoked = options?.revoked ?? new Set<string>();
-  if (revoked.has(signature.kid)) {
-    return { ok: false, reason: `signing kid is revoked: ${signature.kid}` };
+
+  // Revocation semantics (INV-028): CURRENT revocation state comes from the
+  // trusted keyring record and/or the revoked-id list — NOT from the pack's
+  // frozen keyRecord (which documents the signing-time status, always active).
+  // A revoked key cannot sign NEW packs (enforced at signing). A HISTORICAL pack
+  // stays valid ONLY when a TRUSTED time (`asOf`, e.g. a verified RFC 3161
+  // timestamp) is strictly before the key's `revokedAt`. Without a trusted time,
+  // or without a recorded `revokedAt`, verification is fail-closed. The
+  // self-asserted `signedAt` is never trusted for this decision.
+  const keyringRecord = options?.keyring?.keys.find((key) => key.kid === signature.kid);
+  const currentRevokedAt = keyringRecord?.revokedAt ? new Date(keyringRecord.revokedAt) : null;
+  const isRevoked = revoked.has(signature.kid) || keyringRecord?.status === "revoked" || currentRevokedAt !== null;
+  if (isRevoked) {
+    const trustedBeforeRevocation =
+      options?.asOf instanceof Date && currentRevokedAt !== null && options.asOf.getTime() < currentRevokedAt.getTime();
+    if (!trustedBeforeRevocation) {
+      return { ok: false, reason: `signing kid is revoked: ${signature.kid}` };
+    }
   }
   if (options?.keyring) {
     const record = options.keyring.keys.find((key) => key.kid === signature.kid);
     if (!record) {
       return { ok: false, reason: `unknown kid: ${signature.kid}` };
     }
-    if (record.status === "revoked" || record.revokedAt) {
-      return { ok: false, reason: `signing kid is revoked: ${signature.kid}` };
-    }
+    // Revocation (incl. the pre-revocation `asOf` exception) is decided above;
+    // this block only binds the signature's public key to the trusted keyring.
     try {
       const a = createPublicKey(record.publicKeyPem).export({ type: "spki", format: "der" }) as Buffer;
       const b = createPublicKey(signature.publicKeyPem).export({ type: "spki", format: "der" }) as Buffer;

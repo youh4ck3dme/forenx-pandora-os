@@ -3,6 +3,7 @@
  * Kľúč `MISTRAL_API_KEY` je serverové tajomstvo — nikdy sa nedostane do klientského balíka.
  * Model sa nastavuje serverovou premennou `MISTRAL_MODEL`.
  */
+import { guardCloudEvidenceAi } from "@/lib/court/ai-boundary";
 
 export const MISTRAL_ENDPOINT = "https://api.mistral.ai/v1/chat/completions";
 export const DEFAULT_MODEL = "mistral-large-latest";
@@ -84,6 +85,7 @@ type CallOptions = {
 export async function callMistral(
   options: CallOptions,
 ): Promise<MistralResult> {
+  guardCloudEvidenceAi("mistral"); // INV-032: fail-closed in court-grade
   const apiKey = mistralApiKey(options.purpose ?? "chat");
   const traceId = options.traceId;
   if (!apiKey) {

@@ -1,4 +1,5 @@
 import { defineConfig, type Plugin } from "vitest/config";
+// @ts-ignore -- @vitejs/plugin-react package.json exports omit types condition
 import react from "@vitejs/plugin-react";
 import path from "node:path";
 import fs from "node:fs";
@@ -63,6 +64,9 @@ const sharedTestConfig = {
 };
 
 const sharedAliases = {
+  "server-only": toPosix(
+    path.resolve(rootDir, "node_modules/server-only/empty.js"),
+  ),
   "@tanstack/react-start/server": toPosix(
     path.resolve(rootDir, "lib/tanstack-start-shim.ts"),
   ),

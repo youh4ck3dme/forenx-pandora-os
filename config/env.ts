@@ -2,7 +2,9 @@ import { z } from "zod";
 
 export const EnvironmentSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("production"),
-  MISTRAL_API_KEY: z.string().min(16, "MISTRAL_API_KEY je povinný a musí mať aspoň 16 znakov."),
+  // Cloud key is required outside court-grade; in court-grade it is optional
+  // because evidence AI MUST use the local endpoint (INV-032). See superRefine.
+  MISTRAL_API_KEY: z.string().min(16, "MISTRAL_API_KEY musí mať aspoň 16 znakov.").optional(),
   MISTRAL_API_TIMEOUT_MS: z.coerce.number().int().positive().default(500_000), // 500 s pre hĺbkový ingest
   S3_ENDPOINT: z.string().url("S3_ENDPOINT musí byť platná URL."),
   S3_REGION: z.string().min(2).default("hel1"),
@@ -45,13 +47,25 @@ export const EnvironmentSchema = z.object({
   FORENZX_LOCAL_AI_BASE_URL: z.string().url("FORENZX_LOCAL_AI_BASE_URL must be a valid URL.").optional(),
   FORENZX_LOCAL_AI_MODEL: z.string().optional(),
 }).superRefine((data, ctx) => {
-  if (!data.FORENZX_COURT_GRADE) return;
+  // Outside court-grade, the cloud Mistral key stays mandatory (INV-032 only
+  // relaxes it when a local evidence-AI endpoint is enforced instead).
+  if (!data.FORENZX_COURT_GRADE) {
+    if (!data.MISTRAL_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["MISTRAL_API_KEY"],
+        message: "MISTRAL_API_KEY is required unless FORENZX_COURT_GRADE=true (with a local AI endpoint).",
+      });
+    }
+    return;
+  }
   const required = [
     "FORENZX_SIGNING_KEY_ID",
     "FORENZX_SIGNING_PRIVATE_KEY_REF",
     "FORENZX_TRUSTED_PUBLIC_KEYS",
     "FORENZX_KEYRING_VERSION",
     "FORENZX_LOCAL_AI_BASE_URL",
+    "FORENZX_TSA_URL", // INV-031: court-grade packs must be RFC 3161 timestamped (fail-closed)
   ] as const;
   for (const key of required) {
     const value = (data as Record<string, unknown>)[key];
