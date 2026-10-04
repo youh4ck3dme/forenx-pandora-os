@@ -3,6 +3,7 @@ import * as ai from "@/lib/forza/ai.functions";
 import * as caseGraph from "@/lib/forza/case-graph.functions";
 import * as caseWrite from "@/lib/forza/case-write.functions";
 import * as dimitri from "@/lib/forza/dimitri.functions";
+import * as forenzx from "@/lib/forza/forenzx-mcp.functions";
 import * as health from "@/lib/forza/health.functions";
 import * as importFns from "@/lib/forza/import.functions";
 import * as profile from "@/lib/forza/profile.functions";
@@ -19,6 +20,7 @@ export const SERVER_FN_MODULES: Record<string, Record<string, unknown>> = {
   "case-graph": caseGraph,
   "case-write": caseWrite,
   dimitri,
+  forenzx,
   health,
   import: importFns,
   profile,

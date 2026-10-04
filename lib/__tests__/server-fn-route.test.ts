@@ -26,13 +26,14 @@ function post(body: unknown, headers: Record<string, string> = {}) {
 describe("server function registry", () => {
   it("registers every exported server function under its module/export id", () => {
     const registry = buildServerFnRegistry();
-    expect(registry.size).toBe(40);
+    expect(registry.size).toBe(43);
     for (const [id, fn] of registry) {
       expect(fn.id).toBe(id);
       expect(id).toMatch(/^[a-z0-9-]+\/[A-Za-z0-9_]+$/);
     }
     expect(registry.has("ai/runForensicAutopilot")).toBe(true);
     expect(registry.has("case-write/saveCase")).toBe(true);
+    expect(registry.has("forenzx/listJobs")).toBe(true);
   });
 
   it("refuses a function whose id does not match its export", () => {

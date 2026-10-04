@@ -47,7 +47,7 @@ import {
   getForensicDossier,
   getForensicWorkflowRuns,
 } from "@/lib/ai.functions";
-import { getForenZXJobs } from "@/lib/forza/forenzx-mcp.functions";
+import { listJobs as getForenZXJobs } from "@/lib/forza/forenzx-mcp.functions";
 import type { ForensicDossier } from "@/lib/types";
 import { isDemoDossier } from "@/lib/autopilot-meta";
 import { useVerifiedEvidence } from "@/hooks/useVerifiedEvidence";

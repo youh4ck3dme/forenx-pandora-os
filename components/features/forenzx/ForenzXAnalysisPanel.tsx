@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { getForenZXTools, getForenZXJobs } from "@/lib/forza/forenzx-mcp.functions";
+import { listTools as getForenZXTools, listJobs as getForenZXJobs } from "@/lib/forza/forenzx-mcp.functions";
 import { useForenzxJobEvents } from "@/lib/hooks/useForenzxJobEvents";
 import type { ForenZXTool, ForenZXJob } from "@/lib/forza/forenzx-mcp.functions";
 

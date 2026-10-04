@@ -3,7 +3,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import React from "react";
 import { render, fireEvent, waitFor } from "@testing-library/react";
 import { NewCaseForm } from "../NewCaseForm";
-import { SessionExpiredError } from "@/lib/forza/session-expired";
+import { SessionExpiredError } from "../../../lib/forza/session-expired";
 
 const mockPush = vi.fn();
 const mockRefetch = vi.fn();

@@ -19,18 +19,18 @@ const JobRow = z.object({
 
 export type ForenZXJob = z.infer<typeof JobRow>;
 
-export const getForenZXTools = createServerFn({ method: "GET", id: "forenzx/listTools" })
+export const listTools = createServerFn({ method: "GET", id: "forenzx/listTools" })
   .middleware([requireSupabaseAuth])
   .handler(async () => listForenZXTools());
 
-export const callForenZXToolFn = createServerFn({ method: "POST", id: "forenzx/callTool" })
+export const callTool = createServerFn({ method: "POST", id: "forenzx/callTool" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) =>
     z.object({ name: z.string().min(1).max(128), arguments: z.record(z.string(), z.unknown()).default({}) }).parse(input),
   )
   .handler(async ({ data }) => callForenZXTool(data.name, data.arguments));
 
-export const getForenZXJobs = createServerFn({ method: "GET", id: "forenzx/listJobs" })
+export const listJobs = createServerFn({ method: "GET", id: "forenzx/listJobs" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => z.object({ caseId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
@@ -43,3 +43,4 @@ export const getForenZXJobs = createServerFn({ method: "GET", id: "forenzx/listJ
     if (error) throw new Error(`ForenZX job metadata failed: ${error.message}`);
     return { jobs: (rows ?? []).map((row: unknown) => JobRow.parse(row)) };
   });
+
