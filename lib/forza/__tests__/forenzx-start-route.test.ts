@@ -323,7 +323,7 @@ describe("POST /api/forenzx/start", () => {
   });
 
   it("validates request schema correctly from lib schema module", async () => {
-    const { ForenzxStartRequestSchema } = await import("@/lib/forza/forenzx-start.schema");
+    const { ForenzxStartRequestSchema } = await import("../forenzx-start.schema");
     const valid = ForenzxStartRequestSchema.safeParse({
       evidenceId: EVIDENCE_ID,
       inputType: "ios_backup",
