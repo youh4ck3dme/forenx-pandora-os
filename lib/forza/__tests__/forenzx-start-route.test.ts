@@ -82,6 +82,7 @@ describe("POST /api/forenzx/start", () => {
     mockAuthUser = TEST_USER_ID;
     mockEvidenceRow = {
       id: EVIDENCE_ID,
+      case_id: CASE_UUID,
       investigator_id: TEST_USER_ID,
       case_name: "Vyšetrovanie prípadu X",
       file_name: "real-dump.tar.gz",
@@ -271,9 +272,9 @@ describe("POST /api/forenzx/start", () => {
   it("rejects request with HTTP 403 when evidence row does not yield a valid UUID caseId", async () => {
     const { POST } = await import("../../../app/api/forenzx/start/route");
 
-    // s3 key does not have UUID format, and no case_id field exists on row
     mockEvidenceRow = {
       ...mockEvidenceRow,
+      case_id: null,
       s3_object_key: "cases/non-uuid-case-folder/evidence/dump.tar.gz",
     };
 

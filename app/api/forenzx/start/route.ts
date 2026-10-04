@@ -82,22 +82,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Ak z evidence riadku nevyjde UUID caseId, vráť 403. Žiadny unknown-case, žiadny case_name.
-  const rawCaseIdFromRow =
+  // Blueprint Invariant: case_id musí pochádzať výlučne z evidence_items.case_id
+  const resolvedCaseId =
     typeof evidenceRow.case_id === "string" && UUID_REGEX.test(evidenceRow.case_id)
       ? evidenceRow.case_id
       : null;
 
-  const keyCaseMatch = trustedS3Key.match(
-    /^cases\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\/evidence\//
-  );
-  const rawCaseIdFromS3 = keyCaseMatch?.[1] ?? null;
-
-  const resolvedCaseId = rawCaseIdFromRow ?? rawCaseIdFromS3;
-
   if (!resolvedCaseId) {
     return NextResponse.json(
-      { error: "Dôkaz nie je priradený k platnému prípadu (chýba platné UUID caseId)." },
+      { error: "Dôkaz nie je priradený k platnému prípadu (chýba platné UUID caseId v ledgeri)." },
       { status: 403 },
     );
   }

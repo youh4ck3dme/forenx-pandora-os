@@ -110,6 +110,8 @@ export async function generateEvidencePresignedUrl(
  * @param params.bucket        - Optional S3 bucket override
  * @param params.idempotencyKey - Optional idempotency key for deduplication
  */
+import { generateEvidenceCapability, type SignedEvidenceCapability } from "@/lib/forenzx/capability";
+
 export async function buildForenzxStartPayload(params: {
   caseId: string;
   evidenceId: string;
@@ -125,6 +127,24 @@ export async function buildForenzxStartPayload(params: {
     params.bucket
   );
 
+  let evidenceCapability: SignedEvidenceCapability | undefined;
+  if (process.env.FORENZX_M2M_SECRET?.trim()) {
+    try {
+      evidenceCapability = generateEvidenceCapability(
+        {
+          id: params.evidenceId,
+          case_id: params.caseId,
+          sha256_hash: params.sha256,
+          s3_object_key: params.s3Key,
+        },
+        url,
+        filename,
+      );
+    } catch {
+      // In non-production or when secret is omitted, proceed without capability
+    }
+  }
+
   return {
     case_id: params.caseId,
     evidence_id: params.evidenceId,
@@ -134,5 +154,6 @@ export async function buildForenzxStartPayload(params: {
     download_url: url,
     download_filename: filename,
     idempotency_key: params.idempotencyKey,
+    ...(evidenceCapability ? { evidence_capability: evidenceCapability } : {}),
   };
 }
