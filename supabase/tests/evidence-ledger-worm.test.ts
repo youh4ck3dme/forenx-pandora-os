@@ -164,6 +164,23 @@ describe("evidence ledger: deletion", () => {
     expect(await evidence(held)).toBeDefined();
   });
 
+  it("refuses deletion when the parent case is on legal hold even if the row flag is false", async () => {
+    const owner = await createUser(db, "del-case-hold@test.local");
+    const caseId = await createCase(db, owner);
+    const id = await insertEvidence(owner, { case_id: caseId });
+    expect((await evidence(id))?.legal_hold).toBe(false);
+    await asUser(owner, (tx) =>
+      tx.query("select public.set_case_status($1, 'legal_hold', 'Súdny príkaz')", [caseId]),
+    );
+    await expect(
+      asUser(owner, (tx) =>
+        tx.query("select public.delete_evidence_item_audited($1, $2)", [id, "Duplicitný upload spisu"]),
+      ),
+    ).rejects.toThrow(/legal hold/);
+    expect(await evidence(id)).toBeDefined();
+    expect(await auditActions(id)).toEqual(["evidence_registered"]);
+  });
+
   it("deletes with a hash-chained audit snapshot in the same transaction", async () => {
     const owner = await createUser(db, "del-ok@test.local");
     const id = await insertEvidence(owner);
