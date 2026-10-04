@@ -80,7 +80,6 @@ export function ActiveCaseProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       initialLoadDone.current = true;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCaseId]);
 
   useEffect(() => {
