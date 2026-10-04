@@ -224,6 +224,16 @@ npm run test:regression:forenzx
 | **INV-022** | SSRF ochrana a zákaz loopbacku | **VERIFIED** | `electron/__tests__/network-security.test.ts` |
 | **INV-023** | Auditované deštruktívne RPC | **VERIFIED** | `db/cleanroom/tests/03-privileged-rpc-authorization.test.ts` |
 | **INV-024** | 100% automatizované testovacie pokrytie | **VERIFIED** | 131 testovacích súborov, 1188 unit/integration testov PASS |
+| **INV-025** | Court Pack podpis: Ed25519 nad kanonickým manifestom; private key NESMIE byť v env ako plaintext, iba referencia (`file:`/`vault:`/`kms:`) cez `SigningKeyProvider` | **VERIFIED** | `lib/court/__tests__/signing.test.ts` |
+| **INV-026** | Offline verifikácia Court Packu funguje bez PANDORA backendu a bez akéhokoľvek secretu — iba public key + kid | **VERIFIED** | `lib/court/__tests__/signing.test.ts` (`lib/court/verify.mjs`) |
+| **INV-027** | Key rotation: každý signing kľúč má `kid` + `version` + `status` + `validFrom` + `revokedAt`; signing kľúč MUSÍ zodpovedať aktívnemu public-key recordu pre daný kid | **VERIFIED** | `lib/court/__tests__/signing.test.ts` |
+| **INV-028** | Revocation: revoked `kid` (revocation list alebo keyring status) NESMIE vytvoriť ani overiť platný Court Pack | **VERIFIED** | `lib/court/__tests__/signing.test.ts` |
+| **INV-029** | Kryptografický manifest: deterministický (sorted canonical JSON) SHA-256 na súbor + Merkle root; tamper ktoréhokoľvek bajtu je detekovaný s menom artefaktu | **VERIFIED** | `lib/court/__tests__/signing.test.ts` |
+| **INV-030** | STIX integrita: analýza akceptuje iba threat-intel s digestom v `FORENZX_TRUSTED_STIX_DIGESTS`; nesúlad = fail-closed | **NORMATIVE** | runtime enforcement — ďalší increment |
+| **INV-031** | RFC 3161: TSA token (`timestamp.tsr`) nad Merkle root sa uchováva ako súčasť Court Packu | **NORMATIVE** | TSA napojenie — ďalší increment |
+| **INV-032** | Local AI boundary: v court-grade/air-gapped režime dôkazový obsah NESMIE fallbacknúť na cloud AI (`FORENZX_LOCAL_AI_BASE_URL` povinné) | **NORMATIVE** | runtime enforcement — ďalší increment |
+
+> **Court-grade signing contract (INV-025–029):** vynútené fail-closed cez `config/env.ts` (`FORENZX_COURT_GRADE=true` vyžaduje `FORENZX_SIGNING_KEY_ID`, `FORENZX_SIGNING_PRIVATE_KEY_REF`, `FORENZX_TRUSTED_PUBLIC_KEYS`, `FORENZX_KEYRING_VERSION`, `FORENZX_LOCAL_AI_BASE_URL`). Implementácia: `lib/court/{manifest,signing}.ts`; offline verifier `lib/court/verify.mjs`. Prechod `file:` → `vault:`/`kms:` NESMIE zmeniť formát manifestu, podpisu ani verifiera.
 
 ---
 
