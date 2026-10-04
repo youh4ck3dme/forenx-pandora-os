@@ -9,7 +9,7 @@ on:
       - "mobile/package.json"
       - "mobile/package-lock.json"
       - "mobile/capacitor.config.json"
-      - "scripts/mobile/**"
+      - "mobile/scripts/mobile/**"
       - ".github/workflows/mobile-ci.yml"
   pull_request:
     paths:
@@ -18,7 +18,7 @@ on:
       - "mobile/package.json"
       - "mobile/package-lock.json"
       - "mobile/capacitor.config.json"
-      - "scripts/mobile/**"
+      - "mobile/scripts/mobile/**"
       - ".github/workflows/mobile-ci.yml"
   workflow_dispatch:
 
@@ -76,7 +76,7 @@ jobs:
       - name: Generate and validate every profile
         run: |
           for profile in local staging production; do
-            node scripts/mobile/set-profile.mjs "$profile"
+            node mobile/scripts/mobile/set-profile.mjs "$profile"
             node -e '
               const c = JSON.parse(require("fs").readFileSync("mobile/capacitor.config.json", "utf8"));
               for (const k of ["appId", "appName", "webDir"]) {
@@ -87,5 +87,5 @@ jobs:
 
       - name: Committed capacitor.config.json matches the local profile
         run: |
-          node scripts/mobile/set-profile.mjs local
+          node mobile/scripts/mobile/set-profile.mjs local
           git diff --exit-code -- mobile/capacitor.config.json
