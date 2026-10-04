@@ -14,8 +14,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateVaultRequest } from "@/lib/storage/vault-auth";
-import { listLedgerEvidence } from "@/lib/storage/evidence-ledger";
-import { loadCase } from "@/lib/forza/case-data";
+import { listLedgerEvidence, loadOwnedCaseSummary } from "@/lib/storage/evidence-ledger";
 import { buildCourtPack } from "@/lib/court/pack-builder";
 import { getCourtSigningContext, courtGradeEnabled } from "@/lib/court/signing-context";
 
@@ -54,14 +53,23 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   try {
-    const [forensicCase, ledger] = await Promise.all([loadCase(caseId), listLedgerEvidence(auth.token, caseId)]);
+    const [ownedCase, ledger] = await Promise.all([
+      loadOwnedCaseSummary(auth.token, auth.userId, caseId),
+      listLedgerEvidence(auth.token, caseId),
+    ]);
+    if (!ownedCase) {
+      return NextResponse.json(
+        { error: "Prípad sa nenašiel alebo k nemu nemáte prístup." },
+        { status: 404 },
+      );
+    }
 
     const verified = ledger.filter((row) => row.hash_verification_status === "verified");
     const evidence = verified.map((row) => ({ path: row.file_name, sha256: row.sha256_hash }));
 
     const chainOfCustody = {
       caseId,
-      caseName: forensicCase?.name ?? null,
+      caseName: ownedCase.name,
       generatedBy: auth.userId,
       ledger: ledger.map((row) => ({
         id: row.id,
@@ -97,7 +105,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       caseId,
       report: {
         caseId,
-        title: `Court Pack — ${forensicCase?.name ?? caseId}`,
+        title: `Court Pack — ${ownedCase.name || caseId}`,
         generatedAtIso: now.toISOString(),
         summary: `Signed evidence package for case ${caseId}. ${verified.length} of ${ledger.length} evidence item(s) are hash-verified.`,
         findings: [],
@@ -115,6 +123,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       },
       verifyMjsSource,
       tsaUrl: signing.tsaUrl,
+      trustedTsaCerts: signing.trustedTsaCerts,
       requireTimestamp: true, // court-grade: fail-closed if no TSA (INV-031)
       now,
     });

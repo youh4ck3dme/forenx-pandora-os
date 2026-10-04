@@ -14,7 +14,7 @@ Tento dokument je jediný kanonický a normatívny kontrakt pre systém **PANDOR
 Platí bez výnimky pre:
 - **Web / Next.js 15 App Router** (`app/`, `components/`, `lib/forza/`)
 - **PWA & Offline state** (`lib/forza/idb.ts`, service workers)
-- **Capacitor Mobile** (`capacitor.config.ts`, `scripts/mobile/`)
+- **Capacitor Mobile** (`mobile/capacitor.config.json`, `mobile/scripts/mobile/`)
 - **Electron Desktop Shell** (`electron/`, Chromium v152 / Node v24 LTS baseline)
 - **Supabase Auth / PostgreSQL / RLS / Edge Functions** (`supabase/`, `db/cleanroom/`)
 - **Hetzner S3 Object Storage / Evidence Vault** (WORM, Object Lock)
@@ -60,7 +60,7 @@ PANDORA / ForenX je jednotný forenzný systém s viacerými runtime adaptérmi:
 |---|---|---|
 | **Web** | Hlavné vyšetrovateľské UI, API, serverové funkcie | `app/`, `components/`, `lib/forza/` |
 | **PWA** | Web UI, lokálna offline cache, synchronizácia | Web runtime + `lib/forza/idb.ts` |
-| **Capacitor Mobile** | Triage obal pre mobilné prostredie (Android/iOS) | `capacitor.config.ts`, `scripts/mobile/` |
+| **Capacitor Mobile** | Triage obal pre mobilné prostredie (Android/iOS) | `mobile/capacitor.config.json`, `mobile/scripts/mobile/` |
 | **Electron** | Bezpečný desktopový browser shell | `electron/` + web UI |
 | **Supabase** | Autentifikácia, PostgreSQL 15, RLS, WORM Ledger | `supabase/`, `db/cleanroom/` |
 | **ForenZX MCP Hub** | Izolovaná forenzná analýza a worker procesy | `forenzx-mcp-hub/` |

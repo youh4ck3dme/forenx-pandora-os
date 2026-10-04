@@ -10,6 +10,7 @@ import { buildManifest } from "../manifest";
 import { signCourtPackManifest, verifyCourtPackSignature, parseKeyring, FileSigningKeyProvider, type Keyring } from "../signing";
 import { buildCourtPack } from "../pack-builder";
 import { guardCloudEvidenceAi, isCourtGradeRuntime } from "../ai-boundary";
+import { verifyTimestampToken } from "../timestamp";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const VERIFY_MJS = join(process.cwd(), "lib", "court", "verify.mjs");
@@ -169,6 +170,149 @@ describe("Gate 1/2/3 — Court Pack TSA fail-closed, self-contained trust, revoc
     expect(run([])).not.toBe(0); // revoked, no trusted time -> reject
     expect(run(["--as-of", "2026-03-01T00:00:00Z"])).toBe(0); // signed before revocation -> accept
     expect(run(["--as-of", "2026-09-01T00:00:00Z"])).not.toBe(0); // after revocation -> reject
+  });
+
+  function tsrForDigest(digestHex: string): Buffer {
+    return Buffer.concat([
+      Buffer.from("0609608648016503040201", "hex"),
+      Buffer.from([0x04, 0x20]),
+      Buffer.from(digestHex, "hex"),
+    ]);
+  }
+
+  it("offline verifier rejects a timestamp blob that only contains the signed digest", async () => {
+    const pack = await buildCourtPack(baseInput());
+    const dir = join(tmp, "bad-tsa");
+    await extractTo(pack.zip, dir);
+    const sig = JSON.parse(readFileSync(join(dir, "signature.json"), "utf8")) as { manifestSha256: string };
+    writeFileSync(join(dir, "timestamp.tsr"), tsrForDigest(sig.manifestSha256));
+    expect(() =>
+      execFileSync("node", [VERIFY_MJS, dir, "--require-timestamp"], { encoding: "utf8", stdio: "pipe" }),
+    ).toThrow(/CMS|signer certificate|SignedData/);
+  });
+
+  it("offline verifier rejects a timestamp that does not bind the signed manifest", async () => {
+    const pack = await buildCourtPack(baseInput());
+    const dir = join(tmp, "bad-tsa");
+    await extractTo(pack.zip, dir);
+    const sig = JSON.parse(readFileSync(join(dir, "signature.json"), "utf8")) as { manifestSha256: string };
+    writeFileSync(join(dir, "timestamp.tsr"), tsrForDigest("ab".repeat(32)));
+    expect(sig.manifestSha256).not.toBe("ab".repeat(32));
+    expect(() =>
+      execFileSync("node", [VERIFY_MJS, dir, "--require-timestamp"], { encoding: "utf8", stdio: "pipe" }),
+    ).toThrow(/messageImprint|CMS|SignedData|signer certificate/);
+  });
+
+  it("accepts a timestamp only when its TSA signer is explicitly trusted", async () => {
+    const { webcrypto } = await import("node:crypto");
+    const asn1js = await import("asn1js");
+    const pkijs = await import("pkijs");
+    pkijs.setEngine("node-webcrypto", new pkijs.CryptoEngine({ name: "node-webcrypto", crypto: webcrypto as unknown as Crypto }));
+    const pack = await buildCourtPack(baseInput());
+    const dir = join(tmp, "good-tsa");
+    await extractTo(pack.zip, dir);
+    const sig = JSON.parse(readFileSync(join(dir, "signature.json"), "utf8")) as { manifestSha256: string };
+    const digest = Buffer.from(sig.manifestSha256, "hex");
+    const rootKeys = await webcrypto.subtle.generateKey(
+      { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+      true,
+      ["sign", "verify"],
+    );
+    const keys = await webcrypto.subtle.generateKey(
+      { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+      true,
+      ["sign", "verify"],
+    );
+    const root = new pkijs.Certificate();
+    root.version = 2;
+    root.serialNumber = new asn1js.Integer({ value: 1 });
+    const rootDn = [new pkijs.AttributeTypeAndValue({ type: "2.5.4.3", value: new asn1js.Utf8String({ value: "Test TSA Root" }) })];
+    root.issuer.typesAndValues.push(...rootDn);
+    root.subject.typesAndValues.push(...rootDn);
+    root.notBefore.value = new Date("2020-01-01T00:00:00Z");
+    root.notAfter.value = new Date("2030-01-01T00:00:00Z");
+    root.extensions = [new pkijs.Extension({ extnID: "2.5.29.19", critical: true, extnValue: new pkijs.BasicConstraints({ cA: true }).toSchema().toBER(false) })];
+    await root.subjectPublicKeyInfo.importKey(rootKeys.publicKey);
+    await root.sign(rootKeys.privateKey, "SHA-256");
+    const cert = new pkijs.Certificate();
+    cert.version = 2;
+    cert.serialNumber = new asn1js.Integer({ value: 2 });
+    const dn = [new pkijs.AttributeTypeAndValue({ type: "2.5.4.3", value: new asn1js.Utf8String({ value: "Test TSA" }) })];
+    cert.issuer.typesAndValues.push(...rootDn);
+    cert.subject.typesAndValues.push(...dn);
+    cert.notBefore.value = new Date("2020-01-01T00:00:00Z");
+    cert.notAfter.value = new Date("2030-01-01T00:00:00Z");
+    cert.extensions = [
+      new pkijs.Extension({
+        extnID: "2.5.29.37",
+        extnValue: new pkijs.ExtKeyUsage({ keyPurposes: ["1.3.6.1.5.5.7.3.8"] }).toSchema().toBER(false),
+      }),
+    ];
+    await cert.subjectPublicKeyInfo.importKey(keys.publicKey);
+    await cert.sign(rootKeys.privateKey, "SHA-256");
+    const tst = new pkijs.TSTInfo({
+      version: 1,
+      policy: "1.2.3.4",
+      messageImprint: new pkijs.MessageImprint({
+        hashAlgorithm: new pkijs.AlgorithmIdentifier({ algorithmId: "2.16.840.1.101.3.4.2.1", algorithmParams: new asn1js.Null() }),
+        hashedMessage: new asn1js.OctetString({ valueHex: digest.buffer.slice(digest.byteOffset, digest.byteOffset + digest.byteLength) }),
+      }),
+      serialNumber: new asn1js.Integer({ value: 7 }),
+      genTime: new Date("2026-01-01T00:00:00Z"),
+    });
+    const tstBer = new Uint8Array(tst.toSchema().toBER(false));
+    const signed = new pkijs.SignedData({
+      version: 3,
+      encapContentInfo: new pkijs.EncapsulatedContentInfo({
+        eContentType: "1.2.840.113549.1.9.16.1.4",
+        eContent: new asn1js.OctetString({ valueHex: tstBer.buffer.slice(tstBer.byteOffset, tstBer.byteOffset + tstBer.byteLength) }),
+      }),
+      certificates: [cert, root],
+      signerInfos: [new pkijs.SignerInfo({ version: 1, sid: new pkijs.IssuerAndSerialNumber({ issuer: cert.issuer, serialNumber: cert.serialNumber }) })],
+    });
+    await signed.sign(keys.privateKey, 0, "SHA-256", tstBer.buffer.slice(tstBer.byteOffset, tstBer.byteOffset + tstBer.byteLength));
+    const token = new pkijs.ContentInfo({ contentType: "1.2.840.113549.1.7.2", content: signed.toSchema(true) });
+    const tokenDer = new Uint8Array(token.toSchema().toBER(false));
+    const rootPem = `-----BEGIN CERTIFICATE-----\n${Buffer.from(root.toSchema().toBER(false)).toString("base64")}\n-----END CERTIFICATE-----\n`;
+    const trustedResult = await verifyTimestampToken(tokenDer, sig.manifestSha256, { trustedCertsPem: [rootPem] });
+    if (!trustedResult.ok) throw new Error(trustedResult.reason);
+    expect(trustedResult.genTime).toBe("2026-01-01T00:00:00.000Z");
+    await expect(verifyTimestampToken(tokenDer, sig.manifestSha256)).resolves.toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(/trust anchors/),
+    });
+    const attackerKeys = await webcrypto.subtle.generateKey(
+      { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+      true,
+      ["sign", "verify"],
+    );
+    const attackerCert = new pkijs.Certificate();
+    attackerCert.version = 2;
+    attackerCert.serialNumber = new asn1js.Integer({ value: 99 });
+    const attackerDn = [new pkijs.AttributeTypeAndValue({ type: "2.5.4.3", value: new asn1js.Utf8String({ value: "Attacker TSA" }) })];
+    attackerCert.issuer.typesAndValues.push(...attackerDn);
+    attackerCert.subject.typesAndValues.push(...attackerDn);
+    attackerCert.notBefore.value = new Date("2020-01-01T00:00:00Z");
+    attackerCert.notAfter.value = new Date("2030-01-01T00:00:00Z");
+    attackerCert.extensions = [new pkijs.Extension({ extnID: "2.5.29.37", extnValue: new pkijs.ExtKeyUsage({ keyPurposes: ["1.3.6.1.5.5.7.3.8"] }).toSchema().toBER(false) })];
+    await attackerCert.subjectPublicKeyInfo.importKey(attackerKeys.publicKey);
+    await attackerCert.sign(attackerKeys.privateKey, "SHA-256");
+    const attackerSigned = new pkijs.SignedData({
+      version: 3,
+      encapContentInfo: signed.encapContentInfo,
+      certificates: [attackerCert],
+      signerInfos: [new pkijs.SignerInfo({ version: 1, sid: new pkijs.IssuerAndSerialNumber({ issuer: attackerCert.issuer, serialNumber: attackerCert.serialNumber }) })],
+    });
+    await attackerSigned.sign(attackerKeys.privateKey, 0, "SHA-256", tstBer.buffer.slice(tstBer.byteOffset, tstBer.byteOffset + tstBer.byteLength));
+    const attackerToken = new pkijs.ContentInfo({ contentType: "1.2.840.113549.1.7.2", content: attackerSigned.toSchema(true) });
+    await expect(verifyTimestampToken(new Uint8Array(attackerToken.toSchema().toBER(false)), sig.manifestSha256, { trustedCertsPem: [rootPem] })).resolves.toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(/chain is not trusted/),
+    });
+    writeFileSync(join(dir, "timestamp.tsr"), tokenDer);
+    expect(() =>
+      execFileSync("node", [VERIFY_MJS, dir, "--require-timestamp"], { encoding: "utf8", stdio: "pipe" }),
+    ).toThrow(/trust anchors/);
   });
 
   it("offline verifier rejects tampered manifest.json", async () => {

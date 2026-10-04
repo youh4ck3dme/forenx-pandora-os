@@ -23,6 +23,7 @@ export type CourtSigningContext = {
   revoked: Set<string>;
   provider: SigningKeyProvider;
   tsaUrl: string | null;
+  trustedTsaCerts: string[];
 };
 
 export function courtGradeEnabled(): boolean {
@@ -37,7 +38,8 @@ export function getCourtSigningContext(): CourtSigningContext {
   const keyRef = env.FORENZX_SIGNING_PRIVATE_KEY_REF;
   const keysJson = env.FORENZX_TRUSTED_PUBLIC_KEYS;
   const keyringVersion = env.FORENZX_KEYRING_VERSION;
-  if (!kid || !keyRef || !keysJson || !keyringVersion) {
+  const trustedTsaCertsJson = env.FORENZX_TRUSTED_TSA_CERTS;
+  if (!kid || !keyRef || !keysJson || !keyringVersion || !trustedTsaCertsJson) {
     // Defense in depth; env.superRefine should already guarantee these.
     throw new Error("Court-grade signing configuration is incomplete");
   }
@@ -53,5 +55,6 @@ export function getCourtSigningContext(): CourtSigningContext {
     revoked: parseRevokedKeyIds(env.FORENZX_REVOKED_KEY_IDS),
     provider,
     tsaUrl: env.FORENZX_TSA_URL ?? null,
+    trustedTsaCerts: JSON.parse(trustedTsaCertsJson) as string[],
   };
 }
