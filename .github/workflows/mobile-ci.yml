@@ -4,13 +4,11 @@ on:
   push:
     branches: [main]
     paths:
-      - "capacitor.config.json"
-      - "scripts/mobile/**"
+      - "mobile/**"
       - ".github/workflows/mobile-ci.yml"
   pull_request:
     paths:
-      - "capacitor.config.json"
-      - "scripts/mobile/**"
+      - "mobile/**"
       - ".github/workflows/mobile-ci.yml"
   workflow_dispatch:
 
@@ -41,16 +39,16 @@ jobs:
       - name: Generate and validate every profile
         run: |
           for profile in local staging production; do
-            node scripts/mobile/set-profile.mjs "$profile"
+            node mobile/scripts/mobile/set-profile.mjs "$profile"
             node -e '
-              const c = JSON.parse(require("fs").readFileSync("capacitor.config.json", "utf8"));
+              const c = JSON.parse(require("fs").readFileSync("mobile/capacitor.config.json", "utf8"));
               for (const k of ["appId", "appName", "webDir"]) {
-                if (!c[k]) throw new Error(`capacitor.config.json: missing ${k}`);
+                if (!c[k]) throw new Error(`mobile/capacitor.config.json: missing ${k}`);
               }
             '
           done
 
-      - name: Committed capacitor.config.json matches the local profile
+      - name: Committed mobile capacitor config matches the local profile
         run: |
-          node scripts/mobile/set-profile.mjs local
-          git diff --exit-code -- capacitor.config.json
+          node mobile/scripts/mobile/set-profile.mjs local
+          git diff --exit-code -- mobile/capacitor.config.json
