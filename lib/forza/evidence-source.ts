@@ -28,7 +28,7 @@ export type LedgerRow = {
   hash_verification_status: string;
 };
 
-export type LedgerDocument = { evidenceId: string; fileName: string; text: string };
+export type LedgerDocument = { evidenceId: string; fileName: string; text: string; sha256: string };
 
 export type LedgerSourceDeps = {
   /** Záznamy pre dané ID (RLS klient používateľa). */
@@ -82,7 +82,7 @@ export async function loadLedgerDocuments(
     }
     const text = neutralizeHeaders(await deps.extract(row.file_name, buffer));
     if (!text.trim()) { rejected.push({ evidenceId: id, reason: "empty_text" }); continue; }
-    documents.push({ evidenceId: row.id, fileName: row.file_name, text });
+    documents.push({ evidenceId: row.id, fileName: row.file_name, text, sha256: sha });
   }
   return { documents, rejected };
 }

@@ -1050,6 +1050,7 @@ export async function runForensicAutopilotInner(
   // overí SHA-256 a extrahuje text sám; register = práve tieto dokumenty.
   let documentText = data.documentText;
   let evidenceRegistry: import("./evidence-registry").RegistryEntry[] = [];
+  let evidenceInputs: { evidenceId: string; sha256: string }[] = [];
   if (data.evidenceIds?.length) {
     const { loadLedgerDocuments, ledgerDocumentsText } = await import("./evidence-source");
     const { escapeLike } = await import("@/lib/storage/evidence-ledger");
@@ -1077,6 +1078,7 @@ export async function runForensicAutopilotInner(
     }
     documentText = ledgerDocumentsText(loaded.documents);
     evidenceRegistry = loaded.documents.map((d) => ({ evidenceId: d.evidenceId, fileName: d.fileName }));
+    evidenceInputs = loaded.documents.map((d) => ({ evidenceId: d.evidenceId, sha256: d.sha256 }));
   }
   if (!documentText || documentText.trim().length < MIN_EXTRACT_CHARS) {
     throw new Error(
@@ -1295,6 +1297,17 @@ export async function runForensicAutopilotInner(
     new Set(evidenceRegistry.map((entry) => entry.evidenceId)),
   ).dossier;
 
+  const { sha256Hex } = await import("./provenance/sha256");
+  const { assertAnalysisProvenance } = await import("./autopilot-meta");
+  assertAnalysisProvenance(
+    {
+      evidenceInputs,
+      derivedInputSha256: sha256Hex(documentText),
+      promptVersion: PROMPT_VERSION,
+      promptSha256: sha256Hex(PROMPT_VERSION),
+    },
+    evidenceInputs.map((entry) => entry.evidenceId),
+  );
   const withMeta = attachAnalysisMeta(
     bound,
     buildAnalysisMeta({
@@ -1305,6 +1318,9 @@ export async function runForensicAutopilotInner(
       chunkCount: chunks.length,
       chunks: chunkMeta,
       model: lastModel,
+      evidenceInputs,
+      derivedInputSha256: sha256Hex(documentText),
+      promptSha256: sha256Hex(PROMPT_VERSION),
       ...(lastProvider ? { provider: lastProvider } : {}),
       idempotencyKey,
       analysisStatus,

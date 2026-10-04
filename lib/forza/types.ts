@@ -146,10 +146,21 @@ export interface AutopilotChunkMeta {
   error?: string;
 }
 
+export interface AnalysisEvidenceInput {
+  evidenceId: string;
+  sha256: string;
+}
+
 export interface AutopilotAnalysisMeta {
   promptVersion: string;
+  /** SHA-256 of the prompt version label actually used for this run. */
+  promptSha256?: string;
   model: string;
   provider?: string;
+  /** Ledger hashes of the evidence objects whose extracted text was analyzed. */
+  evidenceInputs?: AnalysisEvidenceInput[];
+  /** SHA-256 of the exact derived text sent to the model. */
+  derivedInputSha256?: string;
   createdAt: string;
   analysisStatus: AutopilotAnalysisStatus;
   documentIds: string[];

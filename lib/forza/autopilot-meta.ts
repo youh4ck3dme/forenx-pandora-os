@@ -76,6 +76,9 @@ export function buildAnalysisMeta(input: {
   model: string;
   provider?: string;
   idempotencyKey: string;
+  evidenceInputs?: { evidenceId: string; sha256: string }[];
+  derivedInputSha256?: string;
+  promptSha256?: string;
   analysisStatus: AutopilotAnalysisMeta["analysisStatus"];
   sourceReferences: string[];
   isDemo?: boolean;
@@ -86,8 +89,11 @@ export function buildAnalysisMeta(input: {
     input.analyzedChars < input.inputChars;
   return {
     promptVersion: PROMPT_VERSION,
+    ...(input.promptSha256 ? { promptSha256: input.promptSha256 } : {}),
     model: input.model,
     ...(input.provider ? { provider: input.provider } : {}),
+    ...(input.evidenceInputs ? { evidenceInputs: input.evidenceInputs } : {}),
+    ...(input.derivedInputSha256 ? { derivedInputSha256: input.derivedInputSha256 } : {}),
     createdAt: new Date().toISOString(),
     analysisStatus: input.analysisStatus,
     documentIds: input.documentIds,
@@ -124,4 +130,22 @@ export function isDemoDossier(dossier: ForensicDossier | null): boolean {
     dossier.analysisMeta?.isDemo === true ||
     dossier.analysisMeta?.analysisStatus === "demo"
   );
+}
+
+
+export function assertAnalysisProvenance(meta: {
+  evidenceInputs?: { evidenceId: string; sha256: string }[];
+  derivedInputSha256?: string;
+  promptVersion?: string;
+  promptSha256?: string;
+} | undefined, citedEvidenceIds: readonly string[]): void {
+  if (citedEvidenceIds.length === 0) return;
+  if (!meta?.derivedInputSha256 || !meta.promptVersion || !meta.promptSha256 || !meta.evidenceInputs?.length) {
+    throw new Error("analysis provenance is incomplete");
+  }
+  const byId = new Map(meta.evidenceInputs.map((item) => [item.evidenceId, item.sha256]));
+  for (const id of citedEvidenceIds) {
+    const sha = byId.get(id);
+    if (!sha || !/^[a-f0-9]{64}$/.test(sha)) throw new Error("analysis provenance is incomplete");
+  }
 }
