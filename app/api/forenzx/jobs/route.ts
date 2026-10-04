@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
     .from("forenzx_analysis_jobs")
     .select("id, case_id, evidence_id, hub_job_id, pack_id, input_type, status, error_message, created_at, updated_at")
     .eq("case_id", caseId)
+    .eq("user_id", auth.userId)
     .order("created_at", { ascending: false })
     .limit(12);
 
