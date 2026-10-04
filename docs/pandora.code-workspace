@@ -1,0 +1,71 @@
+{
+    "folders": [
+		{
+			"path": ".."
+		}
+	],
+    "settings": {
+        "files.exclude": {
+            "**/.git": true,
+            "**/.svn": true,
+            "**/.hg": true,
+            "**/CVS": true,
+            "**/.DS_Store": true,
+            "**/Thumbs.db": true,
+            "**/.next": true,
+            "**/out": true,
+            "**/build": true,
+            "**/dist": true,
+            "**/node_modules": true
+        },
+        "search.exclude": {
+            "**/node_modules": true,
+            "**/bower_components": true,
+            "**/.next": true,
+            "**/dist": true,
+            "**/out": true
+        },
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.codeActionsOnSave": {
+            "source.fixAll.eslint": "explicit"
+        },
+        "typescript.tsdk": "node_modules/typescript/lib",
+        "tailwindCSS.experimental.classRegex": [
+            [
+                "cva\\(([^)]*)\\)",
+                "[\"'`]([^\"'`]*).*?[\"'`]"
+            ],
+            [
+                "cn\\(([^)]*)\\)",
+                "[\"'`]([^\"'`]*).*?[\"'`]"
+            ]
+        ]
+    },
+    "extensions": {
+        "recommendations": [
+            "dbaeumer.vscode-eslint",
+            "esbenp.prettier-vscode",
+            "bradlc.vscode-tailwindcss",
+            "dsznajder.es7-react-js-snippets"
+        ]
+    },
+    "launch": {
+        "configurations": [
+            {
+                "name": "Next.js: Debug Server",
+                "type": "node",
+                "request": "launch",
+                "command": "npm run dev",
+                "cwd": "${workspaceFolder}"
+            },
+            {
+                "name": "Next.js: Debug Client",
+                "type": "chrome",
+                "request": "launch",
+                "url": "http://localhost:5353",
+                "webRoot": "${workspaceFolder}"
+            }
+        ]
+    }
+}

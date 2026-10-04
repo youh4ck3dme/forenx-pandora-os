@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__claude_ai_Supabase__list_migrations",
+      "Agent",
+      "PowerShell(cd \"C:\\\\Projects\\\\forenzX-pandora-os\\\\forenx-pandora-os\" && npx tsc --noEmit 2>&1; Write-Host \"EXIT:$LASTEXITCODE\")",
+      "PowerShell(cd \"C:\\\\Projects\\\\forenzX-pandora-os\\\\forenx-pandora-os\" && npx tsc --noEmit --project tsconfig.json 2>&1 | Select-String \"next\\\\.config|env\\\\.example|workflow\" | head -10; Write-Host \"EXIT:$LASTEXITCODE\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('name'\\), d.get\\('version'\\), list\\(d.get\\('peerDependencies',{}\\).keys\\(\\)\\)[:5]\\)\")"
+    ]
+  }
+}

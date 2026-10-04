@@ -1,0 +1,54 @@
+name: Mobile DevOps CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile-ci.yml"
+  pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mobile-verify:
+    name: Verify mobile profiles
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      # set-profile.mjs uses only node: built-ins — no npm ci, no build.
+      # Build + `cap sync` is intentionally not run: the app has dynamic API
+      # routes, so a static export (`CAPACITOR_BUILD=true` → webDir `out/`)
+      # cannot be built, and no android/ or ios/ project is committed. Re-add
+      # it once a native project exists.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Generate and validate every profile
+        run: |
+          for profile in local staging production; do
+            node mobile/scripts/mobile/set-profile.mjs "$profile"
+            node -e '
+              const c = JSON.parse(require("fs").readFileSync("mobile/capacitor.config.json", "utf8"));
+              for (const k of ["appId", "appName", "webDir"]) {
+                if (!c[k]) throw new Error(`mobile/capacitor.config.json: missing ${k}`);
+              }
+            '
+          done
+
+      - name: Committed mobile capacitor config matches the local profile
+        run: |
+          node mobile/scripts/mobile/set-profile.mjs local
+          git diff --exit-code -- mobile/capacitor.config.json

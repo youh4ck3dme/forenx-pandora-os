@@ -1,0 +1,109 @@
+name: Production verification
+
+on:
+  # Každý PR sa testuje na merge refe s main (strict status checks), preto push
+  # beží iba na main. Bez paths-ignore na pull_request: povinný check by pri
+  # PR len s dokumentáciou ostal navždy „expected“ a zablokoval merge.
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Nový push do toho istého PR/vetvy zruší ešte bežiaci starší beh.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Build, typecheck, and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      # npm ci fails if package.json and package-lock.json disagree.
+      - run: npm ci
+      # Critical is a hard gate now; raise to "high" once the electron major
+      # upgrade (tracked separately) lands.
+      - run: npm audit --audit-level=critical
+      - run: npx tsc --noEmit && npm run build
+        env:
+          S3_ENDPOINT: https://s3-ci.invalid
+          S3_REGION: ci-test
+          S3_BUCKET: ci-test-bucket
+          S3_ACCESS_KEY_ID: ci-test-access
+          S3_SECRET_ACCESS_KEY: ci-test-secret-not-a-real-credential
+          MISTRAL_API_KEY: ci-placeholder-not-a-real-key
+      - run: npm run verify:desktop-security && npx vitest run
+      # Deterministic release ZIP from tracked files; fails if a tracked
+      # env/key/DB file would be packaged.
+      - run: node scripts/release/package.mjs HEAD dist/release
+
+  e2e:
+    name: E2E smoke tests (routing & auth)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Runs only when a live deployment URL is configured in repository vars.
+    # Skip silently if absent so PRs without a deploy are not blocked.
+    if: vars.E2E_BASE_URL != ''
+    needs: verify
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Playwright browsers (Chromium only)
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E smoke tests
+        env:
+          BASE_URL: ${{ vars.E2E_BASE_URL || secrets.E2E_BASE_URL }}
+          PLAYWRIGHT_TEST_BASE_URL: ${{ vars.E2E_BASE_URL || secrets.E2E_BASE_URL }}
+        run: npx playwright test --project=chromium
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  secret-scan:
+    name: Secret scan (gitleaks, full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        # Pinned CLI via container: no license/token needed, fails the job on any finding.
+        # Reviewed false positives are listed by exact fingerprint in .gitleaksignore.
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/gitleaks/gitleaks:v8.24.3 \
+            git --redact --verbose --report-format sarif --report-path /repo/gitleaks.sarif --exit-code 1 .
+      - name: Upload gitleaks report (redacted)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks.sarif
+          retention-days: 7

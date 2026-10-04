@@ -1,0 +1,57 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Main gradient: purple → blue → cyan -->
+    <linearGradient id="diamondGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#9333ea"/>
+      <stop offset="50%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#06b6d4"/>
+    </linearGradient>
+    <!-- Highlight gradient for top facets -->
+    <linearGradient id="highlightGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#c084fc"/>
+      <stop offset="100%" style="stop-color:#7c3aed"/>
+    </linearGradient>
+    <!-- Shadow gradient for bottom -->
+    <linearGradient id="shadowGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="100%" style="stop-color:#1e1b4b"/>
+    </linearGradient>
+    <!-- Left facet gradient -->
+    <linearGradient id="leftGradient" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#818cf8"/>
+      <stop offset="100%" style="stop-color:#4f46e5"/>
+    </linearGradient>
+    <!-- Right facet gradient -->
+    <linearGradient id="rightGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#38bdf8"/>
+      <stop offset="100%" style="stop-color:#0284c7"/>
+    </linearGradient>
+    <!-- Center facet gradient -->
+    <linearGradient id="centerGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#a78bfa"/>
+      <stop offset="100%" style="stop-color:#7c3aed"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Diamond shape - minimalist 7 facet design -->
+  <!-- Top crown (table) -->
+  <polygon points="256,48 160,140 352,140" fill="url(#highlightGradient)"/>
+  
+  <!-- Upper left facet -->
+  <polygon points="160,140 48,180 180,220 256,140" fill="url(#leftGradient)"/>
+  
+  <!-- Upper right facet -->
+  <polygon points="352,140 464,180 332,220 256,140" fill="url(#rightGradient)"/>
+  
+  <!-- Center top facet -->
+  <polygon points="180,220 256,140 332,220 256,260" fill="url(#centerGradient)"/>
+  
+  <!-- Lower left facet (pavilion) -->
+  <polygon points="48,180 180,220 256,464" fill="url(#diamondGradient)"/>
+  
+  <!-- Lower right facet (pavilion) -->
+  <polygon points="464,180 332,220 256,464" fill="url(#shadowGradient)"/>
+  
+  <!-- Center bottom facet -->
+  <polygon points="180,220 332,220 256,464" fill="url(#diamondGradient)" opacity="0.9"/>
+</svg>

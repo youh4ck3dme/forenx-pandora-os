@@ -1,0 +1,17 @@
+PANDORA AI REVIEW PACKAGE
+
+Branch: fix/base44-web-import
+Commit: 16bb3ce
+
+Created: 2026-10-04 20:22:22
+
+IMPORTANT:
+- node_modules excluded
+- build/cache folders excluded
+- .git excluded
+- local/production secrets excluded
+- binary archives excluded
+
+When returning the modified ZIP:
+DO NOT add node_modules, .next, dist, .env.local, .env.production or secrets.
+Modify source/config files only.

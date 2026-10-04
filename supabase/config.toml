@@ -1,0 +1,4 @@
+project_id = "tlmuvzrgighahnjkxoyw"
+
+[functions.forenzx-evidence-webhook]
+verify_jwt = false

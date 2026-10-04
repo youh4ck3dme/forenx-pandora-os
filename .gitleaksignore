@@ -1,0 +1,46 @@
+# Reviewed false positives (2026-09-27). Exact fingerprints only
+# (commit:file:rule:line) — any NEW finding, even in these files, still fails CI.
+# Placeholder Supabase keys ("eyJh…your…") in the env template:
+952996f882a3e953dfe442d9ce685302f05c57e9:.env.production.example:generic-api-key:31
+952996f882a3e953dfe442d9ce685302f05c57e9:.env.production.example:generic-api-key:33
+# Empty values (KEY=""):
+952996f882a3e953dfe442d9ce685302f05c57e9:.env.production.example:generic-api-key:79
+6b2e5d07c2655872c581f1f52c1e4c4456ed33fb:.env.example:generic-api-key:41
+# Human-readable test fixtures, not credentials:
+3aaa296be940c63fab126b55ca4a7253a744d416:lib/ai/__tests__/fault-injection.test.ts:generic-api-key:20
+438bb4a85402b86acf16cc64c954398f63853944:lib/ai/__tests__/mistral-client.test.ts:generic-api-key:24
+# Readable Mistral test fixture (same pattern as above), added in P1-04:
+28fd3cccb421715881319aa5d6db04f2fcaad783:lib/ai/__tests__/llm-redaction-gateway.test.ts:generic-api-key:12
+# Readable test fixture ("test-…-key-1234567890"), added with trace IDs:
+0341e2f085691e882b8128a8ae9066859d7c54d0:lib/__tests__/trace.test.ts:generic-api-key:144
+# Canonical investigative-question identifier q2_planner_coordinator (INVESTIGATIVE_QUESTIONS),
+# not a credential; the object field was renamed to `field` afterwards:
+27daabba82b33ed15558e5f7c13a3e71260b010c:lib/forza/evidence-binding.ts:generic-api-key:206
+# The comment added with the entry above in d47bb9c quoted the flagged line verbatim:
+d47bb9ce5c1d90aeb062f2f3b231f9b403ad91fc:.gitleaksignore:generic-api-key:16
+# Historical local-Docker and redaction test fixtures. The release branch now
+# generates equivalents at runtime; these exact historical fingerprints remain
+# reachable through the immutable cleanroom baseline tag.
+05131f0eed3ab574c28281b5e4501a15de4243b0:db/cleanroom/tests/08-supabase-docker-integration.test.ts:jwt:9
+1d5a04131a07b68c5e2e1ea91b7595ab5d4cb4de:lib/quality-gate/__tests__/redaction.test.ts:jwt:21
+1d5a04131a07b68c5e2e1ea91b7595ab5d4cb4de:lib/quality-gate/__tests__/redaction.test.ts:jwt:141
+1d5a04131a07b68c5e2e1ea91b7595ab5d4cb4de:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:30
+1d5a04131a07b68c5e2e1ea91b7595ab5d4cb4de:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:54
+1d5a04131a07b68c5e2e1ea91b7595ab5d4cb4de:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:105
+1d5a04131a07b68c5e2e1ea91b7595ab5d4cb4de:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:107
+# Additional exact historical fixtures retained in full-history scans:
+4b99826bfeb335883ffa024d0c916a35d6207e67:.github/workflows/production-verification.yml:generic-api-key:112
+dc1502f588b83ffae832547e48900b651732d807:db/cleanroom/tests/08-supabase-docker-integration.test.ts:jwt:9
+05131f0eed3ab574c28281b5e4501a15de4243b0:db/cleanroom/tests/05-trigger-and-worm-immutability.test.ts:generic-api-key:76
+05131f0eed3ab574c28281b5e4501a15de4243b0:db/cleanroom/tests/08-supabase-docker-integration.test.ts:generic-api-key:478
+05131f0eed3ab574c28281b5e4501a15de4243b0:db/cleanroom/tests/08-supabase-docker-integration.test.ts:generic-api-key:520
+3d097d91152c52d8f89079f154605c8f6c03ff3f:lib/quality-gate/__tests__/redaction.test.ts:jwt:21
+3d097d91152c52d8f89079f154605c8f6c03ff3f:lib/quality-gate/__tests__/redaction.test.ts:jwt:141
+3d097d91152c52d8f89079f154605c8f6c03ff3f:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:30
+3d097d91152c52d8f89079f154605c8f6c03ff3f:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:54
+3d097d91152c52d8f89079f154605c8f6c03ff3f:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:105
+3d097d91152c52d8f89079f154605c8f6c03ff3f:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:107
+
+# Historical Docker build-arg in a deleted revision of the production-verification
+# workflow: empty-payload JWT placeholder (not a Supabase key). Line no longer exists.
+4b99826bfeb335883ffa024d0c916a35d6207e67:.github/workflows/production-verification.yml:generic-api-key:112

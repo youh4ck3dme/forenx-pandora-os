@@ -1,0 +1,78 @@
+version: '3.8'
+
+# ==============================================================================
+# PΛND0RΛ Forensic OS — Production Docker Compose Orchestration
+# Architecture:
+#   Public Internet (80/443) -> Nginx Reverse Proxy (TLS + 250MB S3 limit)
+#   Nginx -> Next.js Standalone Runner (127.0.0.1:3005, loopback isolation)
+# ==============================================================================
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.production
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+    container_name: pandora-forensic-app
+    restart: always
+    ports:
+      # Bound strictly to localhost/loopback to prevent direct exposure without Nginx
+      - "127.0.0.1:3005:3005"
+    env_file:
+      - .env.production
+    environment:
+      - NODE_ENV=production
+      - PORT=3005
+      - NEXT_TELEMETRY_DISABLED=1
+      - HOSTNAME=0.0.0.0
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3005/api/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    volumes:
+      - workflow-data:/app/.workflow-data
+    networks:
+      - pandora-internal
+
+  nginx:
+    image: nginx:alpine
+    container_name: pandora-forensic-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Mount production reference reverse proxy config (comprehensive: rate-limits, CSP, S3, AI streaming)
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/pandora.conf:ro
+      # Mount host Let's Encrypt certificates
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      # CA bundle for upstream S3 SSL verification (vault-s3 pass-through)
+      - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
+      # ACME challenge webroot for automated renewals
+      - /var/www/letsencrypt:/var/www/letsencrypt:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    networks:
+      - pandora-internal
+
+volumes:
+  workflow-data:
+
+networks:
+  pandora-internal:
+    driver: bridge

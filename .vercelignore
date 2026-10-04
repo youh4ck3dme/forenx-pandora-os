@@ -1,0 +1,16 @@
+electron/
+dist-electron/
+dist/
+build/
+android/
+ios/
+capacitor.config.ts
+playwright-report/
+test-results/
+.agents/
+.system_generated/
+*.log
+*.tsbuildinfo
+.env*.local
+coverage/
+scripts/audit.mjs
