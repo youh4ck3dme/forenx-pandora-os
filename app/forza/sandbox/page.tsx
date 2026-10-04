@@ -77,7 +77,7 @@ import {
 
 export default function SandboxPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+    <Suspense fallback={<div className="min-h-screen bg-background text-foreground" />}>
       <Sandbox />
     </Suspense>
   );

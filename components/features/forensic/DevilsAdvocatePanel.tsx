@@ -59,7 +59,7 @@ export function DevilsAdvocatePanel({
         partition.bound.map((hypothesis) => (
           <article
             key={hypothesis.id}
-            className="space-y-3 rounded-xl border border-rose-500/20 bg-card p-4 shadow-xs"
+            className="space-y-3 rounded-xl border border-rose-500/20 bg-card text-card-foreground p-4 shadow-xs"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">

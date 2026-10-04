@@ -131,7 +131,7 @@ export const VisualCanvas = () => {
                 layout
                 data-testid="canvas-drop-zone"
                 className={cn(
-                    "bg-white shadow-[0_20px_50px_rgba(0,0,0,0.3)] min-h-[850px] transition-all duration-500 origin-top overflow-hidden relative",
+                    "bg-white text-black shadow-[0_20px_50px_rgba(0,0,0,0.3)] min-h-[850px] transition-all duration-500 origin-top overflow-hidden relative",
                     widthClass,
                     isOver ? "ring-4 ring-blue-500/50 scale-[1.01]" : ""
                 )}

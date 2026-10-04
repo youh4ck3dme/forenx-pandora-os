@@ -25,7 +25,7 @@ export function PrivacyShield({
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
-          className="w-80 bg-background/95 backdrop-blur-md border border-border rounded-xl p-4 shadow-2xl z-[100] animate-in fade-in zoom-in-95 duration-200 ml-4 mt-2"
+          className="w-80 bg-background/95 text-foreground backdrop-blur-md border border-border rounded-xl p-4 shadow-2xl z-[100] animate-in fade-in zoom-in-95 duration-200 ml-4 mt-2"
           sideOffset={5}
         >
           <div className="flex flex-col gap-4">

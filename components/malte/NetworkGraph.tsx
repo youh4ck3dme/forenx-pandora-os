@@ -31,7 +31,7 @@ function EntityNode({ data }: NodeProps) {
   return (
     <div
       className={cn(
-        "w-[132px] rounded-xl border-2 bg-card px-2 py-1.5 text-center shadow-card transition-colors",
+        "w-[132px] rounded-xl border-2 bg-card text-card-foreground px-2 py-1.5 text-center shadow-card transition-colors",
         d.isShell ? "border-risk-high" : "border-border",
         d.selected && "ring-2 ring-primary",
         d.onPathHighlight && "bg-risk-high/10",

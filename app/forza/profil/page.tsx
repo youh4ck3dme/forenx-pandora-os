@@ -22,7 +22,7 @@ import { signOutEverywhere } from "@/lib/forza/session";
 import { BRAND } from "@/config/brand";
 
 const inputClass =
-  "h-11 w-full rounded-xl border border-border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring";
+  "h-11 w-full rounded-xl border border-border bg-card text-card-foreground px-3 text-sm outline-none focus:ring-2 focus:ring-ring";
 
 export default function ProfilPage() {
   return <ProfileScreen />;

@@ -47,7 +47,7 @@ import { CaseStartHub } from "@/components/malte/CaseStartHub";
 
 export default function PrehladPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+    <Suspense fallback={<div className="min-h-screen bg-background text-foreground" />}>
       <PrehladContent />
     </Suspense>
   );

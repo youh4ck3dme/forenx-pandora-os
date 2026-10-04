@@ -26,7 +26,7 @@ export function TimelinePrintModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="relative w-full max-w-5xl bg-card border-2 border-border/80 rounded-2xl shadow-2xl p-5 sm:p-7 space-y-5 my-8">
+      <div className="relative w-full max-w-5xl bg-card text-card-foreground border-2 border-border/80 rounded-2xl shadow-2xl p-5 sm:p-7 space-y-5 my-8">
         {/* Horná lišta modálu */}
         <div className="flex items-center justify-between border-b border-border/80 pb-3">
           <div className="flex items-center gap-2">

@@ -75,7 +75,7 @@ export function TabBar() {
               </div>
             </ContextMenu.Trigger>
             <ContextMenu.Portal>
-              <ContextMenu.Content className="min-w-[160px] bg-background/95 backdrop-blur-md border border-border rounded-lg p-1 shadow-xl z-[100] animate-in fade-in zoom-in-95 duration-100">
+              <ContextMenu.Content className="min-w-[160px] bg-background/95 text-foreground backdrop-blur-md border border-border rounded-lg p-1 shadow-xl z-[100] animate-in fade-in zoom-in-95 duration-100">
                 <ContextMenu.Item
                   onClick={() => closeTab(tab.id)}
                   className="flex items-center px-2 py-1.5 text-xs text-foreground/80 outline-none cursor-pointer hover:bg-foreground/10 rounded"

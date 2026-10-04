@@ -208,7 +208,7 @@ export function WalletPanel() {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
-                className="flex justify-center p-4 bg-white rounded-xl"
+                className="flex justify-center p-4 bg-white text-black rounded-xl"
               >
                 <QRCodeSVG value={activeWallet} size={160} level="H" />
               </motion.div>

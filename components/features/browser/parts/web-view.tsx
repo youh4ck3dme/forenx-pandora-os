@@ -59,7 +59,7 @@ const TabContent = memo(
     return (
       <div
         className={cn(
-          "absolute inset-0 w-full h-full bg-background",
+          "absolute inset-0 w-full h-full bg-background text-foreground",
           !isActive && "hidden",
         )}
       >
@@ -149,7 +149,7 @@ export function WebView() {
   );
 
   return (
-    <div className="w-full h-full relative bg-white">
+    <div className="w-full h-full relative bg-white text-black">
       {tabs.map(
         (
           tab: { id: string; url: string; title?: string; isLoading?: boolean },

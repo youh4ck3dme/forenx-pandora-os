@@ -216,7 +216,7 @@ describe("NewCaseForm", () => {
       const toastCall = mockToastError.mock.calls[0];
       const action = toastCall[1]?.action;
       action?.onClick();
-      expect(mockPush).toHaveBeenCalledWith("/auth/login");
+      expect(mockPush).toHaveBeenCalledWith("/auth/login/");
     });
   });
 });

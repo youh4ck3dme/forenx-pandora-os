@@ -13,7 +13,7 @@ export function TimelineRouteMap({ isDemo, episodes }: TimelineRouteMapProps) {
     <>
       {/* ═══ GEOGRAFICKÁ MAPA TRÁS PRE DYNAMICKÝ SPIS ═══ */}
       {!isDemo ? (
-        <Card className="space-y-3 p-4 sm:p-5 border-border/80 bg-card/95 shadow-xl">
+        <Card className="space-y-3 p-4 sm:p-5 border-border/80 bg-card/95 text-card-foreground shadow-xl">
           <div className="flex items-center gap-2">
             <Route className="h-4 w-4 text-cyan-400" />
             <h4 className="text-sm font-black">Trasy a miesta v aktívnom spise</h4>
@@ -35,7 +35,7 @@ export function TimelineRouteMap({ isDemo, episodes }: TimelineRouteMapProps) {
       ) : null}
 
       {/* ═══ GEOGRAFICKÉ ROZDELENIE ROLÍ & TELEMETRICKÉ POROVNANIE (DEMO) ═══ */}
-      <Card className={`space-y-4 p-4 sm:p-5 border-border/80 bg-card/95 shadow-xl ${isDemo ? "" : "hidden"}`}>
+      <Card className={`space-y-4 p-4 sm:p-5 border-border/80 bg-card/95 text-card-foreground shadow-xl ${isDemo ? "" : "hidden"}`}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/60 pb-3">
           <div className="space-y-0.5">
             <div className="flex items-center gap-2">

@@ -215,7 +215,7 @@ export function AvatarEditor({
               Posuňte a priblížte výrez. Uloží sa štvorcová fotka.
             </DialogDescription>
           </DialogHeader>
-          <div className="relative h-64 w-full overflow-hidden rounded-xl bg-muted">
+          <div className="relative h-64 w-full overflow-hidden rounded-xl bg-muted text-foreground">
             {rawSrc ? (
               <Cropper
                 image={rawSrc}

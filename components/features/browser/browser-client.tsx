@@ -145,7 +145,7 @@ export function BrowserClient() {
             {/* Main Content Area */}
             <div className="flex-1 flex relative overflow-hidden">
               <Sidebar />
-              <div className="flex-1 relative bg-background flex">
+              <div className="flex-1 relative bg-background text-foreground flex">
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}

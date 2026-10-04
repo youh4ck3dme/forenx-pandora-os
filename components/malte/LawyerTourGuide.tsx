@@ -87,7 +87,7 @@ export function LawyerTourGuide({
         role="dialog"
         aria-modal="true"
         aria-label="Sprievodca spisom pre advokáta"
-        className="relative w-full max-w-lg rounded-2xl border border-primary/30 bg-card p-6 shadow-2xl transition-all"
+        className="relative w-full max-w-lg rounded-2xl border border-primary/30 bg-card text-card-foreground p-6 shadow-2xl transition-all"
       >
         {/* Horná lišta */}
         <div className="flex items-center justify-between gap-2 border-b border-border pb-3">

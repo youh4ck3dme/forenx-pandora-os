@@ -119,7 +119,7 @@ export function NotificationsBell({ className }: { className?: string }) {
       <PopoverContent
         align="end"
         sideOffset={8}
-        className="w-85 sm:w-95 p-0 overflow-hidden rounded-2xl border border-border bg-card/95 backdrop-blur-md shadow-elevated"
+        className="w-85 sm:w-95 p-0 overflow-hidden rounded-2xl border border-border bg-card/95 text-card-foreground backdrop-blur-md shadow-elevated"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border/60 px-4 py-3 bg-surface/40">

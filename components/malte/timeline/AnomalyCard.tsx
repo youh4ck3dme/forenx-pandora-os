@@ -33,7 +33,7 @@ export function AnomalyCard({
   onCopyMotion,
 }: AnomalyCardProps) {
   return (
-    <div className="rounded-xl border border-border/80 bg-card overflow-hidden transition-all shadow-xs">
+    <div className="rounded-xl border border-border/80 bg-card text-card-foreground overflow-hidden transition-all shadow-xs">
       {/* Hlavička anomálie */}
       <button
         type="button"
@@ -100,7 +100,7 @@ export function AnomalyCard({
           </div>
 
           {/* Dôkazy a procesný návrh */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-2.5 rounded-lg border border-border">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card text-card-foreground p-2.5 rounded-lg border border-border">
             <div className="space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                 <CheckCircle2 className="h-3 w-3 text-primary" /> Kľúčové fakty potvrdzujúce obhajobu:

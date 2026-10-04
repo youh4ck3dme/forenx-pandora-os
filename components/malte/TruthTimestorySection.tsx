@@ -293,7 +293,7 @@ ${ep.dialogues.map((d) => `  • ${d.speaker} (${d.role}): "${d.text}"`).join("\
       />
 
       {/* ═══ SEKCIA 1: KOMIKSOVÁ ČASOVÁ OS (A PO Z TIMESTORY) ═══ */}
-      <Card className="space-y-4 p-4 sm:p-5 border-border/80 bg-card/95 shadow-xl">
+      <Card className="space-y-4 p-4 sm:p-5 border-border/80 bg-card/95 text-card-foreground shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/60 pb-3">
           <div className="space-y-0.5">
             <span className="text-[10px] font-bold uppercase tracking-widest text-primary flex items-center gap-1.5">

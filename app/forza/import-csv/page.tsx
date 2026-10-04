@@ -436,7 +436,7 @@ function CsvImportScreen() {
                       const d = e.target.value as Delimiter;
                       void processCsvText(fileText, d);
                     }}
-                    className="w-full h-8 rounded-lg border border-border bg-card px-2 text-xs"
+                    className="w-full h-8 rounded-lg border border-border bg-card text-card-foreground px-2 text-xs"
                   >
                     <option value=";">Bodkočiarka (;)</option>
                     <option value=",">Čiarka (,)</option>
@@ -462,7 +462,7 @@ function CsvImportScreen() {
                         reader.readAsText(file, enc);
                       }
                     }}
-                    className="w-full h-8 rounded-lg border border-border bg-card px-2 text-xs"
+                    className="w-full h-8 rounded-lg border border-border bg-card text-card-foreground px-2 text-xs"
                   >
                     <option value="utf-8">UTF-8</option>
                     <option value="windows-1250">Windows-1250</option>
@@ -491,7 +491,7 @@ function CsvImportScreen() {
                           [key]: val === "" ? -1 : Number(val),
                         }));
                       }}
-                      className="h-8 rounded-lg border border-border bg-card px-2 text-xs min-w-44"
+                      className="h-8 rounded-lg border border-border bg-card text-card-foreground px-2 text-xs min-w-44"
                     >
                       <option value="-1">-- Nepoužiť --</option>
                       {rawHeaders.map((h, idx) => (
