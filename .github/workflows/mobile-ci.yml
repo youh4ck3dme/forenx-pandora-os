@@ -6,19 +6,13 @@ on:
     paths:
       - "package.json"
       - "package-lock.json"
-      - "mobile/package.json"
-      - "mobile/package-lock.json"
-      - "mobile/capacitor.config.json"
-      - "mobile/scripts/mobile/**"
+      - "mobile/**"
       - ".github/workflows/mobile-ci.yml"
   pull_request:
     paths:
       - "package.json"
       - "package-lock.json"
-      - "mobile/package.json"
-      - "mobile/package-lock.json"
-      - "mobile/capacitor.config.json"
-      - "mobile/scripts/mobile/**"
+      - "mobile/**"
       - ".github/workflows/mobile-ci.yml"
   workflow_dispatch:
 
@@ -85,7 +79,7 @@ jobs:
             '
           done
 
-      - name: Committed capacitor.config.json matches the local profile
+      - name: Committed mobile capacitor config matches the local profile
         run: |
           node mobile/scripts/mobile/set-profile.mjs local
           git diff --exit-code -- mobile/capacitor.config.json
