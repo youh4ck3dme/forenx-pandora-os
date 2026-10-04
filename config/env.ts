@@ -42,6 +42,8 @@ export const EnvironmentSchema = z.object({
 
   // RFC 3161 timestamping authority for the Court Pack Merkle root.
   FORENZX_TSA_URL: z.string().url("FORENZX_TSA_URL must be a valid URL.").optional(),
+  // JSON array of PEM roots/intermediates explicitly trusted for TSA chains.
+  FORENZX_TRUSTED_TSA_CERTS: z.string().optional(),
 
   // Local, air-gappable forensic AI (OpenAI-compatible). Evidence AI must stay local.
   FORENZX_LOCAL_AI_BASE_URL: z.string().url("FORENZX_LOCAL_AI_BASE_URL must be a valid URL.").optional(),
@@ -66,6 +68,7 @@ export const EnvironmentSchema = z.object({
     "FORENZX_KEYRING_VERSION",
     "FORENZX_LOCAL_AI_BASE_URL",
     "FORENZX_TSA_URL", // INV-031: court-grade packs must be RFC 3161 timestamped (fail-closed)
+    "FORENZX_TRUSTED_TSA_CERTS",
   ] as const;
   for (const key of required) {
     const value = (data as Record<string, unknown>)[key];
@@ -74,6 +77,20 @@ export const EnvironmentSchema = z.object({
         code: z.ZodIssueCode.custom,
         path: [key],
         message: `${key} is required when FORENZX_COURT_GRADE=true.`,
+      });
+    }
+  }
+  if (data.FORENZX_COURT_GRADE && data.FORENZX_TRUSTED_TSA_CERTS) {
+    try {
+      const certs = JSON.parse(data.FORENZX_TRUSTED_TSA_CERTS);
+      if (!Array.isArray(certs) || certs.length === 0 || certs.some((cert) => typeof cert !== "string" || !cert.includes("BEGIN CERTIFICATE"))) {
+        throw new Error("not a non-empty PEM certificate array");
+      }
+    } catch {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["FORENZX_TRUSTED_TSA_CERTS"],
+        message: "FORENZX_TRUSTED_TSA_CERTS must be a non-empty JSON array of PEM certificates.",
       });
     }
   }

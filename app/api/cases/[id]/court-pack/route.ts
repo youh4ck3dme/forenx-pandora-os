@@ -123,6 +123,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       },
       verifyMjsSource,
       tsaUrl: signing.tsaUrl,
+      trustedTsaCerts: signing.trustedTsaCerts,
       requireTimestamp: true, // court-grade: fail-closed if no TSA (INV-031)
       now,
     });
