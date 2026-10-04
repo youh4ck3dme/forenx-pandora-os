@@ -34,9 +34,11 @@ export const callTool = createServerFn({ method: "POST", id: "forenzx/callTool" 
   .validator((input: unknown) =>
     z.object({ name: z.string().min(1).max(128), arguments: z.record(z.string(), z.unknown()).default({}) }).parse(input),
   )
-  .handler(async ({ data }) => {
-    const { callForenZXTool } = await import("./forenzx-mcp.server");
-    return callForenZXTool(data.name, data.arguments);
+  .handler(async () => {
+    // Authentication is not authorization. This proxy forwarded caller-controlled
+    // tool names and arguments with the server MCP API key, bypassing ledger
+    // ownership checks in POST /api/forenzx/start. No browser caller may use it.
+    throw new Error("Prístup majú iba serverové trasy ForenZX.");
   });
 
 export const listJobs = createServerFn({ method: "GET", id: "forenzx/listJobs" })

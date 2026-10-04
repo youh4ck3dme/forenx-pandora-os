@@ -38,6 +38,16 @@ async function resolveUserId(request: NextRequest): Promise<string | null> {
   return data.user.id;
 }
 
+async function callerIsAdmin(userId: string): Promise<boolean> {
+  const { data: roleRow, error } = await supabaseAdmin
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) return false;
+  return roleRow?.role === "admin";
+}
+
 async function assertCaseAccess(userId: string, caseId: string): Promise<boolean> {
   // Allow if user owns the case
   const { data: caseRow } = await supabaseAdmin
@@ -48,14 +58,7 @@ async function assertCaseAccess(userId: string, caseId: string): Promise<boolean
 
   if (caseRow?.user_id === userId) return true;
 
-  // Fallback: admin role
-  const { data: roleRow } = await supabaseAdmin
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  return roleRow?.role === "admin";
+  return callerIsAdmin(userId);
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -102,6 +105,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { error: "No failed outbox rows found for the given selector." },
       { status: 404 },
     );
+  }
+
+  // A null case_id is not ownership. Only an admin may requeue it.
+  // Skipping the check let any authenticated caller restart that dispatch.
+  if (rows.some((row) => !row.case_id)) {
+    if (!(await callerIsAdmin(userId))) {
+      return NextResponse.json({ error: "Access denied." }, { status: 403 });
+    }
   }
 
   // ── Assert access for each affected case ──────────────────────────────────

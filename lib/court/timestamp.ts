@@ -1,5 +1,5 @@
 /**
- * RFC 3161 timestamping for the Court Pack Merkle root (INV-031).
+ * RFC 3161 timestamping for the Court Pack (INV-031).
  *
  * - `buildTimeStampRequest` produces a DER TimeStampReq over a SHA-256 digest.
  * - `requestTimestampToken` POSTs it to a TSA and returns the DER token bytes
@@ -9,9 +9,11 @@
  *   cryptographically valid. No secret is required — only the token itself (and
  *   optional trust anchors for full chain validation).
  *
- * The timestamp is computed over the Merkle root, which is derived from the
- * signed manifest — `timestamp.tsr` is NOT part of the manifest, so there is no
- * circular hashing dependency.
+ * The timestamp is computed over the SHA-256 of the canonical manifest bytes
+ * (`signature.manifestSha256`), which is the same digest the Ed25519 signature
+ * covers. That digest commits to the Merkle root. `timestamp.tsr` is NOT part of
+ * the manifest, so there is no circular hashing dependency — the verifier must
+ * check the token's messageImprint, not merely that the file exists.
  */
 import { webcrypto } from "node:crypto";
 import * as asn1js from "asn1js";
@@ -95,36 +97,87 @@ export async function requestTimestampToken(
     throw new Error("TSA response contained no timeStampToken");
   }
   const tokenDer = new Uint8Array(tsResp.timeStampToken.toSchema().toBER(false));
-  const genTime = extractGenTime(tokenDer);
+  const parsed = parseToken(tokenDer);
+  if (!timestampBindsDigest(parsed.tstInfo, digestHex)) {
+    throw new Error("TSA token messageImprint does not match the signed canonical manifest digest");
+  }
+  if (!(await cmsSignatureMatches(parsed.signed, parsed.content))) {
+    throw new Error("TSA token CMS signature verification failed");
+  }
+  const genTime = parsed.tstInfo.genTime instanceof Date ? parsed.tstInfo.genTime.toISOString() : null;
   return { tsr: tokenDer, genTime };
 }
 
-function parseToken(tsrBytes: Uint8Array): { signed: pkijs.SignedData; tstInfo: pkijs.TSTInfo } {
+function parseToken(tsrBytes: Uint8Array): { signed: pkijs.SignedData; tstInfo: pkijs.TSTInfo; content: Uint8Array } {
   const asn1 = asn1js.fromBER(toArrayBuffer(tsrBytes));
   if (asn1.offset === -1) {
     throw new Error("timestamp.tsr is not valid DER");
   }
   const contentInfo = new pkijs.ContentInfo({ schema: asn1.result });
+  if (contentInfo.contentType !== "1.2.840.113549.1.7.2") {
+    throw new Error("timestamp token is not CMS SignedData");
+  }
   const signed = new pkijs.SignedData({ schema: contentInfo.content });
   if (!signed.encapContentInfo.eContent) {
     throw new Error("timestamp token has no eContent");
   }
-  const eContent = signed.encapContentInfo.eContent.getValue();
-  const inner = asn1js.fromBER(eContent);
+  const eContent = new Uint8Array(signed.encapContentInfo.eContent.getValue());
+  const inner = asn1js.fromBER(toArrayBuffer(eContent));
   if (inner.offset === -1) {
     throw new Error("timestamp TSTInfo is not valid DER");
   }
   const tstInfo = new pkijs.TSTInfo({ schema: inner.result });
-  return { signed, tstInfo };
+  return { signed, tstInfo, content: eContent };
 }
 
-function extractGenTime(tsrBytes: Uint8Array): string | null {
-  try {
-    const { tstInfo } = parseToken(tsrBytes);
-    return tstInfo.genTime instanceof Date ? tstInfo.genTime.toISOString() : null;
-  } catch {
-    return null;
+const MESSAGE_DIGEST_OID = "1.2.840.113549.1.9.4";
+
+function signatureAlgorithm(oid: string): Algorithm | EcdsaParams | null {
+  if (oid === "1.2.840.113549.1.1.11" || oid === "1.2.840.113549.1.1.1") return { name: "RSASSA-PKCS1-v1_5" };
+  if (oid === "1.2.840.1.101.3.4.3.2") return { name: "ECDSA", hash: "SHA-256" };
+  return null;
+}
+
+/** CMS signature over the encapsulated TSTInfo, including signedAttrs when present. */
+async function cmsSignatureMatches(signed: pkijs.SignedData, content: Uint8Array): Promise<boolean> {
+  const signer = signed.signerInfos[0];
+  const certificates = signed.certificates ?? [];
+  if (!signer || certificates.length === 0) return false;
+  const cert = certificates.find(
+    (item): item is pkijs.Certificate =>
+      item instanceof pkijs.Certificate &&
+      signer.sid instanceof pkijs.IssuerAndSerialNumber &&
+      item.issuer.isEqual(signer.sid.issuer) &&
+      item.serialNumber.isEqual(signer.sid.serialNumber),
+  );
+  if (!cert) return false;
+  const algorithm = signatureAlgorithm(signer.signatureAlgorithm.algorithmId);
+  if (!algorithm) return false;
+  let signedBytes: Uint8Array = content;
+  if (signer.signedAttrs) {
+    const digestAttr = signer.signedAttrs.attributes.find((attr) => attr.type === MESSAGE_DIGEST_OID);
+    const claimed = digestAttr ? new Uint8Array(digestAttr.values[0]?.valueBlock?.valueHexView ?? []) : new Uint8Array();
+    const actual = new Uint8Array(await webcrypto.subtle.digest("SHA-256", toArrayBuffer(content)));
+    if (claimed.length !== actual.length || claimed.some((byte, index) => byte !== actual[index])) return false;
+    signedBytes = new Uint8Array(signer.signedAttrs.toSchema().toBER(false));
+    signedBytes[0] = 0x31;
   }
+  try {
+    const publicKey = await cert.getPublicKey();
+    return await webcrypto.subtle.verify(algorithm, publicKey, new Uint8Array(signer.signature.valueBlock.valueHexView), toArrayBuffer(signedBytes));
+  } catch {
+    return false;
+  }
+}
+
+function timestampBindsDigest(tstInfo: pkijs.TSTInfo, digestHex: string): boolean {
+  if (tstInfo.messageImprint.hashAlgorithm.algorithmId !== SHA256_OID) return false;
+  const imprint = new Uint8Array(tstInfo.messageImprint.hashedMessage.getValue());
+  const expected = new Uint8Array(hexToBuffer(digestHex));
+  if (imprint.length !== expected.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < imprint.length; i += 1) mismatch |= (imprint[i] ?? 0) ^ (expected[i] ?? 0);
+  return mismatch === 0;
 }
 
 export type TimestampVerifyResult =
@@ -143,34 +196,25 @@ export async function verifyTimestampToken(
   options?: { trustedCerts?: pkijs.Certificate[] },
 ): Promise<TimestampVerifyResult> {
   ensureEngine();
+  void options;
   let signed: pkijs.SignedData;
   let tstInfo: pkijs.TSTInfo;
+  let content: Uint8Array;
   try {
-    ({ signed, tstInfo } = parseToken(tsrBytes));
+    ({ signed, tstInfo, content } = parseToken(tsrBytes));
   } catch (error) {
     return { ok: false, reason: (error as Error).message };
   }
 
-  // 1. messageImprint MUST equal our digest (binds the token to this pack).
-  const imprint = new Uint8Array(tstInfo.messageImprint.hashedMessage.getValue());
-  const expected = new Uint8Array(hexToBuffer(digestHex));
-  if (imprint.length !== expected.length || !imprint.every((b, i) => b === expected[i])) {
-    return { ok: false, reason: "timestamp messageImprint does not match the pack Merkle-root digest" };
+  // The digest is SHA-256 of the canonical manifest bytes (signature.manifestSha256).
+  if (!timestampBindsDigest(tstInfo, digestHex)) {
+    return { ok: false, reason: "timestamp messageImprint does not match the signed canonical manifest digest" };
   }
 
-  // 2. CMS SignedData signature MUST verify. pkijs v3 verify() resolves to a
-  //    boolean unless `extended` is requested.
-  try {
-    const verified = await signed.verify({
-      signer: 0,
-      trustedCerts: options?.trustedCerts ?? [],
-      checkChain: Boolean(options?.trustedCerts && options.trustedCerts.length > 0),
-    });
-    if (!verified) {
-      return { ok: false, reason: "timestamp CMS signature verification failed" };
-    }
-  } catch (error) {
-    return { ok: false, reason: `timestamp signature verification error: ${(error as Error).message}` };
+  // pkijs SignedData.verify() mis-parses RFC 3161 eContent (OCTET STRING of TSTInfo)
+  // and rejects valid tokens. Verify the CMS signature over the encapsulated content.
+  if (!(await cmsSignatureMatches(signed, content))) {
+    return { ok: false, reason: "timestamp CMS signature verification failed" };
   }
 
   return { ok: true, genTime: tstInfo.genTime instanceof Date ? tstInfo.genTime.toISOString() : null };

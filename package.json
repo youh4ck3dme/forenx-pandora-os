@@ -38,7 +38,6 @@
     "quality:gemini": "tsx scripts/gemini-quality-gate.ts",
     "test:regression:forenzx": "tsx scripts/regression/forenzx-workflow.ts"
   },
-  "main": "dist-electron/main.mjs",
   "build": {
     "appId": "com.pandora.browser",
     "productName": "PANDORA Browser",
@@ -59,6 +58,9 @@
     },
     "directories": {
       "output": "dist"
+    },
+    "extraMetadata": {
+      "main": "dist-electron/main.mjs"
     }
   },
   "dependencies": {
@@ -90,10 +92,13 @@
     "idb-keyval": "^6.2.2",
     "jszip": "^3.10.1",
     "mammoth": "^1.12.3",
+    "next": "15.5.26",
     "openai": "^6.15.0",
     "pdf-parse": "^2.4.5",
     "pdfjs-dist": "^6.3.289",
     "qrcode.react": "^4.2.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "react-easy-crop": "^6.2.3",
     "react-virtualized-auto-sizer": "^2.0.2",
     "react-window": "^2.2.4",
@@ -189,7 +194,6 @@
     "leva": "latest",
     "lucide-react": "^0.454.0",
     "maath": "latest",
-    "next": "15.5.26",
     "next-themes": "latest",
     "path": "latest",
     "pdf-lib": "1.17.1",
@@ -197,9 +201,7 @@
     "pkijs": "3.4.1",
     "postcss": "^8.5",
     "r3f-perf": "latest",
-    "react": "^18.2.0",
     "react-day-picker": "9.8.0",
-    "react-dom": "^18.2.0",
     "react-hook-form": "^7.60.0",
     "react-native": "latest",
     "react-native-reanimated": "latest",
