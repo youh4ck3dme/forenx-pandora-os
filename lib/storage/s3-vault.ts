@@ -114,6 +114,40 @@ export function clearVaultFallback(): void {
   fallbackVaultStore.clear();
 }
 
+export type EvidenceObjectState = "absent" | "pending" | "verified";
+
+type EvidenceKeyLookup = (storageKey: string) => Promise<EvidenceObjectState>;
+
+let evidenceKeyLookupOverride: EvidenceKeyLookup | null = null;
+
+/** Test seam. Production uses the evidence ledger when service-role config exists. */
+export function setEvidenceKeyStateLookup(lookup: EvidenceKeyLookup | null): void {
+  evidenceKeyLookupOverride = lookup;
+}
+
+async function evidenceObjectState(storageKey: string): Promise<EvidenceObjectState> {
+  if (evidenceKeyLookupOverride) return evidenceKeyLookupOverride(storageKey);
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return "absent";
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await supabaseAdmin
+    .from("evidence_items")
+    .select("hash_verification_status")
+    .eq("s3_object_key", storageKey)
+    .limit(5);
+  if (error) throw new Error("Stav dôkazového objektu sa nepodarilo overiť.");
+  const rows = data ?? [];
+  if (rows.some((row) => row.hash_verification_status === "verified")) return "verified";
+  if (rows.length > 0) return "pending";
+  return "absent";
+}
+
+/** Verified evidence keys are immutable. Pending keys may still be retried. */
+export async function assertEvidenceObjectMutable(storageKey: string): Promise<void> {
+  if ((await evidenceObjectState(storageKey)) === "verified") {
+    throw new Error("authoritative evidence object is immutable");
+  }
+}
+
 /**
  * Vráti počet položiek v lokálnej in-memory pamäti.
  */
@@ -233,6 +267,7 @@ export async function uploadCaseDocument(
   const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
   const folder = options.folder ?? "documents";
   const storageKey = `cases/${parsedCaseId.data}/${folder}/${calculatedSha256}-${sanitizedFileName}`;
+  await assertEvidenceObjectMutable(storageKey);
   const now = new Date().toISOString();
 
   const config = getS3Config();
@@ -399,12 +434,9 @@ export async function deleteCaseVault(caseId: string): Promise<void> {
   const config = getS3Config();
 
   if (!config) {
-    // Vyčistenie in-memory fallback store
-    for (const key of Array.from(fallbackVaultStore.keys())) {
-      if (key.startsWith(prefix)) {
-        fallbackVaultStore.delete(key);
-      }
-    }
+    const keys = Array.from(fallbackVaultStore.keys()).filter((key) => key.startsWith(prefix));
+    for (const key of keys) await assertEvidenceObjectMutable(key);
+    for (const key of keys) fallbackVaultStore.delete(key);
     return;
   }
 
@@ -416,6 +448,7 @@ export async function deleteCaseVault(caseId: string): Promise<void> {
       const text = await res.text();
       const keyMatches = text.match(/<Key>(.*?)<\/Key>/g) || [];
       const keys = keyMatches.map((m) => m.replace(/<\/?Key>/g, ""));
+      for (const key of keys) await assertEvidenceObjectMutable(key);
 
       await Promise.all(
         keys.map(async (key) => {
@@ -512,6 +545,7 @@ export async function getPresignedUploadUrl(
   } = {},
 ): Promise<string> {
   const validatedStorageKey = requireStorageKey(storageKey);
+  await assertEvidenceObjectMutable(validatedStorageKey);
   const expiresIn = requireExpiresIn(options.expiresIn ?? 300);
   const mimeType = mimeTypeSchema.parse(options.mimeType ?? "application/octet-stream");
   const sha256 = sha256Schema.parse(options.sha256 ?? "");
