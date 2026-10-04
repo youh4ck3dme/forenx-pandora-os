@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock3, Loader2 } from "lucide-react";
 import { Card } from "@/components/malte/Shell";
 import type { ForensicWorkflowRun } from "@/lib/forza/forensic-workflow.types";
@@ -12,6 +12,14 @@ type Props = {
   onCompleted?: () => void;
 };
 
+const TERMINAL_JOB_STATUS = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+  "error",
+  "done",
+]);
+
 function duration(run: ForensicWorkflowRun) {
   const milliseconds =
     run.durationMs ??
@@ -24,33 +32,63 @@ export function ForensicWorkflowInspector({ caseId, loadRuns, loadForenZXJobs, o
   const [runs, setRuns] = useState<ForensicWorkflowRun[]>([]);
   const [forenzxJobs, setForenzxJobs] = useState<ForenZXJob[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const inFlightRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
     let completed = false;
+    let timer: number | undefined;
+
+    const runActive = (run: ForensicWorkflowRun) =>
+      run.status === "queued" || run.status === "running";
+    const jobActive = (job: ForenZXJob) =>
+      !TERMINAL_JOB_STATUS.has((job.status ?? "").toLowerCase());
+
+    const stop = () => {
+      if (timer !== undefined) {
+        window.clearInterval(timer);
+        timer = undefined;
+      }
+    };
+
     const refresh = async () => {
+      // Overlap guard: preskočíme tik, ak predchádzajúci ešte beží (odozvy
+      // môžu byť 30-50 s), aby sa requesty nehromadili a neabortovali.
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
       try {
         const result = await loadRuns(caseId);
         if (!mounted) return;
         setRuns(result.runs);
+        let jobs: ForenZXJob[] = [];
         if (loadForenZXJobs) {
           const forenzxResult = await loadForenZXJobs(caseId);
-          if (mounted) setForenzxJobs(forenzxResult.jobs);
+          if (!mounted) return;
+          jobs = forenzxResult.jobs;
+          setForenzxJobs(jobs);
         }
         setError(null);
         if (!completed && result.runs.some((run) => run.status === "completed")) {
           completed = true;
           onCompleted?.();
         }
+        // Stop-when-idle: keď už existuje práca a žiadna nie je aktívna,
+        // zastavíme polling (na prázdnom prípade ešte čakáme na beh).
+        const hasAny = result.runs.length > 0 || jobs.length > 0;
+        if (hasAny && !result.runs.some(runActive) && !jobs.some(jobActive)) {
+          stop();
+        }
       } catch {
         if (mounted) setError("Stav trvalého spracovania sa nepodarilo načítať.");
+      } finally {
+        inFlightRef.current = false;
       }
     };
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 4000);
+    timer = window.setInterval(() => void refresh(), 4000);
     return () => {
       mounted = false;
-      window.clearInterval(timer);
+      stop();
     };
   }, [caseId, loadRuns, loadForenZXJobs, onCompleted]);
 

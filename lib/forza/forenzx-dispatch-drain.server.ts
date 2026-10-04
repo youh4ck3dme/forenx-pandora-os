@@ -33,9 +33,17 @@ export async function drainForenzxDispatchOutbox(
   const webhookUrl = process.env.FORENZX_EVIDENCE_WEBHOOK_URL?.trim();
   const webhookSecret = process.env.FORENZX_WEBHOOK_SECRET?.trim();
   if (!webhookUrl || !webhookSecret) {
+    const reason = "CONFIG_MISSING: FORENZX_EVIDENCE_WEBHOOK_URL or FORENZX_WEBHOOK_SECRET is not configured";
+    if (options.evidenceId) {
+      await supabaseAdmin
+        .from("forenzx_dispatch_outbox")
+        .update({ last_error: reason, updated_at: new Date().toISOString() })
+        .eq("evidence_id", options.evidenceId)
+        .eq("status", "pending");
+    }
     return {
       skipped: true,
-      reason: "FORENZX_EVIDENCE_WEBHOOK_URL or FORENZX_WEBHOOK_SECRET is not configured; pending rows were left untouched",
+      reason,
     };
   }
 

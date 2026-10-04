@@ -73,7 +73,13 @@ export const getSystemHealth = createServerFn({ method: "GET", id: "health/getSy
   .handler(async ({ context }): Promise<SystemHealth> => {
     const { supabase, userId } = context;
 
-    const { data: isAdmin, error: roleError } = await supabase.rpc("has_role", {
+    // has_role EXECUTE je odobraté roli `authenticated` (migrácia 2026-10-03).
+    // Admin gate a admin-only čítania preto cez service klienta; `userId` je
+    // z overeného Bearer tokenu, takže nejde o „role oracle" eskaláciu.
+    const { supabaseAdmin } =
+      await import("@/integrations/supabase/client.server");
+
+    const { data: isAdmin, error: roleError } = await supabaseAdmin.rpc("has_role", {
       _user_id: userId,
       _role: "admin",
     });
@@ -96,8 +102,6 @@ export const getSystemHealth = createServerFn({ method: "GET", id: "health/getSy
 
     // 2) Stav pripojení (pooler / Postgres)
     let stats: DbHealth | undefined;
-    const { supabaseAdmin } =
-      await import("@/integrations/supabase/client.server");
     const { data: statsData, error: statsError } =
       await supabaseAdmin.rpc("db_health_stats");
     if (statsError) {
@@ -119,7 +123,7 @@ export const getSystemHealth = createServerFn({ method: "GET", id: "health/getSy
       recent: [],
     };
 
-    const { data: logs, error: logsError } = await supabase
+    const { data: logs, error: logsError } = await supabaseAdmin
       .from("ai_feature_logs")
       .select(
         "id, created_at, feature, success, duration_ms, provider, model, error_message, input_summary",
@@ -167,7 +171,7 @@ export const getSystemHealth = createServerFn({ method: "GET", id: "health/getSy
     }
 
     const errors: SystemHealth["errors"] = { recent: [] };
-    const { data: errorRows, error: errorLogsError } = await supabase
+    const { data: errorRows, error: errorLogsError } = await supabaseAdmin
       .from("error_logs")
       .select("id, created_at, route, message, severity, source")
       .order("created_at", { ascending: false })

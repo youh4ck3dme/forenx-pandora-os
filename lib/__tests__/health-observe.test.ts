@@ -23,12 +23,20 @@ vi.mock("@supabase/supabase-js", () => ({
   })),
 }));
 
+// Výsledky select() pre in-line agregáciu metrík (GET). Testy ich môžu prepísať.
+let selectResults: Record<string, { data?: unknown; error?: unknown; count?: number }>;
+
 vi.mock("@/integrations/supabase/client.server", () => ({
   supabaseAdmin: {
-    // P0-09: zdieľaný limiter volá rate_limit_hit cez admin klienta.
+    // P0-09: zdieľaný limiter volá rate_limit_hit cez admin klienta;
+    // GET admin gate volá has_role cez admin klienta.
     rpc: (...args: unknown[]) => rpcSpy(...args),
     from: (table: string) => ({
       insert: (row: unknown) => insertSpy(table, row),
+      select: (_cols?: unknown, _opts?: unknown) => ({
+        gte: async () =>
+          selectResults[table] ?? { data: [], error: null, count: 0 },
+      }),
     }),
   },
 }));
@@ -62,12 +70,17 @@ function metricsOrRateLimit(name: string, args?: Record<string, unknown>) {
     rateCounters.set(key, hits);
     return { data: { allowed: hits <= limit, remaining: Math.max(limit - hits, 0) }, error: null };
   }
+  if (name === "has_role") {
+    // Default: volajúci je admin.
+    return { data: true, error: null };
+  }
   return { data: { window_hours: 24, alerts: { ai_timeouts_over_60s: false } }, error: null };
 }
 
 beforeEach(() => {
   resetReportRateLimiter();
   rateCounters = new Map();
+  selectResults = {};
   insertSpy = vi.fn().mockResolvedValue({ error: null });
   rpcSpy = vi.fn().mockImplementation(async (name: string, args?: Record<string, unknown>) =>
     metricsOrRateLimit(name, args),
@@ -179,20 +192,53 @@ describe("P0-04 — /api/health/observe", () => {
     expect(insertSpy).not.toHaveBeenCalled();
   });
 
-  it("GET vracia metriky administrátorovi", async () => {
+  it("GET vracia metriky administrátorovi (admin gate cez service klienta)", async () => {
+    selectResults = {
+      ai_usage: {
+        data: [
+          { status: "ok", error_code: null, created_at: "2026-10-04T00:00:00Z", finished_at: "2026-10-04T00:00:01Z" },
+          { status: "failed", error_code: "timeout", created_at: "2026-10-04T00:00:00Z", finished_at: null },
+        ],
+        error: null,
+      },
+      evidence_items: {
+        data: [{ hash_verification_status: "verified" }, { hash_verification_status: "mismatch" }],
+        error: null,
+      },
+      error_logs: { count: 3, error: null },
+    };
     const res = await GET(request("/api/health/observe", { token: TOKEN }));
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.metrics).toHaveProperty("alerts");
-    expect(rpcSpy).toHaveBeenCalledWith("health_metrics");
+    expect(json.metrics.ai.total).toBe(2);
+    expect(json.metrics.ai.failed).toBe(1);
+    expect(json.metrics.ai.timeouts_over_60s).toBe(1);
+    expect(json.metrics.s3.uploads).toBe(2);
+    expect(json.metrics.s3.failed).toBe(1);
+    expect(json.metrics.supabase.errors_24h).toBe(3);
+    expect(json.metrics.alerts.ai_timeouts_over_60s).toBe(true);
+    expect(json.metrics.alerts.supabase_errors_high).toBe(false);
+    // has_role sa overuje cez service (admin) klienta so správnym userId.
+    expect(rpcSpy).toHaveBeenCalledWith("has_role", { _user_id: OWNER_ID, _role: "admin" });
+    expect(rpcSpy).not.toHaveBeenCalledWith("health_metrics");
   });
 
-  it("GET pre ne-admina (RPC odmietne) → 403", async () => {
-    rpcSpy = vi.fn().mockResolvedValue({
-      data: null,
-      error: { message: "Prístup majú iba administrátori." },
+  it("GET pre ne-admina (has_role → false) → 403", async () => {
+    rpcSpy = vi.fn().mockImplementation(async (name: string, args?: Record<string, unknown>) => {
+      if (name === "has_role") return { data: false, error: null };
+      return metricsOrRateLimit(name, args);
     });
     const res = await GET(request("/api/health/observe", { token: TOKEN }));
     expect(res.status).toBe(403);
+  });
+
+  it("GET pri zlyhaní has_role RPC → 500 (fail-closed)", async () => {
+    rpcSpy = vi.fn().mockImplementation(async (name: string, args?: Record<string, unknown>) => {
+      if (name === "has_role") return { data: null, error: { message: "permission denied for function has_role" } };
+      return metricsOrRateLimit(name, args);
+    });
+    const res = await GET(request("/api/health/observe", { token: TOKEN }));
+    expect(res.status).toBe(500);
   });
 });
