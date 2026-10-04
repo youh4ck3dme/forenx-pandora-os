@@ -8,6 +8,7 @@ import {
   sha256OfStream,
   verifyEvidenceItem,
   verifyAndDrain,
+  confirmEvidenceByteBinding,
   type ObjectSource,
   type VerificationResult,
 } from "../storage/evidence-verify";
@@ -144,5 +145,15 @@ describe("verifyAndDrain", () => {
     });
     expect(results.map((r) => r.status)).toEqual(["mismatch", "verified"]);
     expect(drained).toEqual(["e1"]);
+  });
+});
+
+describe("confirmEvidenceByteBinding", () => {
+  it("accepts the original bytes and rejects a same-key substitution", async () => {
+    const original = await confirmEvidenceByteBinding([item], async () => ({ ok: true, body: streamOf(CONTENT) }));
+    expect(original).toEqual({ ok: true });
+    const tampered = await confirmEvidenceByteBinding([item], async () => ({ ok: true, body: streamOf("TAMPERED-EVIDENCE-BYTES") }));
+    expect(tampered).toEqual({ ok: false, id: "e1", status: "mismatch" });
+    expect(item.sha256_hash).toBe(SHA);
   });
 });

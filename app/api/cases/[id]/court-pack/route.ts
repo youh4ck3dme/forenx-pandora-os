@@ -15,6 +15,8 @@ import { join } from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateVaultRequest } from "@/lib/storage/vault-auth";
 import { listLedgerEvidence, loadOwnedCaseSummary } from "@/lib/storage/evidence-ledger";
+import { confirmEvidenceByteBinding } from "@/lib/storage/evidence-verify";
+import { downloadCaseDocument } from "@/lib/storage/s3-vault";
 import { buildCourtPack } from "@/lib/court/pack-builder";
 import { getCourtSigningContext, courtGradeEnabled } from "@/lib/court/signing-context";
 
@@ -65,6 +67,33 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     const verified = ledger.filter((row) => row.hash_verification_status === "verified");
+    const binding = await confirmEvidenceByteBinding(
+      verified.map((row) => ({
+        id: row.id,
+        s3_object_key: row.s3_object_key,
+        sha256_hash: row.sha256_hash,
+        file_size: row.file_size,
+      })),
+      async (key) => {
+        const doc = await downloadCaseDocument(key);
+        if (!doc) return { ok: false, status: 404 };
+        return {
+          ok: true,
+          body: new ReadableStream({
+            start(controller) {
+              controller.enqueue(new Uint8Array(doc.buffer));
+              controller.close();
+            },
+          }),
+        };
+      },
+    );
+    if (!binding.ok) {
+      return NextResponse.json(
+        { error: "Aktuálne bajty dôkazu nezodpovedajú autoritatívnemu SHA-256." },
+        { status: 409 },
+      );
+    }
     const evidence = verified.map((row) => ({ path: row.file_name, sha256: row.sha256_hash }));
 
     const chainOfCustody = {

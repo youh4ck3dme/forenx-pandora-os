@@ -177,3 +177,24 @@ export async function verifyAndDrain(
   }
   return results;
 }
+
+/**
+ * Re-hash current storage bytes before an authoritative export.
+ * A previously stored `verified` status is not proof that the object is unchanged.
+ */
+export async function confirmEvidenceByteBinding(
+  items: Array<{ id: string; s3_object_key: string; sha256_hash: string; file_size: number }>,
+  openObject: ObjectSource,
+): Promise<{ ok: true } | { ok: false; id: string; status: "mismatch" | "object_missing" | "error" }> {
+  for (const item of items) {
+    const object = await openObject(item.s3_object_key);
+    if (!object.ok) {
+      return { ok: false, id: item.id, status: object.status === 404 ? "object_missing" : "error" };
+    }
+    const actual = await sha256OfStream(object.body);
+    if (actual.sha256 !== item.sha256_hash.toLowerCase() || actual.size !== item.file_size) {
+      return { ok: false, id: item.id, status: "mismatch" };
+    }
+  }
+  return { ok: true };
+}

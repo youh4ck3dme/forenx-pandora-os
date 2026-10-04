@@ -19,6 +19,8 @@ const h = vi.hoisted(() => ({
   signing: null as unknown,
   ledgerCalls: [] as Array<[string, string]>,
   caseCalls: [] as Array<[string, string, string]>,
+  binding: { ok: true } as { ok: true } | { ok: false; id: string; status: string },
+  bindingCalls: [] as unknown[],
 }));
 
 vi.mock("@/lib/storage/vault-auth", () => ({
@@ -42,6 +44,15 @@ vi.mock("@/lib/court/pack-builder", async () => {
     buildCourtPack: vi.fn((input: Parameters<typeof actual.buildCourtPack>[0]) => actual.buildCourtPack(input)),
   };
 });
+vi.mock("@/lib/storage/evidence-verify", () => ({
+  confirmEvidenceByteBinding: vi.fn(async (items: unknown) => {
+    h.bindingCalls.push(items);
+    return h.binding;
+  }),
+}));
+vi.mock("@/lib/storage/s3-vault", () => ({
+  downloadCaseDocument: vi.fn(async () => null),
+}));
 vi.mock("@/lib/court/signing-context", () => ({
   courtGradeEnabled: () => h.courtGrade,
   getCourtSigningContext: () => h.signing,
@@ -145,6 +156,8 @@ beforeEach(() => {
   h.courtGrade = true;
   h.ledgerCalls = [];
   h.caseCalls = [];
+  h.binding = { ok: true };
+  h.bindingCalls = [];
   vi.mocked(buildCourtPack).mockClear();
 });
 
@@ -260,5 +273,23 @@ describe("Gate 5 — Court Pack route provenance & E2E", () => {
     expect(h.caseCalls).toEqual([["trusted-token", "user-1", "foreign-case"]]);
     expect(buildCourtPack).not.toHaveBeenCalled();
     expect(res.headers.get("Content-Type")).toContain("application/json");
+  });
+});
+
+describe("court pack byte binding", () => {
+  it("rejects a verified ledger row when current storage bytes no longer match", async () => {
+    h.ledger = [ledgerRow({ file_name: "verified-a.bin", sha256_hash: "a".repeat(64), s3_object_key: "cases/case-1/evidence/original.bin" })];
+    h.binding = { ok: false, id: "e1", status: "mismatch" };
+    const res = await post("case-1");
+    expect(res.status).toBe(409);
+    expect(buildCourtPack).not.toHaveBeenCalled();
+    expect(h.bindingCalls[0]).toEqual([
+      {
+        id: "e1",
+        s3_object_key: "cases/case-1/evidence/original.bin",
+        sha256_hash: "a".repeat(64),
+        file_size: 10,
+      },
+    ]);
   });
 });
