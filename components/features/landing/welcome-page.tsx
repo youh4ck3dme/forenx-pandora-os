@@ -62,9 +62,9 @@ export function WelcomePage() {
       <GL hovering={hovering} />
 
       {/* Gradient Overlays */}
-      <div className="absolute inset-0 z-[1] pointer-events-none">
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/50" />
-        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black to-transparent" />
+      <div className="absolute inset-0 z-1 pointer-events-none">
+        <div className="absolute inset-0 bg-linear-to-t from-black via-transparent to-black/50" />
+        <div className="absolute bottom-0 left-0 right-0 h-32 bg-linear-to-t from-black to-transparent" />
       </div>
 
       {/* Main Content */}
@@ -102,7 +102,7 @@ export function WelcomePage() {
           <h1 className="text-5xl sm:text-7xl lg:text-8xl font-black tracking-tighter mb-6 leading-[0.9]">
             <span className="text-foreground">Privacy</span>
             <br />
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-500 via-blue-500 to-cyan-400 animate-gradient">
+            <span className="bg-clip-text text-transparent bg-linear-to-r from-purple-500 via-blue-500 to-cyan-400 animate-gradient">
               Without Limits
             </span>
           </h1>
@@ -119,11 +119,11 @@ export function WelcomePage() {
             }`}
         >
           <a
-            href="/auth/register"
-            className="group relative px-8 py-[14px] rounded-full font-bold text-lg overflow-hidden transition-transform hover:scale-105 active:scale-95"
+            href="/auth/register/"
+            className="group relative px-8 py-3.5 rounded-full font-bold text-lg overflow-hidden transition-transform hover:scale-105 active:scale-95"
           >
-            <div className="absolute inset-0 bg-gradient-to-r from-purple-600 via-blue-500 to-cyan-400" />
-            <div className="absolute inset-0 bg-gradient-to-r from-purple-600 via-blue-500 to-cyan-400 blur-xl opacity-50 group-hover:opacity-80 transition-opacity" />
+            <div className="absolute inset-0 bg-linear-to-r from-purple-600 via-blue-500 to-cyan-400" />
+            <div className="absolute inset-0 bg-linear-to-r from-purple-600 via-blue-500 to-cyan-400 blur-xl opacity-50 group-hover:opacity-80 transition-opacity" />
             <span className="relative flex items-center gap-2 text-white">
               <Fingerprint className="w-5 h-5" />
               Setup Biometrics
@@ -131,8 +131,8 @@ export function WelcomePage() {
           </a>
 
           <a
-            href="/auth/login"
-            className="group px-8 py-[14px] rounded-full font-bold text-lg border border-border bg-black/50 backdrop-blur-sm hover:bg-foreground/10 hover:border-purple-500/50 transition-all"
+            href="/auth/login/"
+            className="group px-8 py-3.5 rounded-full font-bold text-lg border border-border bg-black/50 backdrop-blur-sm hover:bg-foreground/10 hover:border-purple-500/50 transition-all"
           >
             <span className="flex items-center gap-2 text-foreground">
               <Zap className="w-5 h-5 text-purple-400" />

@@ -41,7 +41,7 @@ export async function loginWithPasskey(
   // Step 1: Fetch challenge and options from server
   let options: PublicKeyCredentialRequestOptionsJSON;
   try {
-    const challengeRes = await fetch("/api/auth/webauthn/challenge", {
+    const challengeRes = await fetch("/api/auth/webauthn/challenge/", {
       method: "GET",
       credentials: "same-origin",
       headers: { Accept: "application/json" },
@@ -78,7 +78,7 @@ export async function loginWithPasskey(
 
   // Step 3: Send signed response to server for cryptographic verification
   try {
-    const verifyRes = await fetch("/api/auth/webauthn/verify", {
+    const verifyRes = await fetch("/api/auth/webauthn/verify/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
@@ -91,9 +91,14 @@ export async function loginWithPasskey(
 
     if (!verifyRes.ok) {
       const body = (await verifyRes.json().catch(() => ({}))) as Record<string, unknown>;
+      const rawError = typeof body.error === "string" ? body.error : "Overenie passkey kľúča zlyhalo.";
+      const friendlyError =
+        rawError === "Credential not found."
+          ? "Tento Passkey nie je priradený k žiadnemu účtu v systéme. Prihláste sa najprv pomocou e-mailu a hesla."
+          : rawError;
       return {
         ok: false,
-        reason: typeof body.error === "string" ? body.error : "Overenie passkey kľúča zlyhalo.",
+        reason: friendlyError,
       };
     }
 
@@ -130,7 +135,7 @@ export async function registerPasskey(
   // Step 1: Fetch creation options from server
   let options: PublicKeyCredentialCreationOptionsJSON;
   try {
-    const optionsRes = await fetch("/api/auth/webauthn/register/options", {
+    const optionsRes = await fetch("/api/auth/webauthn/register/options/", {
       method: "GET",
       credentials: "same-origin",
       headers: { Accept: "application/json" },
@@ -168,7 +173,7 @@ export async function registerPasskey(
 
   // Step 3: Send registration response to server for verification and storage
   try {
-    const verifyRes = await fetch("/api/auth/webauthn/register/verify", {
+    const verifyRes = await fetch("/api/auth/webauthn/register/verify/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",

@@ -72,7 +72,7 @@ export function NewCaseForm({
         toast.error("Relácia vypršala. Prihláste sa znova.", {
           action: {
             label: "Prihlásiť sa",
-            onClick: () => router.push("/auth/login"),
+            onClick: () => router.push("/auth/login/"),
           },
         });
         return;
