@@ -52,7 +52,7 @@ export function AdmissibilityAuditView({
                 Procesná čistota
               </span>
             </div>
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-xl border border-border bg-card text-card-foreground p-4">
               <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-400">
                 <Scale className="h-4 w-4" /> {auditStatusLabel(audit.status)}
               </p>

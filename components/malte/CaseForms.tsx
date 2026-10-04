@@ -19,7 +19,7 @@ import {
 } from "@/lib/case-data";
 
 export const inputClass =
-  "h-10 w-full rounded-xl border border-border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring";
+  "h-10 w-full rounded-xl border border-border bg-card text-card-foreground px-3 text-sm outline-none focus:ring-2 focus:ring-ring";
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (

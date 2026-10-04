@@ -53,7 +53,7 @@ export function CustodyLedgerViewer({
               <span className="absolute left-0 top-1 flex h-6 w-6 items-center justify-center rounded-full border border-cyan-500/50 bg-cyan-500/15 font-mono text-[10px] font-bold text-cyan-300">
                 {entry.index}
               </span>
-              <article className="rounded-xl border border-border bg-card p-3">
+              <article className="rounded-xl border border-border bg-card text-card-foreground p-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <p className="text-xs font-bold">{actionLabel[entry.action]}</p>

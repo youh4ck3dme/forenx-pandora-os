@@ -11,7 +11,7 @@ import { loginWithPasskey } from "@/lib/auth/webauthn.client";
 import { cn } from "@/lib/utils";
 
 const inputClass =
-  "h-11 w-full rounded-xl border border-border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring";
+  "h-11 w-full rounded-xl border border-border bg-card text-card-foreground px-3 text-sm outline-none focus:ring-2 focus:ring-ring";
 
 type Mode = "signin" | "signup" | "reset";
 

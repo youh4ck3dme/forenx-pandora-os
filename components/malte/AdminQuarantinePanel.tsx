@@ -65,7 +65,7 @@ function NewCaseInline({
       <label className="min-w-0 flex-1 space-y-1">
         <span className="text-label">Alebo nový prípad</span>
         <input
-          className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+          className="h-11 w-full rounded-xl border border-border bg-card text-card-foreground px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
           placeholder="Názov prípadu"
           value={name}
           disabled={disabled || busy}
@@ -228,7 +228,7 @@ export function AdminQuarantinePanel() {
         <label className="block space-y-1">
           <span className="text-label">Cieľový prípad</span>
           <select
-            className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            className="h-11 w-full rounded-xl border border-border bg-card text-card-foreground px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             value={caseId}
             onChange={(e) => setCaseId(e.target.value)}
           >

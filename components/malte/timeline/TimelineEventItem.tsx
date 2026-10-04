@@ -215,7 +215,7 @@ export function TimelineEventItem({
 
       {/* PRAVÁ ČASŤ: FORENZNÁ REALITA & DEMASKOVANIE KLAMSTIEV */}
       <div className="lg:col-span-5 space-y-3">
-        <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-md">
+        <div className="rounded-xl border border-border bg-card text-card-foreground p-4 space-y-3 shadow-md">
           <div className="flex items-center justify-between border-b border-border/60 pb-2">
             <span className="text-[10px] font-mono font-bold text-primary uppercase">
               {currentEpisode.date} · {currentEpisode.location}

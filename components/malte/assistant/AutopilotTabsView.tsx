@@ -75,7 +75,7 @@ export function AutopilotTabsView({
       {/* ═══ RÝCHLY PREPÍNAČ POHĽADOV PRE OBHAJCU (§ 125 TP & TOKY) ═══ */}
       <div
         id="tour-switcher"
-        className="rounded-xl border border-border bg-card/80 p-2 shadow-xs space-y-1.5"
+        className="rounded-xl border border-border bg-card/80 text-card-foreground p-2 shadow-xs space-y-1.5"
       >
         <div className="flex items-center justify-between px-1 text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
           <span>Forenzný Switcher pre obhajobu</span>
@@ -252,7 +252,7 @@ export function AutopilotTabsView({
                       key={number}
                       className={`rounded-xl border p-3.5 space-y-2.5 text-xs shadow-xs ${
                         bound
-                          ? "border-border bg-card"
+                          ? "border-border bg-card text-card-foreground"
                           : "border-amber-500/30 bg-amber-500/5"
                       }`}
                     >
@@ -444,7 +444,7 @@ export function AutopilotTabsView({
                 return (
                   <div
                     key={c.id}
-                    className="rounded-xl border border-border bg-card p-3 space-y-2.5 text-xs shadow-xs"
+                    className="rounded-xl border border-border bg-card text-card-foreground p-3 space-y-2.5 text-xs shadow-xs"
                   >
                     {/* Header: Topic & Severity */}
                     <div className="flex items-center justify-between gap-2 border-b border-border/50 pb-2">
@@ -563,7 +563,7 @@ export function AutopilotTabsView({
               <>
                 {/* KPI Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <div className="rounded-xl border border-border bg-card p-2.5 text-center">
+                  <div className="rounded-xl border border-border bg-card text-card-foreground p-2.5 text-center">
                     <span className="text-[10px] uppercase font-mono text-muted-foreground">
                       Celkový objem
                     </span>
@@ -599,7 +599,7 @@ export function AutopilotTabsView({
                     </p>
                   </div>
 
-                  <div className="rounded-xl border border-border bg-card p-2.5 text-center">
+                  <div className="rounded-xl border border-border bg-card text-card-foreground p-2.5 text-center">
                     <span className="text-[10px] uppercase font-mono text-muted-foreground">
                       Podiel hotovosti
                     </span>
@@ -645,7 +645,7 @@ export function AutopilotTabsView({
                     {dossier.financialAnalysis.suspiciousFlows.map((flow) => (
                       <div
                         key={flow.id}
-                        className="rounded-xl border border-border bg-card p-3 space-y-2 text-xs shadow-xs"
+                        className="rounded-xl border border-border bg-card text-card-foreground p-3 space-y-2 text-xs shadow-xs"
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
@@ -832,7 +832,7 @@ export function AutopilotTabsView({
               {(dossier.defenseAttack?.attacks ?? []).map((atk) => (
                 <div
                   key={atk.id}
-                  className="rounded-xl border border-border bg-card p-3 space-y-2 text-xs"
+                  className="rounded-xl border border-border bg-card text-card-foreground p-3 space-y-2 text-xs"
                 >
                   <div className="rounded-lg bg-rose-500/10 border border-rose-500/20 p-2.5">
                     <p className="text-[10px] font-bold text-rose-400 uppercase tracking-wider">

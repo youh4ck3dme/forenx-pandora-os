@@ -97,7 +97,7 @@ export function DeleteRecordButton({
               autoFocus
               value={confirmation}
               onChange={(event) => setConfirmation(event.target.value)}
-              className="h-10 w-full rounded-lg border border-border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              className="h-10 w-full rounded-lg border border-border bg-card text-card-foreground px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               aria-label={`Napíšte názov prípadu ${label}`}
             />
           </label>

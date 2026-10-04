@@ -210,7 +210,7 @@ export function DetectorSheet({
               <SheetDescription>{result.subtitle}</SheetDescription>
             </SheetHeader>
 
-            <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4">
+            <div className="flex items-center gap-3 rounded-2xl border border-border bg-card text-card-foreground p-4">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-risk-high/12 text-risk-high">
                 <ShieldAlert className="h-5 w-5" aria-hidden />
               </span>

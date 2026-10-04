@@ -69,7 +69,7 @@ export function QuickTasksSection({
             className={`w-full rounded-lg border p-3 text-left transition-colors ${
               task === t
                 ? "border-primary bg-primary/10"
-                : "border-border bg-card hover:bg-muted/50"
+                : "border-border bg-card text-card-foreground hover:bg-muted/50"
             }`}
           >
             <p className="text-sm font-medium">{TASK_LABELS[t]}</p>
@@ -89,7 +89,7 @@ export function QuickTasksSection({
                 className={`w-full rounded-md border p-2 text-left text-xs ${
                   alertId === a.id
                     ? "border-primary bg-primary/15"
-                    : "border-border bg-card"
+                    : "border-border bg-card text-card-foreground"
                 }`}
               >
                 <span className="font-semibold">{a.title}</span>
