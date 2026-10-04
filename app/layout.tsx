@@ -100,6 +100,7 @@ export default async function RootLayout({
         <link rel="apple-touch-icon" href="/icons/icon.svg" />
         <script
           nonce={nonce}
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem("malte:theme")||"light";var d=t==="dark"||(t==="system"&&window.matchMedia("(prefers-color-scheme:dark)").matches);document.documentElement.classList.toggle("dark",d);document.documentElement.style.colorScheme=d?"dark":"light";if(window.self!==window.top){document.documentElement.classList.add("is-embedded")}}catch(e){}})()`,
           }}
