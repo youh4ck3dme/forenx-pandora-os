@@ -3,9 +3,9 @@
   "version": "2.0.0",
   "private": true,
   "scripts": {
-    "cap:build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next build && npx cap sync",
-    "cap:ios": "next build && npx cap sync ios && npx cap open ios",
-    "cap:android": "next build && npx cap sync android && npx cap open android",
+    "cap:build": "node ../node_modules/cross-env/src/bin/cross-env.js CAPACITOR_BUILD=true NODE_OPTIONS=--max-old-space-size=4096 npm --prefix .. run build && npx cap sync",
+    "cap:ios": "node ../node_modules/cross-env/src/bin/cross-env.js CAPACITOR_BUILD=true NODE_OPTIONS=--max-old-space-size=4096 npm --prefix .. run build && npx cap sync ios && npx cap open ios",
+    "cap:android": "node ../node_modules/cross-env/src/bin/cross-env.js CAPACITOR_BUILD=true NODE_OPTIONS=--max-old-space-size=4096 npm --prefix .. run build && npx cap sync android && npx cap open android",
     "mobile:profile:local": "node scripts/mobile/set-profile.mjs local",
     "mobile:profile:staging": "node scripts/mobile/set-profile.mjs staging",
     "mobile:profile:prod": "node scripts/mobile/set-profile.mjs production",

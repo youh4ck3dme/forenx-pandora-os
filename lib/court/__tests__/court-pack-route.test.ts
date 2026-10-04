@@ -56,21 +56,7 @@ vi.mock("@/lib/court/timestamp", () => ({
     const pkijs = await import("pkijs");
     pkijs.setEngine("node-webcrypto", new pkijs.CryptoEngine({ name: "node-webcrypto", crypto: webcrypto as unknown as Crypto }));
     const digest = Buffer.from(digestHex, "hex");
-    const keys = await webcrypto.subtle.generateKey(
-      { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
-      true,
-      ["sign", "verify"],
-    );
-    const cert = new pkijs.Certificate();
-    cert.version = 2;
-    cert.serialNumber = new asn1js.Integer({ value: 1 });
-    const dn = [new pkijs.AttributeTypeAndValue({ type: "2.5.4.3", value: new asn1js.Utf8String({ value: "Test TSA" }) })];
-    cert.issuer.typesAndValues.push(...dn);
-    cert.subject.typesAndValues.push(...dn);
-    cert.notBefore.value = new Date("2020-01-01T00:00:00Z");
-    cert.notAfter.value = new Date("2030-01-01T00:00:00Z");
-    await cert.subjectPublicKeyInfo.importKey(keys.publicKey);
-    await cert.sign(keys.privateKey, "SHA-256");
+    const { certificate, privateKey, root } = tsaFixture;
     const tst = new pkijs.TSTInfo({
       version: 1,
       policy: "1.2.3.4",
@@ -88,10 +74,10 @@ vi.mock("@/lib/court/timestamp", () => ({
         eContentType: "1.2.840.113549.1.9.16.1.4",
         eContent: new asn1js.OctetString({ valueHex: tstBer.buffer.slice(tstBer.byteOffset, tstBer.byteOffset + tstBer.byteLength) }),
       }),
-      certificates: [cert],
-      signerInfos: [new pkijs.SignerInfo({ version: 1, sid: new pkijs.IssuerAndSerialNumber({ issuer: cert.issuer, serialNumber: cert.serialNumber }) })],
+      certificates: [certificate, root],
+      signerInfos: [new pkijs.SignerInfo({ version: 1, sid: new pkijs.IssuerAndSerialNumber({ issuer: certificate.issuer, serialNumber: certificate.serialNumber }) })],
     });
-    await signed.sign(keys.privateKey, 0, "SHA-256", tstBer.buffer.slice(tstBer.byteOffset, tstBer.byteOffset + tstBer.byteLength));
+    await signed.sign(privateKey, 0, "SHA-256", tstBer.buffer.slice(tstBer.byteOffset, tstBer.byteOffset + tstBer.byteLength));
     const token = new pkijs.ContentInfo({ contentType: "1.2.840.113549.1.7.2", content: signed.toSchema(true) });
     return { tsr: new Uint8Array(token.toSchema().toBER(false)), genTime: "2026-01-01T00:00:00.000Z" };
   }),
@@ -100,6 +86,48 @@ vi.mock("@/lib/court/timestamp", () => ({
 const VERIFY_MJS = join(process.cwd(), "lib", "court", "verify.mjs");
 const KID = "route-kid";
 let tmp: string;
+let tsaFixture: Awaited<ReturnType<typeof createTsaFixture>>;
+
+async function createTsaFixture() {
+  const { webcrypto } = await import("node:crypto");
+  const asn1js = await import("asn1js");
+  const pkijs = await import("pkijs");
+  pkijs.setEngine("node-webcrypto", new pkijs.CryptoEngine({ name: "node-webcrypto", crypto: webcrypto as unknown as Crypto }));
+  const algorithm = { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" } as const;
+  const usages: KeyUsage[] = ["sign", "verify"];
+  const rootKeys = await webcrypto.subtle.generateKey(algorithm, true, usages);
+  const signerKeys = await webcrypto.subtle.generateKey(algorithm, true, usages);
+  const rootDn = [new pkijs.AttributeTypeAndValue({ type: "2.5.4.3", value: new asn1js.Utf8String({ value: "Test TSA Root" }) })];
+  const root = new pkijs.Certificate();
+  root.version = 2;
+  root.serialNumber = new asn1js.Integer({ value: 1 });
+  root.issuer.typesAndValues.push(...rootDn);
+  root.subject.typesAndValues.push(...rootDn);
+  root.notBefore.value = new Date("2020-01-01T00:00:00Z");
+  root.notAfter.value = new Date("2030-01-01T00:00:00Z");
+  root.extensions = [new pkijs.Extension({ extnID: "2.5.29.19", critical: true, extnValue: new pkijs.BasicConstraints({ cA: true }).toSchema().toBER(false) })];
+  await root.subjectPublicKeyInfo.importKey(rootKeys.publicKey);
+  await root.sign(rootKeys.privateKey, "SHA-256");
+
+  const certificate = new pkijs.Certificate();
+  certificate.version = 2;
+  certificate.serialNumber = new asn1js.Integer({ value: 2 });
+  const signerDn = [new pkijs.AttributeTypeAndValue({ type: "2.5.4.3", value: new asn1js.Utf8String({ value: "Test TSA" }) })];
+  certificate.issuer.typesAndValues.push(...rootDn);
+  certificate.subject.typesAndValues.push(...signerDn);
+  certificate.notBefore.value = new Date("2020-01-01T00:00:00Z");
+  certificate.notAfter.value = new Date("2030-01-01T00:00:00Z");
+  certificate.extensions = [new pkijs.Extension({ extnID: "2.5.29.37", extnValue: new pkijs.ExtKeyUsage({ keyPurposes: ["1.3.6.1.5.5.7.3.8"] }).toSchema().toBER(false) })];
+  await certificate.subjectPublicKeyInfo.importKey(signerKeys.publicKey);
+  await certificate.sign(rootKeys.privateKey, "SHA-256");
+
+  return {
+    root,
+    certificate,
+    privateKey: signerKeys.privateKey,
+    rootPem: `-----BEGIN CERTIFICATE-----\n${Buffer.from(root.toSchema().toBER(false)).toString("base64")}\n-----END CERTIFICATE-----\n`,
+  };
+}
 
 function ledgerRow(over: Partial<Record<string, unknown>>) {
   return {
@@ -117,8 +145,9 @@ function ledgerRow(over: Partial<Record<string, unknown>>) {
   };
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   tmp = mkdtempSync(join(tmpdir(), "court-route-"));
+  tsaFixture = await createTsaFixture();
   const { publicKey, privateKey } = generateKeyPairSync("ed25519", {
     publicKeyEncoding: { type: "spki", format: "pem" },
     privateKeyEncoding: { type: "pkcs8", format: "pem" },
@@ -135,6 +164,7 @@ beforeAll(() => {
     revoked: new Set<string>(),
     provider: new FileSigningKeyProvider({ enforcePermissions: false }),
     tsaUrl: "https://tsa.test/ts", // stubbed by the timestamp mock
+    trustedTsaCerts: [tsaFixture.rootPem],
   };
 });
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));

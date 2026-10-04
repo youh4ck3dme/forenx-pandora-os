@@ -20,6 +20,8 @@ import * as asn1js from "asn1js";
 import * as pkijs from "pkijs";
 
 const SHA256_OID = "2.16.840.1.101.3.4.2.1";
+const TIMESTAMPING_EKU_OID = "1.3.6.1.5.5.7.3.8";
+const EXTENDED_KEY_USAGE_OID = "2.5.29.37";
 
 let engineReady = false;
 function ensureEngine(): void {
@@ -73,6 +75,7 @@ export async function requestTimestampToken(
   tsaUrl: string,
   digestHex: string,
   fetchImpl: typeof fetch = fetch,
+  trustedTsaCertsPem: string[] = [],
 ): Promise<TimestampRequestResult> {
   ensureEngine();
   const body = buildTimeStampRequest(digestHex, webcrypto.getRandomValues(new Uint8Array(16)));
@@ -101,11 +104,72 @@ export async function requestTimestampToken(
   if (!timestampBindsDigest(parsed.tstInfo, digestHex)) {
     throw new Error("TSA token messageImprint does not match the signed canonical manifest digest");
   }
-  if (!(await cmsSignatureMatches(parsed.signed, parsed.content))) {
-    throw new Error("TSA token CMS signature verification failed");
+  const trust = await timestampTrustResult(parsed.signed, parsed.content, parsed.tstInfo, trustedTsaCertsPem);
+  if (trust) {
+    throw new Error(trust);
   }
+
   const genTime = parsed.tstInfo.genTime instanceof Date ? parsed.tstInfo.genTime.toISOString() : null;
   return { tsr: tokenDer, genTime };
+}
+
+function certificateFromPem(pem: string): pkijs.Certificate {
+  const body = pem.replace(/-----(?:BEGIN|END) CERTIFICATE-----|\s/g, "");
+  if (!body) throw new Error("trusted TSA certificate is not PEM");
+  const der = Buffer.from(body, "base64");
+  const asn1 = asn1js.fromBER(toArrayBuffer(der));
+  if (asn1.offset === -1) throw new Error("trusted TSA certificate is not valid DER");
+  return new pkijs.Certificate({ schema: asn1.result });
+}
+
+function hasTimestampingEku(cert: pkijs.Certificate): boolean {
+  const extension = cert.extensions?.find((item) => item.extnID === EXTENDED_KEY_USAGE_OID);
+  if (!extension) return false;
+  const asn1 = asn1js.fromBER(extension.extnValue.valueBlock.valueHex);
+  if (asn1.offset === -1) return false;
+  try {
+    return new pkijs.ExtKeyUsage({ schema: asn1.result }).keyPurposes.includes(TIMESTAMPING_EKU_OID);
+  } catch {
+    return false;
+  }
+}
+
+async function timestampTrustResult(
+  signed: pkijs.SignedData,
+  content: Uint8Array,
+  tstInfo: pkijs.TSTInfo,
+  trustedTsaCertsPem: string[],
+): Promise<string | null> {
+  if (trustedTsaCertsPem.length === 0) return "timestamp trust anchors are not configured";
+  if (!(await cmsSignatureMatches(signed, content))) return "timestamp CMS signature verification failed";
+  const signer = signed.signerInfos[0];
+  const certificates = signed.certificates ?? [];
+  const cert = signer && certificates.find(
+    (item): item is pkijs.Certificate =>
+      item instanceof pkijs.Certificate &&
+      signer.sid instanceof pkijs.IssuerAndSerialNumber &&
+      item.issuer.isEqual(signer.sid.issuer) &&
+      item.serialNumber.isEqual(signer.sid.serialNumber),
+  );
+  if (!cert) return "timestamp signer certificate was not found";
+  if (!hasTimestampingEku(cert)) return "timestamp signer certificate lacks the timestamping EKU";
+  let trustedCerts: pkijs.Certificate[];
+  try {
+    trustedCerts = trustedTsaCertsPem.map(certificateFromPem);
+  } catch (error) {
+    return `timestamp trust configuration is invalid: ${(error as Error).message}`;
+  }
+  const checkDate = tstInfo.genTime instanceof Date ? tstInfo.genTime : new Date();
+  try {
+    const result = await new pkijs.CertificateChainValidationEngine({
+      trustedCerts,
+      certs: certificates.filter((item): item is pkijs.Certificate => item instanceof pkijs.Certificate),
+      checkDate,
+    }).verify();
+    return result.result ? null : `timestamp signer chain is not trusted: ${result.resultMessage}`;
+  } catch (error) {
+    return `timestamp signer chain validation failed: ${(error as Error).message}`;
+  }
 }
 
 function parseToken(tsrBytes: Uint8Array): { signed: pkijs.SignedData; tstInfo: pkijs.TSTInfo; content: Uint8Array } {
@@ -186,17 +250,16 @@ export type TimestampVerifyResult =
 
 /**
  * Offline verification. Confirms the token timestamps exactly our digest and
- * that the CMS signature is valid. `trustedCerts` enables full chain validation;
- * without them the signature math is still checked against the embedded signer
- * certificate (leaf), which is reported as `signatureValid` but not chain-trusted.
+ * that the CMS signature is valid and that its signer chains to explicit TSA
+ * trust anchors. Trust is mandatory; a self-signed or otherwise untrusted signer
+ * is never accepted merely because its embedded certificate verifies the CMS.
  */
 export async function verifyTimestampToken(
   tsrBytes: Uint8Array,
   digestHex: string,
-  options?: { trustedCerts?: pkijs.Certificate[] },
+  options?: { trustedCertsPem?: string[] },
 ): Promise<TimestampVerifyResult> {
   ensureEngine();
-  void options;
   let signed: pkijs.SignedData;
   let tstInfo: pkijs.TSTInfo;
   let content: Uint8Array;
@@ -213,9 +276,8 @@ export async function verifyTimestampToken(
 
   // pkijs SignedData.verify() mis-parses RFC 3161 eContent (OCTET STRING of TSTInfo)
   // and rejects valid tokens. Verify the CMS signature over the encapsulated content.
-  if (!(await cmsSignatureMatches(signed, content))) {
-    return { ok: false, reason: "timestamp CMS signature verification failed" };
-  }
+  const trust = await timestampTrustResult(signed, content, tstInfo, options?.trustedCertsPem ?? []);
+  if (trust) return { ok: false, reason: trust };
 
   return { ok: true, genTime: tstInfo.genTime instanceof Date ? tstInfo.genTime.toISOString() : null };
 }

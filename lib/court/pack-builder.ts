@@ -4,7 +4,8 @@
  * Hashing layering (NO circular dependency):
  *   manifest.json   = SHA-256 + Merkle over the CONTENT artifacts only
  *                     (report.pdf, chain-of-custody.json, hashes.json,
- *                      execution.json, VERIFY.md, verify.mjs)
+ *                     execution.json, VERIFY.md, verify.mjs, bundled verifier
+ *                     runtime dependencies, and TSA trust configuration)
  *   signature.json  = Ed25519 over the canonical manifest  (derived from manifest)
  *   merkle.json     = Merkle tree view of the manifest       (derived from manifest)
  *   timestamp.tsr   = RFC 3161 token over the SHA-256 of the canonical manifest
@@ -15,6 +16,8 @@
  * files plus manifest.json.
  */
 import JSZip from "jszip";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
 import { buildManifest, canonicalJson, type CourtPackManifest } from "./manifest";
 import { buildCourtReportPdf, type CourtReportInput } from "./report";
 import { signCourtPackManifest, type CourtPackSignature, type Keyring, type SigningKeyProvider } from "./signing";
@@ -37,6 +40,8 @@ export type CourtPackInput = {
   };
   verifyMjsSource: string;
   tsaUrl?: string | null;
+  /** PEM trust anchors used exclusively to validate the RFC 3161 signer chain. */
+  trustedTsaCerts?: string[];
   /** Fail-closed: when true (court-grade), a missing TSA aborts the build. */
   requireTimestamp?: boolean;
   now?: Date;
@@ -52,6 +57,34 @@ export type CourtPackResult = {
 };
 
 const enc = (value: unknown): Uint8Array => new TextEncoder().encode(canonicalJson(value));
+const VERIFIER_PACKAGES = ["pkijs", "asn1js", "bytestreamjs", "pvtsutils", "pvutils", "tslib"] as const;
+
+function bundledVerifierResources(): Array<{ path: string; content: Uint8Array }> {
+  const root = join(process.cwd(), "node_modules");
+  const files: Array<{ path: string; content: Uint8Array }> = [];
+  for (const packageName of VERIFIER_PACKAGES) {
+    const packageRoot = join(root, packageName);
+    const visit = (dir: string) => {
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) {
+          // Packages publish their runtime code under build/ (or esm/ for noble).
+          visit(full);
+        } else if (
+          entry === "package.json" ||
+          (/\.(?:c?js|mjs)$/.test(entry) && !/[\\/]test[\\/]/.test(full))
+        ) {
+          files.push({
+            path: `node_modules/${packageName}/${relative(packageRoot, full).replaceAll("\\", "/")}`,
+            content: new Uint8Array(readFileSync(full)),
+          });
+        }
+      }
+    };
+    visit(packageRoot);
+  }
+  return files;
+}
 
 function verifyMarkdown(caseId: string, kid: string): string {
   return [
@@ -61,6 +94,7 @@ function verifyMarkdown(caseId: string, kid: string): string {
     `Signing key id: ${kid}`,
     "",
     "This package is self-verifying and requires **no PANDORA backend and no secret**.",
+    "The required offline verifier runtime and timestamp trust anchors are bundled in this pack.",
     "",
     "## Verify",
     "```",
@@ -76,7 +110,7 @@ function verifyMarkdown(caseId: string, kid: string): string {
     "2. The Merkle root is recomputed and compared.",
     "3. The Ed25519 signature in `signature.json` is verified over the canonical manifest.",
     "4. A revoked signing `kid` is rejected.",
-    "5. If present, `timestamp.tsr` must bind the SHA-256 of the canonical manifest.",
+    "5. If present, `timestamp.tsr` must bind the SHA-256 of the canonical manifest and chain to the bundled TSA trust anchors.",
     "",
     "Any tampered byte makes verification fail and names the exact failing artifact.",
     "",
@@ -104,7 +138,15 @@ export async function buildCourtPack(input: CourtPackInput): Promise<CourtPackRe
     { path: "execution.json", content: executionBytes },
     { path: "VERIFY.md", content: verifyMdBytes },
     { path: "verify.mjs", content: verifyBytes },
+    ...bundledVerifierResources(),
   ];
+
+  if (input.tsaUrl) {
+    if (!input.trustedTsaCerts?.length) {
+      throw new Error("TSA trust anchors are required to build a timestamped Court Pack (fail-closed).");
+    }
+    contentFiles.push({ path: "tsa-trust.json", content: enc({ version: 1, trustedCertsPem: input.trustedTsaCerts }) });
+  }
 
   // 2. Manifest + signature (manifest covers content only).
   const manifest = buildManifest(contentFiles);
@@ -136,7 +178,12 @@ export async function buildCourtPack(input: CourtPackInput): Promise<CourtPackRe
   let timestamped = false;
   let tsrBytes: Uint8Array | null = null;
   if (input.tsaUrl) {
-    const result = await requestTimestampToken(input.tsaUrl, signature.manifestSha256, input.fetchImpl ?? fetch);
+    const result = await requestTimestampToken(
+      input.tsaUrl,
+      signature.manifestSha256,
+      input.fetchImpl ?? fetch,
+      input.trustedTsaCerts ?? [],
+    );
     tsrBytes = result.tsr;
     timestamped = true;
   }

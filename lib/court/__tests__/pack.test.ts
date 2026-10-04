@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import JSZip from "jszip";
@@ -185,7 +185,8 @@ describe("Court Pack builder (lib/court/pack-builder.ts)", () => {
     const pack = await build();
     const dir = join(tmp, "extract-ok");
     await extractTo(pack.zip, dir);
-    const out = execFileSync("node", [VERIFY_MJS, dir], { encoding: "utf8" });
+    expect(existsSync(join(dir, "node_modules", "pkijs", "package.json"))).toBe(true);
+    const out = execFileSync("node", ["verify.mjs", "."], { cwd: dir, encoding: "utf8" });
     expect(out).toMatch(/VERIFIED/);
   });
 
