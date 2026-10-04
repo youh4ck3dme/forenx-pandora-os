@@ -13,7 +13,16 @@ function handlerBody(channel: string): string {
 }
 
 describe("main-window IPC sender guards", () => {
-  for (const channel of ["shield:toggle", "shield:getStats", "shield:getLogs", "proxy:set"]) {
+  for (const channel of [
+    "shield:toggle", "shield:getStats", "shield:getLogs", "proxy:set",
+    "system:open-external-safe", "tab:create", "tab:switch", "tab:close",
+    "tab:update", "search:suggestions", "tab:getContent", "extension:list",
+    "reader:toggle", "devtools:toggle", "vault:select-evidence", "vault:read-chunk",
+    "nav:back", "nav:forward", "nav:reload", "ai:chat", "ai:generate-image",
+    "updater:check", "updater:install", "session:clear-data", "history:search",
+    "history:getContent", "extension:load", "capture:page", "capture:acquireAsEvidence",
+    "dialog:openFile", "dialog:saveFile",
+  ]) {
     it(`gates ${channel} with isMainWindowSender`, () => {
       expect(handlerBody(channel)).toContain("isMainWindowSender");
     });

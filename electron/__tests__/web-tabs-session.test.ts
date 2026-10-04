@@ -1,4 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const { mockDefaultSession, mockPartitionSession, fromPartitionMock } = vi.hoisted(() => {
   const mockDefaultSession = {
@@ -99,6 +101,16 @@ describe('Web Tabs Session & Navigation Security', () => {
       expect(mockPartitionSession.clearCache).toHaveBeenCalled();
       expect(mockDefaultSession.clearStorageData).not.toHaveBeenCalled();
       expect(mockDefaultSession.clearCache).not.toHaveBeenCalled();
+    });
+
+    it('clears persistent history together with the web-tabs session', async () => {
+      const mainSrc = readFileSync(resolve(process.cwd(), 'electron', 'main.mts'), 'utf8');
+      const clearHandler = mainSrc.slice(
+        mainSrc.indexOf("ipcMain.handle('session:clear-data'"),
+        mainSrc.indexOf('// Deep Linking Setup'),
+      );
+      expect(clearHandler).toContain('getWebTabsSession()');
+      expect(clearHandler).toContain('historyManager?.clear()');
     });
   });
 

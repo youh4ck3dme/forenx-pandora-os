@@ -20,11 +20,6 @@ const sendSchemas = {
   "nav:forward": z.object({ id: tabId }).optional(),
   "nav:reload": z.object({ id: tabId, hard: z.boolean().optional() }).optional(),
   "nav:stop": z.object({ id: tabId }).optional(),
-  "proxy:set": z.object({
-    type: z.enum(["none", "http", "socks5"]),
-    host: z.string().trim().max(253).optional(),
-    port: z.union([z.string().regex(/^\d{1,5}$/), z.number().int().min(1).max(65535)]).optional(),
-  }),
   "updater:check": z.undefined(),
   "ai:chat": z.object({
     messages: z.array(aiMessage).min(1).max(100),
@@ -61,6 +56,11 @@ const invokeSchemas = {
     password: z.string().min(1).max(1_024),
   }),
   "password:delete": z.string().min(1).max(MAX_PASSWORD_ID_LENGTH),
+  "proxy:set": z.object({
+    type: z.enum(["none", "http", "socks5"]),
+    host: z.string().trim().max(253).optional(),
+    port: z.union([z.string().regex(/^\d{1,5}$/), z.number().int().min(1).max(65535)]).optional(),
+  }),
 } as const;
 
 const eventChannels = new Set([
