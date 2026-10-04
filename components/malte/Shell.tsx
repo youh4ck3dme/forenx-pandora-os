@@ -117,6 +117,7 @@ function DesktopSidebar() {
               <Link
                 key={to}
                 href={to}
+                prefetch={true}
                 className={cn(
                   "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/10 hover:text-white",
                   pathname === to &&
@@ -272,6 +273,7 @@ export function BottomNav() {
           <li key={to} className="flex-1">
             <Link
               href={to}
+              prefetch={true}
               className={cn(
                 "group relative flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground",
                 pathname === to && "text-foreground! font-semibold",

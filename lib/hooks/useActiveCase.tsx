@@ -1,8 +1,10 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -49,10 +51,16 @@ export function ActiveCaseProvider({ children }: { children: ReactNode }) {
   const [dossier, setDossier] = useState<ForensicDossier | null>(null);
   const [revisions, setRevisions] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState<boolean>(true);
+  // Track whether this is the very first data load (mount) vs a refresh
+  const initialLoadDone = useRef(false);
 
-  const refresh = async (caseId?: string) => {
+  const refresh = useCallback(async (caseId?: string) => {
     try {
-      setLoading(true);
+      // Only show full loading spinner on first mount — subsequent refreshes
+      // update state silently so navigation feels instant.
+      if (!initialLoadDone.current) {
+        setLoading(true);
+      }
       const list = await listCases();
       setCases(list);
       const targetId = caseId || activeCaseId || (list[0]?.id ?? null);
@@ -70,8 +78,10 @@ export function ActiveCaseProvider({ children }: { children: ReactNode }) {
       // ignore
     } finally {
       setLoading(false);
+      initialLoadDone.current = true;
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCaseId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
