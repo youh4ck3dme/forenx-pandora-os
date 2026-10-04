@@ -13,7 +13,7 @@ import { createCase, createUser, freshDatabase } from "./harness";
 let db: PGlite;
 const SHA = "cd".repeat(32);
 const COLS =
-  "id, case_name, file_name, file_size, mime_type, s3_object_key, sha256_hash, hash_verification_status, created_at::text as created_at";
+  "id, case_id, case_name, file_name, file_size, mime_type, s3_object_key, sha256_hash, hash_verification_status, created_at::text as created_at";
 
 beforeAll(async () => {
   db = await freshDatabase();
@@ -45,9 +45,9 @@ function pgliteLedger(userId: string): LedgerDeps {
       asUser<LedgerRow>(async (q) => {
         const rows = await q(
           `insert into public.evidence_items
-             (investigator_id, case_name, file_name, file_size, mime_type, s3_object_key, sha256_hash)
-           values ($1, $2, $3, $4, $5, $6, $7) returning ${COLS}`,
-          [r.investigator_id, r.case_name, r.file_name, r.file_size, r.mime_type, r.s3_object_key, r.sha256_hash],
+             (investigator_id, case_id, case_name, file_name, file_size, mime_type, s3_object_key, sha256_hash)
+           values ($1, $2, $3, $4, $5, $6, $7, $8) returning ${COLS}`,
+          [r.investigator_id, r.case_id, r.case_name, r.file_name, r.file_size, r.mime_type, r.s3_object_key, r.sha256_hash],
         );
         const inserted = rows[0] as LedgerRow | undefined;
         if (!inserted) throw new Error("no row");

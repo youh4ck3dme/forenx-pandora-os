@@ -259,10 +259,10 @@ describe("Database Source-of-Truth Reconciliation Tests", () => {
       await asUser(userA);
 
       const insertRes = await db.query<{ id: string }>(
-        `insert into public.evidence_items (investigator_id, case_name, file_name, file_size, mime_type, s3_object_key, sha256_hash)
-         values ($1, 'Case Test', 'ev1.pdf', 1024, 'application/pdf', 's3://test/ev1.pdf', '${"1".repeat(64)}')
+        `insert into public.evidence_items (investigator_id, case_id, case_name, file_name, file_size, mime_type, s3_object_key, sha256_hash)
+         values ($1, $2, 'Case Test', 'ev1.pdf', 1024, 'application/pdf', 's3://test/ev1.pdf', '${"1".repeat(64)}')
          returning id`,
-        [userA],
+        [userA, caseA],
       );
       const evId = insertRes.rows[0]?.id;
       expect(evId).toBeDefined();

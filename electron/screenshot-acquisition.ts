@@ -12,7 +12,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const NON_EVIDENTIARY_STATUS = "NON_EVIDENTIARY_RESEARCH_ARTIFACT" as const;
-export const FORENSIC_EVIDENCE_STATUS = "FORENSIC_EVIDENCE" as const;
+export const FORENSIC_EVIDENCE_CANDIDATE_STATUS =
+  "FORENSIC_EVIDENCE_CANDIDATE_PENDING_LEDGER_INGEST" as const;
 
 const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -32,7 +33,11 @@ export interface ForensicAcquisitionInput {
 }
 
 export interface ForensicEvidenceRecord {
-  evidentiaryStatus: typeof FORENSIC_EVIDENCE_STATUS;
+  /**
+   * A local capture cannot be evidence until it is committed, server-verified,
+   * and audited through the existing evidence ledger.
+   */
+  evidentiaryStatus: typeof FORENSIC_EVIDENCE_CANDIDATE_STATUS;
   caseId: string;
   evidenceId: string;
   fileName: string;
@@ -115,7 +120,7 @@ export function createForensicEvidenceArtifact(
   fs.writeFileSync(filePath, pngBuffer);
 
   return {
-    evidentiaryStatus: FORENSIC_EVIDENCE_STATUS,
+    evidentiaryStatus: FORENSIC_EVIDENCE_CANDIDATE_STATUS,
     caseId: input.caseId,
     evidenceId,
     fileName,

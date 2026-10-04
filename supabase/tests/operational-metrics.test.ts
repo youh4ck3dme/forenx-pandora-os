@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
-import { createUser, freshDatabase } from "./harness";
+import { createCase, createUser, freshDatabase } from "./harness";
 
 let db: PGlite;
 
@@ -52,6 +52,7 @@ describe("P0-04 — health_metrics (operačné metriky a alerty)", () => {
   it("spočíta AI timeouty, S3 failure rate a Supabase chyby s alertmi", async () => {
     const admin = await makeAdmin();
     const user = await createUser(db, "owner@metrics.test");
+    const caseId = await createCase(db, user);
     await asUser(admin);
 
     // AI: 1 rýchle OK, 1 pomalé volanie (90 s > 60 s), 1 failed s timeout kódom.
@@ -71,8 +72,8 @@ describe("P0-04 — health_metrics (operačné metriky a alerty)", () => {
     // S3: 1 overený, 1 mismatch → failure rate 50 % (> 1 % → alert).
     for (const status of ["verified", "mismatch"]) {
       await db.query(
-        "insert into public.evidence_items (investigator_id, case_name, file_name, file_size, mime_type, s3_object_key, sha256_hash, hash_verification_status) values ($1, 'Case A', 'f.pdf', 1, 'application/pdf', $2, $3, $4)",
-        [user, `cases/C/evidence/${status}.pdf`, "c".repeat(64), status],
+        "insert into public.evidence_items (investigator_id, case_id, case_name, file_name, file_size, mime_type, s3_object_key, sha256_hash, hash_verification_status) values ($1, $2, 'Case A', 'f.pdf', 1, 'application/pdf', $3, $4, $5)",
+        [user, caseId, `cases/${caseId}/evidence/${status}.pdf`, "c".repeat(64), status],
       );
     }
 

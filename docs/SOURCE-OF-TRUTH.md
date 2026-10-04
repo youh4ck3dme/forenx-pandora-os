@@ -101,6 +101,7 @@ Porušenie ktoréhokoľvek z nasledujúcich invariantov predstavuje okamžitý *
 - **INV-005 (Authoritative Size):** Klientom deklarovaná veľkosť súboru nesmie byť autoritou pre validáciu dôkazu.
 - **INV-006 (Storage Object Binding):** Identifikátor dôkazu (`evidence_id`) nesmie byť možné prepojiť na iný S3 objekt obyčajnou zmenou klientskej požiadavky.
 - **INV-007 (Immutable Relation):** `evidence_items.case_id` je po zápise nemenný (write-once) a chránený databázovým triggerom `evidence_items_insert_guard`.
+- **INV-007a (Legacy Case Resolution):** Nové `evidence_items` záznamy musia mať `case_id`. Historické záznamy bez deterministicky overiteľnej väzby sa evidujú v `evidence_items_legacy_unresolved`; nesmú dostať odvodený alebo vymyslený `case_id`.
 - **INV-008 (Verified Lifecycle Gate):** Forenzná analýza a generovanie capability tokenov sú povolené výhradne nad dôkazom v stave `status = 'verified'`.
 - **INV-009 (ForenZX Byte Parity):** ForenZX MCP Hub musí analyzovať presne tie bajty, ktoré zodpovedajú verifikovanému SHA-256 hashu v evidence ledgeri.
 - **INV-010 (Dual Job Identity):** Lokálny Pandora `job_id` a upstream `hub_job_id` sú striktne oddelené identity mapované v relačnej tabuľke.
@@ -181,7 +182,7 @@ Pri štarte analýzy (`POST /api/forenzx/start`):
   - Vyžaduje validné UUID prípadu (`caseId`).
   - Získava surové PNG bajty, počíta SHA-256 hash.
   - Zaznamenáva kompletnú provenienciu: URL, titulok stránky, časovú pečiatku, rozlíšenie viewportu a User-Agent.
-  - Ukladá artefakt do `screenshots/evidence/` a pripravuje záznam pre zápis do evidence ledgera a auditného záznamu.
+  - Lokálny artefakt má stav `FORENSIC_EVIDENCE_CANDIDATE_PENDING_LEDGER_INGEST`; nie je dôkazom, kým neprejde existujúcim evidence ledger commit, serverovým hash overením a auditom.
 
 ---
 

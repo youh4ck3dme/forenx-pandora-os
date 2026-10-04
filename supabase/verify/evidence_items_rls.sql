@@ -24,6 +24,8 @@ declare
   res text[] := '{}';
   u1 uuid := gen_random_uuid();
   u2 uuid := gen_random_uuid();
+  c1 uuid;
+  c2 uuid;
   e_open uuid;
   e_hold uuid;
   n int;
@@ -69,15 +71,21 @@ begin
     insert into auth.users (id, email) values
       (u1, 'rls-check-u1-' || u1 || '@invalid.local'),
       (u2, 'rls-check-u2-' || u2 || '@invalid.local');
+    insert into public.cases (user_id, name)
+    values (u1, 'RLS-CHECK-U1')
+    returning id into c1;
+    insert into public.cases (user_id, name)
+    values (u2, 'RLS-CHECK-U2')
+    returning id into c2;
     insert into public.evidence_items
-      (investigator_id, case_name, file_name, file_size, mime_type, s3_object_key, sha256_hash, legal_hold)
+      (investigator_id, case_id, case_name, file_name, file_size, mime_type, s3_object_key, sha256_hash, legal_hold)
     values
-      (u1, 'RLS-CHECK', 'open.pdf', 1, 'application/pdf', 'cases/rls/open.pdf', repeat('a', 64), false)
+      (u1, c1, 'RLS-CHECK', 'open.pdf', 1, 'application/pdf', 'cases/rls/open.pdf', repeat('a', 64), false)
     returning id into e_open;
     insert into public.evidence_items
-      (investigator_id, case_name, file_name, file_size, mime_type, s3_object_key, sha256_hash, legal_hold)
+      (investigator_id, case_id, case_name, file_name, file_size, mime_type, s3_object_key, sha256_hash, legal_hold)
     values
-      (u1, 'RLS-CHECK', 'hold.pdf', 1, 'application/pdf', 'cases/rls/hold.pdf', repeat('b', 64), true)
+      (u1, c1, 'RLS-CHECK', 'hold.pdf', 1, 'application/pdf', 'cases/rls/hold.pdf', repeat('b', 64), true)
     returning id into e_hold;
 
     -- anon (neprihlásený)
@@ -120,8 +128,8 @@ begin
 
     begin
       insert into public.evidence_items
-        (investigator_id, case_name, file_name, file_size, mime_type, s3_object_key, sha256_hash)
-      values (u1, 'RLS-CHECK', 'spoof.pdf', 1, 'application/pdf', 'cases/rls/spoof.pdf', repeat('c', 64));
+        (investigator_id, case_id, case_name, file_name, file_size, mime_type, s3_object_key, sha256_hash)
+      values (u1, c1, 'RLS-CHECK', 'spoof.pdf', 1, 'application/pdf', 'cases/rls/spoof.pdf', repeat('c', 64));
       res := res || format('Vloženie za iného vyšetrovateľa zamietnuté%sFAIL%sINSERT prešiel', chr(31), chr(31));
     exception when insufficient_privilege or check_violation then
       res := res || format('Vloženie za iného vyšetrovateľa zamietnuté%sPASS%s%s', chr(31), chr(31), sqlerrm);

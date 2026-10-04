@@ -24,8 +24,10 @@ async function insertEvidence(
   userId: string,
   overrides: Record<string, unknown> = {},
 ): Promise<string> {
+  const caseId = await createCase(db, userId);
   const row = {
     investigator_id: userId,
+    case_id: caseId,
     case_name: "CASE-1",
     file_name: "spis.pdf",
     file_size: 1234,
@@ -379,13 +381,9 @@ describe("evidence ledger: review hardening", () => {
       ).rejects.toThrow(/does not belong to the authenticated user/);
     });
 
-    it("allows NULL case_id insert (legacy orphan rows)", async () => {
+    it("rejects NULL case_id for new evidence records", async () => {
       const user = await createUser(db, "null-case-ct@test.local");
-      // NULL case_id must not trigger the ownership check
-      const id = await insertEvidence(user, { case_id: null });
-      const row = await evidence(id);
-      expect(row?.case_id).toBeNull();
+      await expect(insertEvidence(user, { case_id: null })).rejects.toThrow(/case_id is required/);
     });
   });
 });
-
