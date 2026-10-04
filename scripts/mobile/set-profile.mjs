@@ -5,14 +5,14 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "../..");
-const configPath = path.join(rootDir, "capacitor.config.json");
+const configPath = path.join(rootDir, "mobile", "capacitor.config.json");
 
 const profile = process.argv[2] || "local";
 
 const baseConfig = {
   appId: "com.pandora.browser",
   appName: "PANDORA Forensic OS",
-  webDir: "out",
+  webDir: "../out",
   bundledWebRuntime: false,
   plugins: {
     SplashScreen: {

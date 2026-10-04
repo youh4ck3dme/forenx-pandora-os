@@ -1,0 +1,16 @@
+{
+  "name": "pandora-mobile",
+  "private": true,
+  "description": "Isolated Capacitor configuration and dependencies for PANDORA mobile",
+  "scripts": {
+    "profile:local": "node ../scripts/mobile/set-profile.mjs local",
+    "profile:staging": "node ../scripts/mobile/set-profile.mjs staging",
+    "profile:production": "node ../scripts/mobile/set-profile.mjs production"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/ios": "^8.0.0"
+  }
+}

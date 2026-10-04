@@ -1,7 +1,7 @@
 {
   "appId": "com.pandora.browser",
   "appName": "PANDORA OS (Local Dev)",
-  "webDir": "out",
+  "webDir": "../out",
   "bundledWebRuntime": false,
   "plugins": {
     "SplashScreen": {
