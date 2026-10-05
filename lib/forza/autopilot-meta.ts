@@ -2,6 +2,7 @@
  * Proveniencia Forenzného Autopilota — idempotency, truncácia, source refs.
  */
 import { PROMPT_VERSION } from "@/lib/ai/redact";
+import { canonicalSha256 } from "./provenance/canonical";
 import {
   AUTOPILOT_CHUNK_CHARS,
   AUTOPILOT_DOCUMENT_CHAR_LIMIT,
@@ -79,6 +80,7 @@ export function buildAnalysisMeta(input: {
   evidenceInputs?: { evidenceId: string; sha256: string }[];
   derivedInputSha256?: string;
   promptSha256?: string;
+  resultSha256?: string;
   analysisStatus: AutopilotAnalysisMeta["analysisStatus"];
   sourceReferences: string[];
   isDemo?: boolean;
@@ -94,6 +96,7 @@ export function buildAnalysisMeta(input: {
     ...(input.provider ? { provider: input.provider } : {}),
     ...(input.evidenceInputs ? { evidenceInputs: input.evidenceInputs } : {}),
     ...(input.derivedInputSha256 ? { derivedInputSha256: input.derivedInputSha256 } : {}),
+    ...(input.resultSha256 ? { resultSha256: input.resultSha256 } : {}),
     createdAt: new Date().toISOString(),
     analysisStatus: input.analysisStatus,
     documentIds: input.documentIds,
@@ -170,8 +173,23 @@ export function assertSavedDossierProvenance(
   stored: { analysisMeta?: Parameters<typeof assertAnalysisProvenance>[0] } | null,
   incoming: Parameters<typeof collectCitedEvidenceIds>[0] & { analysisMeta?: unknown },
 ): void {
-  if (incoming.analysisMeta && JSON.stringify(incoming.analysisMeta) !== JSON.stringify(stored?.analysisMeta ?? null)) {
+  if (stored?.analysisMeta && JSON.stringify(incoming.analysisMeta) !== JSON.stringify(stored.analysisMeta)) {
     throw new Error("analysis provenance cannot be rewritten");
   }
+  if (stored?.analysisMeta && authoritativeFindingSha256(incoming) !== authoritativeFindingSha256(stored)) {
+    throw new Error("authoritative finding payload cannot change under the same analysis run");
+  }
   assertAnalysisProvenance(stored?.analysisMeta, collectCitedEvidenceIds(incoming));
+}
+
+const PRESENTATION_FIELDS = new Set(["analysisMeta", "caseTitle", "generatedAt"]);
+
+export function authoritativeFindingPayload(dossier: object): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(dossier).filter(([key, value]) => !PRESENTATION_FIELDS.has(key) && value !== undefined),
+  );
+}
+
+export function authoritativeFindingSha256(dossier: object): string {
+  return canonicalSha256(authoritativeFindingPayload(dossier));
 }

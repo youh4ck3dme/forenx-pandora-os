@@ -52,7 +52,7 @@ describe("dossier save provenance", () => {
 
   it("rejects rebinding a finding from e1 to e2", async () => {
     const db = supabase(dossier("e1"));
-    await expect(handleSaveCaseDossier({ caseId: "case-1", dossier: dossier("e2") as never }, db.client as never)).rejects.toThrow(/incomplete/);
+    await expect(handleSaveCaseDossier({ caseId: "case-1", dossier: dossier("e2") as never }, db.client as never)).rejects.toThrow(/incomplete|same analysis run/);
     expect(db.update).not.toHaveBeenCalled();
   });
 

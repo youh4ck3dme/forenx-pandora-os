@@ -161,6 +161,8 @@ export interface AutopilotAnalysisMeta {
   evidenceInputs?: AnalysisEvidenceInput[];
   /** SHA-256 of the exact derived text sent to the model. */
   derivedInputSha256?: string;
+  /** SHA-256 of the authoritative finding payload produced by this run. */
+  resultSha256?: string;
   createdAt: string;
   analysisStatus: AutopilotAnalysisStatus;
   documentIds: string[];

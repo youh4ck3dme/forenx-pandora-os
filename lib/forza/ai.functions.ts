@@ -1298,7 +1298,7 @@ export async function runForensicAutopilotInner(
   ).dossier;
 
   const { sha256Hex } = await import("./provenance/sha256");
-  const { assertAnalysisProvenance } = await import("./autopilot-meta");
+  const { assertAnalysisProvenance, authoritativeFindingSha256 } = await import("./autopilot-meta");
   assertAnalysisProvenance(
     {
       evidenceInputs,
@@ -1321,6 +1321,7 @@ export async function runForensicAutopilotInner(
       evidenceInputs,
       derivedInputSha256: sha256Hex(documentText),
       promptSha256: sha256Hex(PROMPT_VERSION),
+      resultSha256: authoritativeFindingSha256(bound),
       ...(lastProvider ? { provider: lastProvider } : {}),
       idempotencyKey,
       analysisStatus,
