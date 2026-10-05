@@ -31,6 +31,7 @@ vi.mock("@/lib/storage/evidence-ledger", () => ({
     h.ledgerCalls.push([token, caseId]);
     return h.ledger;
   }),
+  loadOwnedCaseDossier: vi.fn(async () => h.dossier),
   loadOwnedCaseSummary: vi.fn(async (token: string, userId: string, caseId: string) => {
     h.caseCalls.push([token, userId, caseId]);
     if (caseId === "missing-case" || caseId === "foreign-case") return null;
@@ -158,6 +159,7 @@ beforeEach(() => {
   h.caseCalls = [];
   h.binding = { ok: true };
   h.bindingCalls = [];
+  h.dossier = null;
   vi.mocked(buildCourtPack).mockClear();
 });
 

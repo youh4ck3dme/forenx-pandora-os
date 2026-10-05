@@ -28,6 +28,7 @@ export type CourtPackInput = {
   chainOfCustody: unknown;
   hashes: unknown;
   execution: unknown;
+  provenance?: unknown;
   signing: {
     kid: string;
     keyRef: string;
@@ -102,6 +103,7 @@ export async function buildCourtPack(input: CourtPackInput): Promise<CourtPackRe
     { path: "chain-of-custody.json", content: chainBytes },
     { path: "hashes.json", content: hashesBytes },
     { path: "execution.json", content: executionBytes },
+    { path: "provenance.json", content: enc(input.provenance ?? { selectedRunId: null }) },
     { path: "VERIFY.md", content: verifyMdBytes },
     { path: "verify.mjs", content: verifyBytes },
   ];

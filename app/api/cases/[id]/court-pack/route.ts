@@ -14,7 +14,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateVaultRequest } from "@/lib/storage/vault-auth";
-import { listLedgerEvidence, loadOwnedCaseSummary } from "@/lib/storage/evidence-ledger";
+import { listLedgerEvidence, loadOwnedCaseDossier, loadOwnedCaseSummary } from "@/lib/storage/evidence-ledger";
+import { buildCourtAnalysisProvenance } from "@/lib/court/analysis-provenance";
 import { confirmEvidenceByteBinding } from "@/lib/storage/evidence-verify";
 import { downloadCaseDocument } from "@/lib/storage/s3-vault";
 import { buildCourtPack } from "@/lib/court/pack-builder";
@@ -95,6 +96,11 @@ export async function POST(request: NextRequest, { params }: Params) {
       );
     }
     const evidence = verified.map((row) => ({ path: row.file_name, sha256: row.sha256_hash }));
+    const dossier = await loadOwnedCaseDossier(auth.token, auth.userId, caseId);
+    const provenance = buildCourtAnalysisProvenance(dossier, ledger);
+    if (!provenance.ok) {
+      return NextResponse.json({ error: "Proveniencia analýzy nezodpovedá exportovanému nálezu." }, { status: 409 });
+    }
 
     const chainOfCustody = {
       caseId,
@@ -137,9 +143,10 @@ export async function POST(request: NextRequest, { params }: Params) {
         title: `Court Pack — ${ownedCase.name || caseId}`,
         generatedAtIso: now.toISOString(),
         summary: `Signed evidence package for case ${caseId}. ${verified.length} of ${ledger.length} evidence item(s) are hash-verified.`,
-        findings: [],
+        findings: provenance.record ? [provenance.record.selectedRunId] : [],
         evidence,
       },
+      provenance: provenance.record,
       chainOfCustody,
       hashes,
       execution,

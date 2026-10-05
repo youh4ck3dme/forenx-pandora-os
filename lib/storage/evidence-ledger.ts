@@ -243,6 +243,25 @@ export async function loadOwnedCaseSummary(
   };
 }
 
+export async function loadOwnedCaseDossier(
+  token: string,
+  userId: string,
+  caseId: string,
+): Promise<Record<string, unknown> | null> {
+  if (!token || !userId) return null;
+  const client = await userClient(token);
+  const { data, error } = await client
+    .from("cases")
+    .select("id, forensic_dossier")
+    .eq("id", caseId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(`case_read_failed:${error.code ?? "unknown"}`);
+  if (!data?.id) return null;
+  const dossier = (data as { forensic_dossier?: unknown }).forensic_dossier;
+  return dossier && typeof dossier === "object" ? dossier as Record<string, unknown> : null;
+}
+
 /** Záznamy ledgeru pre prípad (RLS: iba vlastné). */
 export async function listLedgerEvidence(token: string, caseId: string): Promise<LedgerRow[]> {
   const client = await userClient(token);
