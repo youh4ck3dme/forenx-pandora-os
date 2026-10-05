@@ -1331,13 +1331,17 @@ export async function runForensicAutopilotInner(
 
   let saveStatus: "saved" | "skipped" | "failed" = "skipped";
   let saveError: string | undefined;
+  let persisted = withMeta;
   if (caseId && caseId !== "current" && caseId !== "demo") {
     try {
+      const { withRerunLineage } = await import("./autopilot-meta");
+      const previous = await handleGetForensicDossier(caseId, context.supabase);
+      persisted = withRerunLineage(previous.dossier, withMeta);
       const { error: saveErrorRaw } = await context.supabase
         .from("cases")
         .update({
           forensic_dossier:
-            withMeta as unknown as import("@/integrations/supabase/types").Json,
+            persisted as unknown as import("@/integrations/supabase/types").Json,
           forensic_dossier_updated_at: new Date().toISOString(),
         })
         .eq("id", caseId);
@@ -1357,7 +1361,7 @@ export async function runForensicAutopilotInner(
 
   return {
     success: true as const,
-    dossier: withMeta,
+    dossier: persisted,
     saveStatus,
     ...(saveError ? { saveError } : {}),
     truncation: withMeta.analysisMeta?.truncation,

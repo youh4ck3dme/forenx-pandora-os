@@ -151,6 +151,21 @@ export interface AnalysisEvidenceInput {
   sha256: string;
 }
 
+export interface AnalysisLineageEntry {
+  runId: string;
+  resultSha256: string;
+  evidenceInputs?: AnalysisEvidenceInput[];
+  derivedInputSha256?: string;
+  promptVersion: string;
+  promptSha256?: string;
+  provider?: string;
+  model: string;
+  generatedAt: string;
+  supersededAt: string;
+  supersededBy: string;
+  finding: Record<string, unknown>;
+}
+
 export interface AutopilotAnalysisMeta {
   promptVersion: string;
   /** SHA-256 of the prompt version label actually used for this run. */
@@ -163,6 +178,10 @@ export interface AutopilotAnalysisMeta {
   derivedInputSha256?: string;
   /** SHA-256 of the authoritative finding payload produced by this run. */
   resultSha256?: string;
+  /** Run replaced by this result. */
+  supersedesRunId?: string;
+  /** Immutable snapshots of results this run replaced. */
+  lineage?: AnalysisLineageEntry[];
   createdAt: string;
   analysisStatus: AutopilotAnalysisStatus;
   documentIds: string[];

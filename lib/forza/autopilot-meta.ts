@@ -193,3 +193,35 @@ export function authoritativeFindingPayload(dossier: object): Record<string, unk
 export function authoritativeFindingSha256(dossier: object): string {
   return canonicalSha256(authoritativeFindingPayload(dossier));
 }
+
+export function withRerunLineage<T extends { analysisMeta?: { idempotencyKey?: string; resultSha256?: string; evidenceInputs?: { evidenceId: string; sha256: string }[]; derivedInputSha256?: string; promptVersion?: string; promptSha256?: string; provider?: string; model?: string; createdAt?: string; lineage?: unknown[]; supersedesRunId?: string } }>(
+  previous: T | null,
+  next: T,
+  supersededAt = new Date().toISOString(),
+): T {
+  const previousRun = previous?.analysisMeta?.idempotencyKey;
+  const nextRun = next.analysisMeta?.idempotencyKey;
+  if (!previous?.analysisMeta || !previousRun || !nextRun || previousRun === nextRun) return next;
+  const entry = {
+    runId: previousRun,
+    resultSha256: previous.analysisMeta.resultSha256 ?? authoritativeFindingSha256(previous),
+    evidenceInputs: previous.analysisMeta.evidenceInputs,
+    derivedInputSha256: previous.analysisMeta.derivedInputSha256,
+    promptVersion: previous.analysisMeta.promptVersion ?? "",
+    promptSha256: previous.analysisMeta.promptSha256,
+    provider: previous.analysisMeta.provider,
+    model: previous.analysisMeta.model ?? "",
+    generatedAt: previous.analysisMeta.createdAt ?? supersededAt,
+    supersededAt,
+    supersededBy: nextRun,
+    finding: authoritativeFindingPayload(previous),
+  };
+  return {
+    ...next,
+    analysisMeta: {
+      ...next.analysisMeta,
+      supersedesRunId: previousRun,
+      lineage: [...(previous.analysisMeta.lineage ?? []), entry],
+    },
+  };
+}
