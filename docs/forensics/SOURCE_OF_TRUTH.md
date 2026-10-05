@@ -1,14 +1,15 @@
 # FORENX / PANDORA — SOURCE OF TRUTH
 
-**Seal ID:** `PANDORA-SOT-2026-10-05-e1a7fba`  
-**Status:** SEALED HARDENING BASELINE  
-**Repository:** `youh4ck3dme/forenx-pandora-os`  
-**Branch:** `security/grok-forensic-hardening`  
-**Authoritative HEAD:** `e1a7fba07df7e4e0abf900ed16d9ce68cf3b0d8d`  
-**Seal date:** 2026-10-05  
-**Forensic AI provenance:** COMPLETE  
-**Court Pack provenance:** VERIFIED  
-**End-to-end Chain-of-Truth review:** READY / NOT YET CLOSED
+**Seal ID:** `PANDORA-SOT-2026-10-05-e1a7fba`
+**Status:** SEALED HARDENING BASELINE
+**Repository:** `youh4ck3dme/forenx-pandora-os`
+**Branch:** `security/grok-forensic-hardening`
+**Authoritative HEAD:** `e1a7fba07df7e4e0abf900ed16d9ce68cf3b0d8d`
+**Seal date:** 2026-10-05
+**Forensic AI provenance:** COMPLETE
+**Court Pack provenance:** VERIFIED
+**End-to-end Chain-of-Truth review:** VERIFIED / CLOSED
+**Final reviewed repository HEAD:** `44388920b6c5e1d6a1e3f83b5d945d9a7d3b722b`
 
 > This document is the normative status index for the sealed hardening baseline at the exact Git commit above. It does not replace source code. If this document and the code at the pinned commit disagree, the code, migrations and executable tests at the pinned commit win.
 
@@ -224,28 +225,41 @@ Do not state any of the following without additional independent evidence:
 - “The system guarantees legal validity in every jurisdiction.”
 - “Physical object storage is absolutely immutable against infrastructure/root administrators.”
 - “Every Git commit is cryptographically signed.”
-- “The final independent end-to-end Chain-of-Truth review has already passed.”
 - “PANDORA Evidence Bundle `.pandora` v1, PANDORA Capture or PANDORA Witness are implemented and production-sealed.”
 
 The `.pandora` Evidence Bundle / Capture / Witness work discussed separately remains a future protocol/product track unless and until implemented, tested and committed.
 
-## 13. Remaining closure gate
+## 13. Final read-only review
 
-The only planned closure step for this hardening chapter is a **read-only end-to-end Chain-of-Truth review** at this exact HEAD.
+Review type: READ-ONLY END-TO-END CHAIN-OF-TRUTH REVIEW
 
-That review must not add features or silently patch code. Its job is to attempt to break the already-sealed chain:
+Repository HEAD reviewed: `44388920b6c5e1d6a1e3f83b5d945d9a7d3b722b`
+
+Audited implementation checkpoint: `e1a7fba07df7e4e0abf900ed16d9ce68cf3b0d8d`
+
+Result: PASS
+
+New verified defect: NO
+
+Source of Truth drift: NO
+
+Worktree modified: NO
+
+Chain of Truth: VERIFIED
+
+Hardening closure: APPROVED
+
+The reviewed chain was:
 
 ```text
 SOURCE → HASH → DERIVED INPUT → RUN → FINDING → LINEAGE → COURT PACK → SIGNATURE → RFC3161 → OFFLINE VERIFY
 ```
 
-If it finds no new reproducible defect, this hardening chapter may be marked **CLOSED**.
-
-If it finds a defect, this document must be superseded by a new Source of Truth pinned to the fixing commit.
+This review did not change source code, tests, migrations or configuration.
 
 ## 14. Change-control rule
 
-This document is frozen to commit `{head}`.
+This document pins audited code commit `e1a7fba07df7e4e0abf900ed16d9ce68cf3b0d8d`.
 
 Any later change to one of the following invalidates the seal and requires a new revision:
 
@@ -259,13 +273,22 @@ Any later change to one of the following invalidates the seal and requires a new
 - manifest/signature/timestamp binding;
 - offline verifier behavior.
 
-A new Source of Truth revision MUST name its exact branch, exact commit SHA and regression gates.
+Any future code change affecting evidence hashing, storage mutation semantics, legal hold, WORM, audit-chain append logic, AI input provenance, prompt provenance, finding hash contract, finding integrity, rerun lineage, Court Pack provenance, manifest signing, RFC3161 binding or offline verification invalidates inheritance of this audit status for the modified code.
+
+Such a change requires new tests, a new review, a new audited code checkpoint and a new Source of Truth revision. The revision MUST name its exact branch, exact commit SHA and regression gates.
 
 ## 15. Canonical status
 
-**SEALED HARDENING BASELINE:** `{seal_id}`  
-**Pinned HEAD:** `{head}`  
-**FORENSIC AI PROVENANCE:** COMPLETE  
-**COURT PACK PROVENANCE:** VERIFIED  
-**READY FOR END-TO-END CHAIN-OF-TRUTH REVIEW:** YES  
-**HARDENING CHAPTER CLOSED:** NO — pending final read-only review
+**SEALED HARDENING BASELINE:** `PANDORA-SOT-2026-10-05-e1a7fba`
+**AUDITED CODE HEAD:** `e1a7fba07df7e4e0abf900ed16d9ce68cf3b0d8d`
+**FINAL REVIEWED REPOSITORY HEAD:** `44388920b6c5e1d6a1e3f83b5d945d9a7d3b722b`
+**FORENSIC AI PROVENANCE:** COMPLETE
+**COURT PACK PROVENANCE:** VERIFIED
+**SIGNED PROVENANCE COVERAGE:** VERIFIED
+**RFC3161 BINDING:** VERIFIED
+**OFFLINE VERIFIER:** VERIFIED
+**CHAIN OF TRUTH END-TO-END:** VERIFIED
+**FINAL READ-ONLY REVIEW:** PASS
+**NEW VERIFIED DEFECT:** NO
+**SOURCE OF TRUTH DRIFT:** NO
+**HARDENING CHAPTER CLOSED:** YES
