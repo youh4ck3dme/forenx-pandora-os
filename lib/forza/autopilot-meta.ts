@@ -149,3 +149,29 @@ export function assertAnalysisProvenance(meta: {
     if (!sha || !/^[a-f0-9]{64}$/.test(sha)) throw new Error("analysis provenance is incomplete");
   }
 }
+
+export function collectCitedEvidenceIds(dossier: {
+  facts?: { timeline?: { sourceRef?: { evidenceId?: string } }[]; traces?: { sourceRef?: { evidenceId?: string } }[] };
+  defenseAttack?: { attacks?: { sourceRef?: { evidenceId?: string } }[] };
+  evidenceStrength?: { traces?: { sourceRef?: { evidenceId?: string } }[] };
+}): string[] {
+  const ids = new Set<string>();
+  const take = (ref?: { evidenceId?: string }) => {
+    if (ref?.evidenceId) ids.add(ref.evidenceId);
+  };
+  for (const event of dossier.facts?.timeline ?? []) take(event.sourceRef);
+  for (const trace of dossier.facts?.traces ?? []) take(trace.sourceRef);
+  for (const attack of dossier.defenseAttack?.attacks ?? []) take(attack.sourceRef);
+  for (const trace of dossier.evidenceStrength?.traces ?? []) take(trace.sourceRef);
+  return [...ids];
+}
+
+export function assertSavedDossierProvenance(
+  stored: { analysisMeta?: Parameters<typeof assertAnalysisProvenance>[0] } | null,
+  incoming: Parameters<typeof collectCitedEvidenceIds>[0] & { analysisMeta?: unknown },
+): void {
+  if (incoming.analysisMeta && JSON.stringify(incoming.analysisMeta) !== JSON.stringify(stored?.analysisMeta ?? null)) {
+    throw new Error("analysis provenance cannot be rewritten");
+  }
+  assertAnalysisProvenance(stored?.analysisMeta, collectCitedEvidenceIds(incoming));
+}

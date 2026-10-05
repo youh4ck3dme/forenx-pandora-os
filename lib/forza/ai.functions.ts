@@ -1407,12 +1407,14 @@ export async function handleSaveCaseDossier(
   },
   supabase: SupabaseLike,
 ) {
-  const { isDemoDossier } = await import("./autopilot-meta");
+  const { isDemoDossier, assertSavedDossierProvenance } = await import("./autopilot-meta");
   if (isDemoDossier(data.dossier)) {
     throw new Error(
       "Syntetická ukážka (Armivex) sa neukladá do produkčného prípadu. Spustite Autopilot nad reálnym spisom.",
     );
   }
+  const existing = await handleGetForensicDossier(data.caseId, supabase);
+  assertSavedDossierProvenance(existing.dossier, data.dossier);
 
   const { data: updated, error } = await supabase
     .from("cases")
