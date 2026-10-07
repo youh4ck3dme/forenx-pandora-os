@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import type { AuthenticationResponseJSON } from "@simplewebauthn/types";
 import {
+  consumeChallengeOnce,
   decodeChallengePayload,
   verifyPasskeyResponse,
   CHALLENGE_COOKIE,
@@ -67,6 +68,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const challengePayload = decodeChallengePayload(rawCookie);
   if (!challengePayload) {
     const res = NextResponse.json({ error: "Challenge expired or invalid." }, { status: 401 });
+    res.cookies.delete(CHALLENGE_COOKIE);
+    res.cookies.delete(LEGACY_CHALLENGE_COOKIE);
+    return res;
+  }
+
+  // One-time use enforced server-side: deleting the cookie does not stop a
+  // client that kept a copy from replaying it within the TTL window.
+  const consumed = await consumeChallengeOnce("auth", challengePayload.challenge);
+  if (consumed !== "consumed") {
+    const res =
+      consumed === "replayed"
+        ? NextResponse.json({ error: "Challenge already used." }, { status: 401 })
+        : NextResponse.json({ error: "Challenge verification is temporarily unavailable." }, { status: 503 });
     res.cookies.delete(CHALLENGE_COOKIE);
     res.cookies.delete(LEGACY_CHALLENGE_COOKIE);
     return res;

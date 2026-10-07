@@ -20,6 +20,8 @@ import type {
   AuthenticatorTransportFuture,
 } from "@simplewebauthn/types";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { getRateLimiter } from "@/lib/security/rate-limiter.server";
 
 export const CHALLENGE_COOKIE = "webauthn_auth_challenge";
 export const LEGACY_CHALLENGE_COOKIE = "wa_challenge";
@@ -99,16 +101,46 @@ export type ChallengePayload = {
   issuedAt: number; // Unix seconds
 };
 
-/** Encode challenge payload into a short-lived cookie value. */
-export function encodeChallengePayload(challenge: string): string {
-  const payload: ChallengePayload = { challenge, issuedAt: Math.floor(Date.now() / 1000) };
-  return Buffer.from(JSON.stringify(payload)).toString("base64url");
+let devChallengeKey: Buffer | null = null;
+
+/**
+ * HMAC key for challenge cookies. The cookie is client-held, so without a MAC
+ * a captured assertion could be replayed by minting a fresh cookie around its
+ * old challenge (synced passkeys keep signCount = 0, so the counter check does
+ * not catch it). Production fails closed when no server secret is configured.
+ */
+function challengeKey(): Buffer {
+  const secret =
+    process.env.WEBAUTHN_CHALLENGE_SECRET?.trim() || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (secret) return createHash("sha256").update(`pandora-webauthn-challenge\u0000${secret}`).digest();
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("WEBAUTHN_CHALLENGE_SECRET environment variable is required in production.");
+  }
+  devChallengeKey ??= randomBytes(32);
+  return devChallengeKey;
 }
 
-/** Decode and validate challenge cookie; returns null if expired or malformed. */
+function signChallengeBody(body: string): string {
+  return createHmac("sha256", challengeKey()).update(body).digest("base64url");
+}
+
+/** Encode challenge payload into a short-lived, HMAC-signed cookie value. */
+export function encodeChallengePayload(challenge: string): string {
+  const payload: ChallengePayload = { challenge, issuedAt: Math.floor(Date.now() / 1000) };
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  return `${body}.${signChallengeBody(body)}`;
+}
+
+/** Decode and validate challenge cookie; returns null if unsigned, tampered, expired or malformed. */
 export function decodeChallengePayload(raw: string): ChallengePayload | null {
   try {
-    const parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as Record<string, unknown>;
+    const [body, mac, ...rest] = raw.split(".");
+    if (!body || !mac || rest.length > 0) return null;
+    const given = Buffer.from(mac, "base64url");
+    const expected = Buffer.from(signChallengeBody(body), "base64url");
+    if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
+
+    const parsed = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as Record<string, unknown>;
     if (
       typeof parsed !== "object" ||
       parsed === null ||
@@ -125,6 +157,25 @@ export function decodeChallengePayload(raw: string): ChallengePayload | null {
   } catch {
     return null;
   }
+}
+
+export type ChallengeConsumeResult = "consumed" | "replayed" | "unavailable";
+
+/**
+ * Marks a challenge as used via the shared Postgres rate limiter, so single use
+ * holds across serverless instances. "replayed" = already consumed within the
+ * TTL window; "unavailable" = the store could not be checked (callers fail closed).
+ */
+export async function consumeChallengeOnce(
+  kind: "auth" | "reg",
+  challenge: string,
+): Promise<ChallengeConsumeResult> {
+  const decision = await getRateLimiter().hit(
+    { bucket: `webauthn-${kind}-challenge`, limit: 1, windowSeconds: CHALLENGE_TTL_SECONDS * 2 },
+    challenge,
+  );
+  if (decision.allowed) return "consumed";
+  return decision.unavailable ? "unavailable" : "replayed";
 }
 
 export type WebAuthnCredentialRow = {

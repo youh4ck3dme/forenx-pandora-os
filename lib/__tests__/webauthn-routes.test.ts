@@ -8,6 +8,7 @@ import {
   REG_CHALLENGE_COOKIE,
   CHALLENGE_TTL_SECONDS,
 } from "@/lib/auth/webauthn.server";
+import { resetRateLimiterForTests } from "@/lib/security/rate-limiter.server";
 
 // ── Unit: challenge payload encode/decode ────────────────────────────────────
 
@@ -29,6 +30,19 @@ describe("encodeChallengePayload / decodeChallengePayload", () => {
   it("returns null for malformed cookie", () => {
     expect(decodeChallengePayload("not-base64url!!!")).toBeNull();
     expect(decodeChallengePayload("")).toBeNull();
+  });
+
+  it("rejects an unsigned cookie minted by the client around an arbitrary challenge", () => {
+    const now = Math.floor(Date.now() / 1000);
+    const forged = Buffer.from(JSON.stringify({ challenge: "captured-challenge", issuedAt: now })).toString("base64url");
+    expect(decodeChallengePayload(forged)).toBeNull();
+  });
+
+  it("rejects a signed cookie whose payload was swapped", () => {
+    const [, mac] = encodeChallengePayload("issued-challenge").split(".");
+    const now = Math.floor(Date.now() / 1000);
+    const swapped = Buffer.from(JSON.stringify({ challenge: "captured-challenge", issuedAt: now })).toString("base64url");
+    expect(decodeChallengePayload(`${swapped}.${mac}`)).toBeNull();
   });
 
   it("returns null for future issuedAt (clock skew attack)", () => {
@@ -112,7 +126,88 @@ describe("POST /api/auth/webauthn/verify", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetRateLimiterForTests();
     process.env = { ...originalEnv, NEXT_PUBLIC_RP_ID: "localhost" };
+  });
+
+  it("rejects a replayed assertion with a synced passkey (signCount stays 0)", async () => {
+    const credential = {
+      id: "cred-uuid-0",
+      user_id: "user-uuid-0",
+      credential_id: "cred-id-0",
+      public_key_cbor: Buffer.from("fake-cose-key").toString("base64url"),
+      sign_count: 0,
+      counter: 0,
+      transports: ["internal"],
+    };
+    mockDbSelect.mockResolvedValue({ data: credential, error: null });
+    mockVerifyAuthResponse.mockResolvedValue({ verified: true, authenticationInfo: { newCounter: 0 } });
+    mockDbUpdate.mockResolvedValue({ error: null });
+    mockGetUserById.mockResolvedValue({ data: { user: { id: "user-uuid-0", email: "a@forenx.org" } }, error: null });
+    mockCreateSession.mockResolvedValue({
+      data: { session: { access_token: "jwt", refresh_token: "r", expires_in: 3600 } },
+      error: null,
+    });
+
+    const { POST } = await import("@/app/api/auth/webauthn/verify/route");
+    const cookie = encodeChallengePayload("captured-challenge");
+    const send = () =>
+      POST(
+        new NextRequest("http://localhost/api/auth/webauthn/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Cookie: `${CHALLENGE_COOKIE}=${cookie}` },
+          body: JSON.stringify({
+            id: "cred-id-0",
+            rawId: "cred-id-0",
+            response: { clientDataJSON: "c", authenticatorData: "a", signature: "s" },
+            type: "public-key",
+          }),
+        }),
+      );
+
+    expect((await send()).status).toBe(200);
+    const replay = await send();
+    expect(replay.status).toBe(401);
+    expect(((await replay.json()) as { error: string }).error).toMatch(/already used/i);
+    expect(mockVerifyAuthResponse).toHaveBeenCalledTimes(1);
+    expect(mockCreateSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed with 503 when the shared single-use store is unavailable", async () => {
+    process.env = {
+      ...process.env,
+      NODE_ENV: "production",
+      WEBAUTHN_CHALLENGE_SECRET: "test-challenge-secret-0123456789abcdef",
+      NEXT_PUBLIC_SUPABASE_URL: "",
+      SUPABASE_URL: "",
+    };
+    resetRateLimiterForTests();
+    const { POST } = await import("@/app/api/auth/webauthn/verify/route");
+    const cookie = encodeChallengePayload("store-down-challenge");
+    const res = await POST(
+      new NextRequest("http://localhost/api/auth/webauthn/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: `${CHALLENGE_COOKIE}=${cookie}` },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(res.status).toBe(503);
+    expect(mockVerifyAuthResponse).not.toHaveBeenCalled();
+  });
+
+  it("rejects a forged unsigned challenge cookie", async () => {
+    const { POST } = await import("@/app/api/auth/webauthn/verify/route");
+    const now = Math.floor(Date.now() / 1000);
+    const forged = Buffer.from(JSON.stringify({ challenge: "captured", issuedAt: now })).toString("base64url");
+    const res = await POST(
+      new NextRequest("http://localhost/api/auth/webauthn/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: `${CHALLENGE_COOKIE}=${forged}` },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(res.status).toBe(401);
+    expect(mockVerifyAuthResponse).not.toHaveBeenCalled();
   });
 
   afterEach(() => {
@@ -429,6 +524,10 @@ describe("POST /api/auth/webauthn/verify", () => {
 // ── Integration: Passkey Registration Flow ──────────────────────────────────
 
 describe("Passkey Registration Flow (/api/auth/webauthn/register/*)", () => {
+  beforeEach(() => {
+    resetRateLimiterForTests();
+  });
+
   it("rejects unauthenticated user requesting registration options", async () => {
     const { GET } = await import("@/app/api/auth/webauthn/register/options/route");
     const req = new NextRequest("http://localhost/api/auth/webauthn/register/options");

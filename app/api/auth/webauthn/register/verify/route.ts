@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
+  consumeChallengeOnce,
   decodeChallengePayload,
   verifyPasskeyRegistrationResponse,
   REG_CHALLENGE_COOKIE,
@@ -61,6 +62,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const challengePayload = decodeChallengePayload(rawCookie);
   if (!challengePayload) {
     const res = NextResponse.json({ error: "Registration challenge invalid or expired." }, { status: 401 });
+    res.cookies.delete(REG_CHALLENGE_COOKIE);
+    return res;
+  }
+
+  const consumed = await consumeChallengeOnce("reg", challengePayload.challenge);
+  if (consumed !== "consumed") {
+    const res =
+      consumed === "replayed"
+        ? NextResponse.json({ error: "Registration challenge already used." }, { status: 401 })
+        : NextResponse.json({ error: "Challenge verification is temporarily unavailable." }, { status: 503 });
     res.cookies.delete(REG_CHALLENGE_COOKIE);
     return res;
   }
