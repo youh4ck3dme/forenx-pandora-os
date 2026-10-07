@@ -4,7 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import {
   NON_EVIDENTIARY_STATUS,
-  FORENSIC_EVIDENCE_STATUS,
+  FORENSIC_EVIDENCE_CANDIDATE_STATUS,
   computeSha256,
   createResearchArtifact,
   createForensicEvidenceArtifact,
@@ -90,8 +90,8 @@ describe("Screenshot Evidentiary Model (Blueprint v1.0 Bod 15)", () => {
         fixedDate,
       );
 
-      expect(record.evidentiaryStatus).toBe(FORENSIC_EVIDENCE_STATUS);
-      expect(record.evidentiaryStatus).toBe("FORENSIC_EVIDENCE");
+      expect(record.evidentiaryStatus).toBe(FORENSIC_EVIDENCE_CANDIDATE_STATUS);
+      expect(record.evidentiaryStatus).toBe("FORENSIC_EVIDENCE_CANDIDATE_PENDING_LEDGER_INGEST");
       expect(record.caseId).toBe(validCaseId);
       expect(record.evidenceId).toMatch(
         /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,

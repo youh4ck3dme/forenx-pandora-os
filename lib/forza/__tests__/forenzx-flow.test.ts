@@ -12,6 +12,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import {
+  FORENZX_WEBHOOK_HEADER,
+  isWebhookAuthorized,
+} from "../../../supabase/functions/forenzx-evidence-webhook/webhook-auth";
 
 // ── Mock AWS SDK presigner ──────────────────────────────────────────────────────
 vi.mock("@aws-sdk/client-s3", () => ({
@@ -74,24 +79,54 @@ describe("ForenZX flow: presign-for-hub", () => {
 });
 
 describe("ForenZX flow: webhook header", () => {
-  it("Edge Function checks x-forenzx-webhook-secret (not x-webhook-secret)", () => {
-    // This test documents the expected header name as a regression guard.
-    // If this test breaks, update the Edge Function header check.
-    const EXPECTED_HEADER = "x-forenzx-webhook-secret";
+  const SECRET = "webhook-secret-value";
 
-    // Simulate what the SQL trigger sends (after the header fix migration)
-    const triggerHeaders = new Headers({
-      "Content-Type": "application/json",
-      [EXPECTED_HEADER]: "test-secret",
+  function requestWith(name: string | null, value = ""): Request {
+    const headers = new Headers();
+    if (name) headers.set(name, value);
+    return new Request("https://edge.local/forenzx-evidence-webhook", {
+      method: "POST",
+      headers,
     });
+  }
 
-    // Simulate what Edge Function checks
-    const secret = "test-secret";
-    const received = triggerHeaders.get(EXPECTED_HEADER);
-    expect(received).toBe(secret);
+  it("missing FORENZX_WEBHOOK_SECRET is unauthorized", () => {
+    expect(isWebhookAuthorized(requestWith(FORENZX_WEBHOOK_HEADER, SECRET), undefined)).toBe(false);
+    expect(isWebhookAuthorized(requestWith(FORENZX_WEBHOOK_HEADER, SECRET), "")).toBe(false);
+    expect(isWebhookAuthorized(requestWith(FORENZX_WEBHOOK_HEADER, SECRET), "   ")).toBe(false);
+  });
 
-    // Old (broken) header must NOT be present
-    expect(triggerHeaders.get("x-webhook-secret")).toBeNull();
+  it("missing canonical header is unauthorized", () => {
+    expect(isWebhookAuthorized(requestWith(null), SECRET)).toBe(false);
+  });
+
+  it("incorrect secret is unauthorized", () => {
+    expect(isWebhookAuthorized(requestWith(FORENZX_WEBHOOK_HEADER, "totally-wrong"), SECRET)).toBe(false);
+  });
+
+  it("prefix-only secret is unauthorized", () => {
+    expect(isWebhookAuthorized(requestWith(FORENZX_WEBHOOK_HEADER, "webhook"), SECRET)).toBe(false);
+  });
+
+  it("same-length incorrect secret is unauthorized", () => {
+    const flipped = `${SECRET.slice(0, -1)}X`;
+    expect(flipped).toHaveLength(SECRET.length);
+    expect(isWebhookAuthorized(requestWith(FORENZX_WEBHOOK_HEADER, flipped), SECRET)).toBe(false);
+  });
+
+  it("correct secret is authorized", () => {
+    expect(isWebhookAuthorized(requestWith(FORENZX_WEBHOOK_HEADER, SECRET), SECRET)).toBe(true);
+  });
+
+  it("canonical header remains x-forenzx-webhook-secret", () => {
+    const src = readFileSync("supabase/functions/forenzx-evidence-webhook/index.ts", "utf8");
+    expect(FORENZX_WEBHOOK_HEADER).toBe("x-forenzx-webhook-secret");
+    expect(src).toContain('Deno.env.get("FORENZX_WEBHOOK_SECRET")');
+    expect(src).toContain("isWebhookAuthorized(request, Deno.env.get(\"FORENZX_WEBHOOK_SECRET\"))");
+    expect(src).not.toContain("=== expected");
+    expect(src).not.toContain('"x-webhook-secret"');
+    expect(isWebhookAuthorized(requestWith("x-webhook-secret", SECRET), SECRET)).toBe(false);
+    expect(isWebhookAuthorized(requestWith(FORENZX_WEBHOOK_HEADER, SECRET), SECRET)).toBe(true);
   });
 });
 

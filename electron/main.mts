@@ -188,6 +188,7 @@ ipcMain.handle('session:clear-data', async (event) => {
             storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage']
         })
         await webTabsSession.clearCache()
+        historyManager?.clear()
 
         return true
     } catch (e) {
@@ -205,7 +206,8 @@ if (process.defaultApp) {
     app.setAsDefaultProtocolClient('pandora')
 }
 
-ipcMain.handle('system:open-external-safe', async (_event, payload: unknown) => {
+ipcMain.handle('system:open-external-safe', async (event, payload: unknown) => {
+    if (!isMainWindowSender(event)) return { ok: false, code: 'FORBIDDEN' }
     const parsed = openExternalRequestSchema.safeParse(payload)
     if (!parsed.success) return { ok: false, code: 'VALIDATION_ERROR' }
     const validation = validateExternalUrl(parsed.data.url)
@@ -346,6 +348,11 @@ function createWindow() {
     session.defaultSession.clearStorageData({
         storages: ['serviceworkers', 'cachestorage']
     })
+    const startupWebTabsSession = getWebTabsSession()
+    startupWebTabsSession.clearCache()
+    startupWebTabsSession.clearStorageData({
+        storages: ['serviceworkers', 'cachestorage']
+    })
 
     // Register custom protocol for production
     if (!app.isPackaged) {
@@ -413,21 +420,28 @@ function createWindow() {
     session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
         callback(false)
     })
+    getWebTabsSession().setPermissionRequestHandler((_webContents, _permission, callback) => {
+        callback(false)
+    })
 
     // IPC Handlers
-    ipcMain.on('tab:create', (_, { id, url }) => {
+    ipcMain.on('tab:create', (event, { id, url }) => {
+        if (!isMainWindowSender(event as Electron.IpcMainInvokeEvent)) return
         createTab(id, url)
     })
 
-    ipcMain.on('tab:switch', (_, { id }) => {
+    ipcMain.on('tab:switch', (event, { id }) => {
+        if (!isMainWindowSender(event as Electron.IpcMainInvokeEvent)) return
         switchTab(id)
     })
 
-    ipcMain.on('tab:close', (_, { id }) => {
+    ipcMain.on('tab:close', (event, { id }) => {
+        if (!isMainWindowSender(event as Electron.IpcMainInvokeEvent)) return
         closeTab(id)
     })
 
-    ipcMain.on('tab:update', (_, { id, url }) => {
+    ipcMain.on('tab:update', (event, { id, url }) => {
+        if (!isMainWindowSender(event as Electron.IpcMainInvokeEvent)) return
         updateTabUrl(id, url)
     })
 
@@ -444,7 +458,8 @@ function createWindow() {
         return historyManager?.getContent(url) || null
     })
 
-    ipcMain.handle('search:suggestions', async (_, query) => {
+    ipcMain.handle('search:suggestions', async (event, query) => {
+        if (!isMainWindowSender(event)) return []
         try {
             const response = await fetch(`https://duckduckgo.com/ac/?q=${encodeURIComponent(query)}&type=list`)
             if (!response.ok) return []
@@ -464,7 +479,8 @@ function createWindow() {
         }
     })
 
-    ipcMain.handle('tab:getContent', async () => {
+    ipcMain.handle('tab:getContent', async (event) => {
+        if (!isMainWindowSender(event)) return null
         if (!activeTabId) return null
         const tab = tabs.find(t => t.id === activeTabId)
         if (!tab || !tab.view) return null
@@ -489,17 +505,36 @@ function createWindow() {
     })
 
     // IPC for Proxy
-    ipcMain.on('proxy:set', async (event, config) => {
-        if (!isMainWindowSender(event as Electron.IpcMainInvokeEvent)) return
+    ipcMain.handle('proxy:set', async (event, config: unknown) => {
+        if (!isMainWindowSender(event)) return { ok: false, code: 'FORBIDDEN' }
         const webTabsSession = getWebTabsSession()
-        if (!config || config.type === 'none') {
-            await webTabsSession.setProxy({ mode: 'direct' })
-        } else {
-            const proxyRules = `${config.type}://${config.host}:${config.port}`
+        if (!config || typeof config !== 'object') {
+            return { ok: false, code: 'VALIDATION_ERROR' }
+        }
+        const { type, host, port } = config as { type?: unknown; host?: unknown; port?: unknown }
+        if (type === 'none') {
+            try {
+                await webTabsSession.setProxy({ mode: 'direct' })
+                return { ok: true, mode: 'direct' }
+            } catch (error) {
+                console.error('[PΛND0RΛ] Failed to clear web-tabs proxy:', error)
+                return { ok: false, code: 'PROXY_APPLY_FAILED' }
+            }
+        }
+        if ((type !== 'http' && type !== 'socks5') || typeof host !== 'string' || !host.trim()
+            || !Number.isInteger(Number(port)) || Number(port) < 1 || Number(port) > 65535) {
+            return { ok: false, code: 'CONFIG_INCOMPLETE' }
+        }
+        try {
+            const proxyRules = `${type}://${host.trim()}:${Number(port)}`
             await webTabsSession.setProxy({
                 proxyRules,
                 proxyBypassRules: 'localhost,127.0.0.1,::1'
             })
+            return { ok: true, mode: 'proxy' }
+        } catch (error) {
+            console.error('[PΛND0RΛ] Failed to apply web-tabs proxy:', error)
+            return { ok: false, code: 'PROXY_APPLY_FAILED' }
         }
     })
 
@@ -533,7 +568,8 @@ function createWindow() {
         }
     })
 
-    ipcMain.handle('extension:list', () => {
+    ipcMain.handle('extension:list', (event) => {
+        if (!isMainWindowSender(event)) return { ok: false, code: 'FORBIDDEN' }
         const webTabsSession = getWebTabsSession()
         return webTabsSession.getAllExtensions().map(e => ({
             id: e.id,
@@ -543,7 +579,8 @@ function createWindow() {
     })
 
     // IPC for Reader Mode
-    ipcMain.on('reader:toggle', async () => {
+    ipcMain.on('reader:toggle', async (event) => {
+        if (!isMainWindowSender(event as Electron.IpcMainInvokeEvent)) return
 
         if (!mainWindow || !activeTabId) return
         const tab = tabs.find(t => t.id === activeTabId)
@@ -575,8 +612,8 @@ function createWindow() {
 
             if (readerHtml) {
 
-                const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(readerHtml)}`
-                tab.view.webContents.loadURL(dataUrl)
+                // Browser tabs must never programmatically navigate to data: URLs.
+                console.warn('[PΛND0RΛ] Reader-mode data URL blocked by navigation policy')
             } else {
                 console.warn('[PΛND0RΛ] Reader Mode: Failed to parse article content')
             }
@@ -586,7 +623,8 @@ function createWindow() {
     })
 
     // Tools IPC
-    ipcMain.on('devtools:toggle', () => {
+    ipcMain.on('devtools:toggle', (event) => {
+        if (!isMainWindowSender(event as Electron.IpcMainInvokeEvent)) return
         if (!mainWindow || !activeTabId) return
         const tab = tabs.find(t => t.id === activeTabId)
         if (tab?.view) {
@@ -690,6 +728,7 @@ function createWindow() {
     })
 
     ipcMain.handle('vault:select-evidence', async (event, payload: unknown) => {
+        if (!isMainWindowSender(event)) return { ok: false, code: 'FORBIDDEN' }
         if (!mainWindow) return { ok: false, code: 'WINDOW_UNAVAILABLE' }
         const parsed = selectEvidenceRequestSchema.safeParse(payload)
         if (!parsed.success) return { ok: false, code: 'VALIDATION_ERROR' }
@@ -714,6 +753,7 @@ function createWindow() {
     })
 
     ipcMain.handle('vault:read-chunk', async (event, payload: unknown) => {
+        if (!isMainWindowSender(event)) return { ok: false, code: 'FORBIDDEN' }
         const parsed = readEvidenceChunkRequestSchema.safeParse(payload)
         if (!parsed.success) return { ok: false, code: 'VALIDATION_ERROR' }
         return vaultTokens.read(
@@ -749,23 +789,27 @@ function createWindow() {
     })
 
     // Navigation IPC
-    ipcMain.on('nav:back', () => {
+    ipcMain.on('nav:back', (event) => {
+        if (!isMainWindowSender(event as Electron.IpcMainInvokeEvent)) return
         const tab = tabs.find(t => t.id === activeTabId)
         if (tab?.view?.webContents.canGoBack()) tab.view.webContents.goBack()
     })
 
-    ipcMain.on('nav:forward', () => {
+    ipcMain.on('nav:forward', (event) => {
+        if (!isMainWindowSender(event as Electron.IpcMainInvokeEvent)) return
         const tab = tabs.find(t => t.id === activeTabId)
         if (tab?.view?.webContents.canGoForward()) tab.view.webContents.goForward()
     })
 
-    ipcMain.on('nav:reload', () => {
+    ipcMain.on('nav:reload', (event) => {
+        if (!isMainWindowSender(event as Electron.IpcMainInvokeEvent)) return
         const tab = tabs.find(t => t.id === activeTabId)
         tab?.view?.webContents.reload()
     })
 
     // AI IPC Handlers
     ipcMain.on('ai:chat', async (event, { messages, apiKey, model }) => {
+        if (!isMainWindowSender(event as Electron.IpcMainInvokeEvent)) return
         const id = Date.now().toString()
 
 
@@ -810,7 +854,8 @@ function createWindow() {
         }
     })
 
-    ipcMain.handle('ai:generate-image', async (_, { prompt, apiKey }) => {
+    ipcMain.handle('ai:generate-image', async (event, { prompt, apiKey }) => {
+        if (!isMainWindowSender(event)) throw new Error('Unauthorized IPC sender')
         // Simple fetch for DALL-E 3 as @ai-sdk/openai doesn't support images yet or standard interface is different
         try {
             const response = await fetch('https://api.openai.com/v1/images/generations', {
@@ -1037,7 +1082,8 @@ app.on('window-all-closed', () => {
 })
 
 // Auto-Updater IPC
-ipcMain.on('updater:check', () => {
+ipcMain.on('updater:check', (event) => {
+    if (!isMainWindowSender(event as Electron.IpcMainInvokeEvent)) return
     if (!app.isPackaged) {
         mainWindow?.webContents.send('updater:status', { status: 'error', message: 'Cannot check for updates in dev mode' })
         return
@@ -1045,7 +1091,8 @@ ipcMain.on('updater:check', () => {
     autoUpdater.checkForUpdates()
 })
 
-ipcMain.on('updater:install', () => {
+ipcMain.on('updater:install', (event) => {
+    if (!isMainWindowSender(event as Electron.IpcMainInvokeEvent)) return
     autoUpdater.quitAndInstall()
 })
 

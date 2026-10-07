@@ -14,7 +14,7 @@ Tento dokument je jediný kanonický a normatívny kontrakt pre systém **PANDOR
 Platí bez výnimky pre:
 - **Web / Next.js 15 App Router** (`app/`, `components/`, `lib/forza/`)
 - **PWA & Offline state** (`lib/forza/idb.ts`, service workers)
-- **Capacitor Mobile** (`capacitor.config.ts`, `scripts/mobile/`)
+- **Capacitor Mobile** (`mobile/capacitor.config.json`, `mobile/scripts/mobile/`)
 - **Electron Desktop Shell** (`electron/`, Chromium v152 / Node v24 LTS baseline)
 - **Supabase Auth / PostgreSQL / RLS / Edge Functions** (`supabase/`, `db/cleanroom/`)
 - **Hetzner S3 Object Storage / Evidence Vault** (WORM, Object Lock)
@@ -60,7 +60,7 @@ PANDORA / ForenX je jednotný forenzný systém s viacerými runtime adaptérmi:
 |---|---|---|
 | **Web** | Hlavné vyšetrovateľské UI, API, serverové funkcie | `app/`, `components/`, `lib/forza/` |
 | **PWA** | Web UI, lokálna offline cache, synchronizácia | Web runtime + `lib/forza/idb.ts` |
-| **Capacitor Mobile** | Triage obal pre mobilné prostredie (Android/iOS) | `capacitor.config.ts`, `scripts/mobile/` |
+| **Capacitor Mobile** | Triage obal pre mobilné prostredie (Android/iOS) | `mobile/capacitor.config.json`, `mobile/scripts/mobile/` |
 | **Electron** | Bezpečný desktopový browser shell | `electron/` + web UI |
 | **Supabase** | Autentifikácia, PostgreSQL 15, RLS, WORM Ledger | `supabase/`, `db/cleanroom/` |
 | **ForenZX MCP Hub** | Izolovaná forenzná analýza a worker procesy | `forenzx-mcp-hub/` |
@@ -101,6 +101,7 @@ Porušenie ktoréhokoľvek z nasledujúcich invariantov predstavuje okamžitý *
 - **INV-005 (Authoritative Size):** Klientom deklarovaná veľkosť súboru nesmie byť autoritou pre validáciu dôkazu.
 - **INV-006 (Storage Object Binding):** Identifikátor dôkazu (`evidence_id`) nesmie byť možné prepojiť na iný S3 objekt obyčajnou zmenou klientskej požiadavky.
 - **INV-007 (Immutable Relation):** `evidence_items.case_id` je po zápise nemenný (write-once) a chránený databázovým triggerom `evidence_items_insert_guard`.
+- **INV-007a (Legacy Case Resolution):** Nové `evidence_items` záznamy musia mať `case_id`. Historické záznamy bez deterministicky overiteľnej väzby sa evidujú v `evidence_items_legacy_unresolved`; nesmú dostať odvodený alebo vymyslený `case_id`.
 - **INV-008 (Verified Lifecycle Gate):** Forenzná analýza a generovanie capability tokenov sú povolené výhradne nad dôkazom v stave `status = 'verified'`.
 - **INV-009 (ForenZX Byte Parity):** ForenZX MCP Hub musí analyzovať presne tie bajty, ktoré zodpovedajú verifikovanému SHA-256 hashu v evidence ledgeri.
 - **INV-010 (Dual Job Identity):** Lokálny Pandora `job_id` a upstream `hub_job_id` sú striktne oddelené identity mapované v relačnej tabuľke.
@@ -181,7 +182,7 @@ Pri štarte analýzy (`POST /api/forenzx/start`):
   - Vyžaduje validné UUID prípadu (`caseId`).
   - Získava surové PNG bajty, počíta SHA-256 hash.
   - Zaznamenáva kompletnú provenienciu: URL, titulok stránky, časovú pečiatku, rozlíšenie viewportu a User-Agent.
-  - Ukladá artefakt do `screenshots/evidence/` a pripravuje záznam pre zápis do evidence ledgera a auditného záznamu.
+  - Lokálny artefakt má stav `FORENSIC_EVIDENCE_CANDIDATE_PENDING_LEDGER_INGEST`; nie je dôkazom, kým neprejde existujúcim evidence ledger commit, serverovým hash overením a auditom.
 
 ---
 
@@ -224,6 +225,16 @@ npm run test:regression:forenzx
 | **INV-022** | SSRF ochrana a zákaz loopbacku | **VERIFIED** | `electron/__tests__/network-security.test.ts` |
 | **INV-023** | Auditované deštruktívne RPC | **VERIFIED** | `db/cleanroom/tests/03-privileged-rpc-authorization.test.ts` |
 | **INV-024** | 100% automatizované testovacie pokrytie | **VERIFIED** | 131 testovacích súborov, 1188 unit/integration testov PASS |
+| **INV-025** | Court Pack podpis: Ed25519 nad kanonickým manifestom; private key NESMIE byť v env ako plaintext, iba referencia (`file:`/`vault:`/`kms:`) cez `SigningKeyProvider` | **VERIFIED** | `lib/court/__tests__/signing.test.ts` |
+| **INV-026** | Offline verifikácia Court Packu funguje bez PANDORA backendu a bez akéhokoľvek secretu — iba public key + kid | **VERIFIED** | `lib/court/__tests__/signing.test.ts` (`lib/court/verify.mjs`) |
+| **INV-027** | Key rotation: každý signing kľúč má `kid` + `version` + `status` + `validFrom` + `revokedAt`; signing kľúč MUSÍ zodpovedať aktívnemu public-key recordu pre daný kid | **VERIFIED** | `lib/court/__tests__/signing.test.ts` |
+| **INV-028** | Revocation: revoked `kid` (revocation list alebo keyring status) NESMIE vytvoriť ani overiť platný Court Pack | **VERIFIED** | `lib/court/__tests__/signing.test.ts` |
+| **INV-029** | Kryptografický manifest: deterministický (sorted canonical JSON) SHA-256 na súbor + Merkle root; tamper ktoréhokoľvek bajtu je detekovaný s menom artefaktu | **VERIFIED** | `lib/court/__tests__/signing.test.ts` |
+| **INV-030** | STIX integrita: analýza akceptuje iba threat-intel s digestom v `FORENZX_TRUSTED_STIX_DIGESTS`; nesúlad = fail-closed | **NORMATIVE** | runtime enforcement patrí do Python Hubu (`forenzx-mcp-hub/core/threat_intel.py`); Next utilita `lib/court/stix.ts` (pure, unit-tested) INV-030 NEreklasifikuje |
+| **INV-031** | RFC 3161: TSA token (`timestamp.tsr`) nad Merkle root sa uchováva ako súčasť Court Packu | **NORMATIVE** | build + offline verify implementované (`lib/court/timestamp.ts`, pkijs; `pack-builder` ukladá `timestamp.tsr`); live-TSA round-trip + full chain trust + standalone-node TSR verify = pending |
+| **INV-032** | Local AI boundary: v court-grade/air-gapped režime dôkazový obsah NESMIE fallbacknúť na cloud AI (`FORENZX_LOCAL_AI_BASE_URL` povinné) | **NORMATIVE** | guard `lib/court/ai-boundary.ts` + env relax (`MISTRAL_API_KEY` nepovinný v court-grade) implementované+tested; zapojenie na evidence-AI call-site = pending |
+
+> **Court-grade signing contract (INV-025–029):** vynútené fail-closed cez `config/env.ts` (`FORENZX_COURT_GRADE=true` vyžaduje `FORENZX_SIGNING_KEY_ID`, `FORENZX_SIGNING_PRIVATE_KEY_REF`, `FORENZX_TRUSTED_PUBLIC_KEYS`, `FORENZX_KEYRING_VERSION`, `FORENZX_LOCAL_AI_BASE_URL`). Implementácia: `lib/court/{manifest,signing}.ts`; offline verifier `lib/court/verify.mjs`. Prechod `file:` → `vault:`/`kms:` NESMIE zmeniť formát manifestu, podpisu ani verifiera.
 
 ---
 
@@ -239,7 +250,8 @@ npm run test:regression:forenzx
 - [x] **Outbox Drain Hardening (P1):** Zápis `last_error = 'CONFIG_MISSING...'` do tabuľky `forenzx_dispatch_outbox` pri chýbajúcej webhook konfigurácii (`lib/forza/forenzx-dispatch-drain.server.ts`).
 - [x] **HTTPS Enforce pre externý register (P1):** Preflight skript `scripts/deploy/env.mjs` striktne odmieta nešifrované `http://` pre `ICO_ATLAS_API_URL`.
 - [x] **Extension Load Allowlist (P2):** IPC handler `extension:load` v `electron/main.mts` povoľuje načítavanie rozšírení výhradne z autorizovaného adresára `extensions/` s ochranou pred path traversal.
-- [x] **Admin health gate po `has_role` revoke (2026-10-03):** `has_role(uuid, app_role)` aj `health_metrics()` majú odobraté `EXECUTE` roli `authenticated` (migrácia `20261003120100_revoke_secdef_authenticated.sql`). `getSystemHealth` (`lib/forza/health.functions.ts`) a `GET /api/health/observe` preto robia admin kontrolu **cez service-role klienta** (`supabaseAdmin.rpc("has_role", { _user_id: <overený userId z Bearer tokenu> })`) a admin-only čítania (`ai_feature_logs`, `error_logs`, operatívne metriky) idú cez `supabaseAdmin`. `userId` pochádza výhradne z overenej relácie → žiadna „role oracle" eskalácia; fail-closed (`roleError → 500`, `!isAdmin → 403`).
+- [x] **ForenZX Client/Server Boundary Isolation:** `lib/forenzx/capability.ts`, `lib/forza/forenzx-evidence-presign.server.ts` a `lib/forza/forenzx-mcp.server.ts` vynucujú `server-only`. UI komponenty (`Assistant.tsx`, `ForenzXAnalysisPanel.tsx`) čítajú joby výhradne cez overený Route Handler `GET /api/forenzx/jobs` a bezpečný klient `lib/forenzx/client.ts`. Webpack bundle pre klienta je 100% čistý bez pokusov o import `node:crypto` (`createHmac`, `timingSafeEqual`).
+- [x] **Court Pack Generator API & Route (`POST /api/cases/[id]/court-pack`):** Export forenzného Court Packu s Ed25519 podpisom manifestu, reportom, WORM dôkazmi, STIX threat-intel overením a voliteľným RFC 3161 TSA tokenom.
 
 ### 9.2 OPEN (Architektonické úlohy v kóde)
 - **P2:** `has_role`-based RLS politiky (`ai_feature_logs`, `error_logs`, storage private-bucket) nie sú po revoke z 2026-10-03 použiteľné `authenticated` klientom (EXECUTE sa kontroluje aj vo vyhodnotení RLS politiky). Admin dáta preto čítať service klientom; prípadné ďalšie priame čítania týchto tabuliek user klientom treba revidovať.

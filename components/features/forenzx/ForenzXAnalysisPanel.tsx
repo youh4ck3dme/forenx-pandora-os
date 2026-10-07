@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { listTools as getForenZXTools, listJobs as getForenZXJobs } from "@/lib/forza/forenzx-mcp.functions";
+import { fetchForenZXTools as getForenZXTools, fetchForenZXJobs as getForenZXJobs, type ForenZXTool, type ForenZXJob } from "@/lib/forenzx/client";
 import { useForenzxJobEvents } from "@/lib/hooks/useForenzxJobEvents";
-import type { ForenZXTool, ForenZXJob } from "@/lib/forza/forenzx-mcp.functions";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -126,7 +125,7 @@ export function ForenzXAnalysisPanel({
   const loadJobs = useCallback(async () => {
     if (!caseId) return;
     try {
-      const { jobs: rows } = await getForenZXJobs({ caseId });
+      const { jobs: rows } = await getForenZXJobs(caseId);
       setJobs(rows);
       // Auto-attach to the most recent running/queued job
       const active = rows.find((job: ForenZXJob) => ["running", "queued", "starting"].includes(job.status));
@@ -179,7 +178,7 @@ export function ForenzXAnalysisPanel({
 
       // Refresh job list
       if (caseId) {
-        const { jobs: updated } = await getForenZXJobs({ caseId });
+        const { jobs: updated } = await getForenZXJobs(caseId);
         setJobs(updated);
       }
     } catch (error) {

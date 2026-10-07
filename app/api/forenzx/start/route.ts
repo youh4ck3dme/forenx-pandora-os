@@ -153,6 +153,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       })
       .eq("id", row.id);
 
+    // Provenance Audit Invariant: record verified evidence identity and analysis job
+    await supabaseAdmin
+      .from("case_audit_log")
+      .insert({
+        user_id: auth.userId,
+        case_id: resolvedCaseId,
+        action: "forenzx_analysis_started",
+        table_name: "forenzx_analysis_jobs",
+        record_id: row.id,
+        correlation_id: result.job_id,
+        changes: {
+          job_id: result.job_id,
+          evidence_id: evidenceId,
+          s3_object_key: trustedS3Key,
+          sha256_hash: trustedSha256,
+          file_size: trustedFileSize,
+          pack_id: packId,
+          input_type: inputType,
+          idempotency_key: idempotencyKey,
+        },
+      });
+
     return NextResponse.json({ jobId: result.job_id, deduplicated: result.deduplicated });
   } catch (error) {
     await supabaseAdmin

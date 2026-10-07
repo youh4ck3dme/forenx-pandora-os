@@ -47,7 +47,7 @@ import {
   getForensicDossier,
   getForensicWorkflowRuns,
 } from "@/lib/ai.functions";
-import { listJobs as getForenZXJobs } from "@/lib/forza/forenzx-mcp.functions";
+import { fetchForenZXJobs } from "@/lib/forenzx/client";
 import type { ForensicDossier } from "@/lib/types";
 import { isDemoDossier } from "@/lib/autopilot-meta";
 import { useVerifiedEvidence } from "@/hooks/useVerifiedEvidence";
@@ -128,7 +128,6 @@ export function Assistant() {
   const saveCaseDossierFn = useServerFn(saveCaseDossier);
   const getForensicDossierFn = useServerFn(getForensicDossier);
   const getForensicWorkflowRunsFn = useServerFn(getForensicWorkflowRuns);
-  const getForenZXJobsFn = useServerFn(getForenZXJobs);
   const loadQuarantine = useServerFn(loadQuarantineDocuments);
 
   const [analysisWarnings, setAnalysisWarnings] = useState<string[]>([]);
@@ -222,8 +221,8 @@ export function Assistant() {
     [getForensicWorkflowRunsFn],
   );
   const loadForenZXJobs = useCallback(
-    (caseId: string) => getForenZXJobsFn({ data: { caseId } }),
-    [getForenZXJobsFn],
+    (caseId: string) => fetchForenZXJobs(caseId),
+    [],
   );
   const loadCompletedDossier = useCallback(() => {
     if (!activeCase.id) return;

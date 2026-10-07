@@ -12,7 +12,7 @@ const profile = process.argv[2] || "local";
 const baseConfig = {
   appId: "com.pandora.browser",
   appName: "PANDORA Forensic OS",
-  webDir: "out",
+  webDir: "../out",
   bundledWebRuntime: false,
   plugins: {
     SplashScreen: {

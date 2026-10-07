@@ -41,6 +41,16 @@ dc1502f588b83ffae832547e48900b651732d807:db/cleanroom/tests/08-supabase-docker-i
 3d097d91152c52d8f89079f154605c8f6c03ff3f:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:105
 3d097d91152c52d8f89079f154605c8f6c03ff3f:lib/quality-gate/__tests__/redaction.test.ts:generic-api-key:107
 
+# Historical example and test fixtures retained in the Base44 isolation baseline:
+4507cb782c9dadaae3c17254d484c51d0ebe4a63:.env.example:generic-api-key:90
+4507cb782c9dadaae3c17254d484c51d0ebe4a63:.env.production.example:generic-api-key:30
+4507cb782c9dadaae3c17254d484c51d0ebe4a63:.env.production.example:generic-api-key:32
+4507cb782c9dadaae3c17254d484c51d0ebe4a63:.env.production.example:generic-api-key:90
+4507cb782c9dadaae3c17254d484c51d0ebe4a63:lib/__tests__/trace.test.ts:generic-api-key:144
+4507cb782c9dadaae3c17254d484c51d0ebe4a63:lib/ai/__tests__/fault-injection.test.ts:generic-api-key:20
+4507cb782c9dadaae3c17254d484c51d0ebe4a63:lib/ai/__tests__/mistral-client.test.ts:generic-api-key:24
+4507cb782c9dadaae3c17254d484c51d0ebe4a63:lib/ai/__tests__/llm-redaction-gateway.test.ts:generic-api-key:12
+
 # Historical Docker build-arg in a deleted revision of the production-verification
 # workflow: empty-payload JWT placeholder (not a Supabase key). Line no longer exists.
 4b99826bfeb335883ffa024d0c916a35d6207e67:.github/workflows/production-verification.yml:generic-api-key:112

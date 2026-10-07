@@ -9,7 +9,6 @@ export type DesktopSendChannel =
   | "nav:forward"
   | "nav:reload"
   | "nav:stop"
-  | "proxy:set"
   | "updater:check"
   | "ai:chat";
 
@@ -29,7 +28,8 @@ export type DesktopInvokeChannel =
   | "password:get"
   | "password:reveal"
   | "password:save"
-  | "password:delete";
+  | "password:delete"
+  | "proxy:set";
 
 export type DesktopEventChannel =
   | "tab:updated"

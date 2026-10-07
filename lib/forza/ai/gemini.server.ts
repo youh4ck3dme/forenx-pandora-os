@@ -3,6 +3,7 @@
  * Kľúč `GEMINI_API_KEY` je serverové tajomstvo — nikdy sa nedostane do klientského balíka.
  * Model sa nastavuje serverovou premennou `GEMINI_MODEL` (predvolený: gemini-flash-lite-latest).
  */
+import { guardCloudEvidenceAi } from "@/lib/court/ai-boundary";
 
 export const GEMINI_ENDPOINT_BASE =
   "https://generativelanguage.googleapis.com/v1beta/models";
@@ -61,6 +62,7 @@ type GeminiCallOptions = {
 export async function callGemini(
   options: GeminiCallOptions,
 ): Promise<GeminiResult> {
+  guardCloudEvidenceAi("gemini"); // INV-032: fail-closed in court-grade
   const apiKey = geminiApiKey();
   if (!apiKey) {
     return {

@@ -40,14 +40,22 @@ export function SettingsPanel() {
     }
   };
 
-  const updateSetting = (key: keyof Settings, value: any) => {
+  const updateSetting = async (key: keyof Settings, value: any) => {
     const newSettings = { ...settings, [key]: value };
-    setSettings(newSettings);
-    saveSettings({ [key]: value });
+    let proxyApplied = false;
 
     if (key === "proxy" && isElectron()) {
-      electron.send("proxy:set", value);
+      const result = await electron.invoke("proxy:set", value) as { ok?: boolean; code?: string };
+      if (!result?.ok && result?.code !== "CONFIG_INCOMPLETE") {
+        console.error("Proxy configuration was not applied to the web-tabs session", result?.code);
+        return;
+      }
+      proxyApplied = result?.ok === true;
     }
+
+    setSettings(newSettings);
+    if (key !== "proxy" || !isElectron()) saveSettings({ [key]: value });
+    if (key === "proxy" && proxyApplied) saveSettings({ [key]: value });
   };
 
   return (
