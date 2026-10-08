@@ -217,6 +217,32 @@ export function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (ch) => "\\" + ch);
 }
 
+/**
+ * Case metadata for Court Pack, bound to the caller's Bearer token and user id.
+ * Uses the anon key + RLS (never the service role). Returns null when the case
+ * is missing or not owned — callers must not distinguish those outcomes.
+ */
+export async function loadOwnedCaseSummary(
+  token: string,
+  userId: string,
+  caseId: string,
+): Promise<{ id: string; name: string } | null> {
+  if (!token || !userId) return null;
+  const client = await userClient(token);
+  const { data, error } = await client
+    .from("cases")
+    .select("id, name")
+    .eq("id", caseId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(`case_read_failed:${error.code ?? "unknown"}`);
+  if (!data?.id) return null;
+  return {
+    id: String(data.id),
+    name: typeof data.name === "string" ? data.name : String(data.name ?? ""),
+  };
+}
+
 /** Záznamy ledgeru pre prípad (RLS: iba vlastné). */
 export async function listLedgerEvidence(token: string, caseId: string): Promise<LedgerRow[]> {
   const client = await userClient(token);

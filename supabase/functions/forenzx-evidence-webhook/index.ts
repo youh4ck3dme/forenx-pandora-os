@@ -1,5 +1,6 @@
 /// <reference path="../deno.d.ts" />
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { isWebhookAuthorized } from "./webhook-auth.ts";
 const CASE_ID = /^[A-Za-z0-9_.-]{1,128}$/;
 
 type CaseIdDecision =
@@ -133,10 +134,7 @@ function requiredEnv(name: string): string {
 }
 
 function isAuthorized(request: Request): boolean {
-  const expected = Deno.env.get("FORENZX_WEBHOOK_SECRET")?.trim();
-  if (!expected) return false;
-  // Canonical header only — SOURCE-OF-TRUTH §6
-  return request.headers.get("x-forenzx-webhook-secret") === expected;
+  return isWebhookAuthorized(request, Deno.env.get("FORENZX_WEBHOOK_SECRET"));
 }
 
 export function isValidDownloadUrl(rawUrl: string): { ok: boolean; reason?: string } {

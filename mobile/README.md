@@ -26,7 +26,8 @@ npm run mobile:profile:local
 npm run mobile:profile:staging
 npm run mobile:profile:prod
 
-# Build and sync for native platforms
+# Build the real root Next.js application (static export to ../out) and sync it
+# These commands must be run from mobile/.
 npm run cap:build
 npm run cap:android
 npm run cap:ios
