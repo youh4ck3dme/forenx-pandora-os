@@ -35,7 +35,7 @@ Tvoja úloha je autoritatívne zistiť:
 
 Pred hodnotením bezpečnosti najprv zmapuj CELÝ systém bez vynechania modulov:
 1. **Repozitár:** Všetky adresáre (`app/`, `components/`, `lib/forza/`, `electron/`, `supabase/`, `scripts/`, `deploy/`).
-2. **Konfigurácie:** `package.json`, lockfile, `tsconfig.json`, `next.config.mjs`, `capacitor.config.ts`, Dockerfiles, CI/CD workflows (`.github/workflows/`).
+2. **Konfigurácie:** `package.json`, lockfile, `tsconfig.json`, `next.config.mjs`, `mobile/capacitor.config.json`, Dockerfiles, CI/CD workflows (`.github/workflows/`).
 3. **Komponenty a vrstvy:** Pre každý súbor urči jeho typ, vstup, výstup, trust level, auth požiadavku a citlivosť dát.
 
 ---
