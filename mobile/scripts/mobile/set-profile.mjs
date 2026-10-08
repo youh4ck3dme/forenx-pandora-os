@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const rootDir = path.resolve(__dirname, "../..");
-const configPath = path.join(rootDir, "capacitor.config.json");
+const mobileDir = path.resolve(__dirname, "../..");
+const configPath = path.join(mobileDir, "capacitor.config.json");
 
 const profile = process.argv[2] || "local";
 
