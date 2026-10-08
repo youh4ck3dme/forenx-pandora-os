@@ -66,7 +66,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return res;
   }
 
-  const consumed = await consumeChallengeOnce("reg", challengePayload.challenge);
+  const consumed = await consumeChallengeOnce("reg", challengePayload.challenge, challengePayload.issuedAt);
   if (consumed !== "consumed") {
     const res =
       consumed === "replayed"

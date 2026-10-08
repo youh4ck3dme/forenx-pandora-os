@@ -21,7 +21,6 @@ import type {
 } from "@simplewebauthn/types";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { getRateLimiter } from "@/lib/security/rate-limiter.server";
 
 export const CHALLENGE_COOKIE = "webauthn_auth_challenge";
 export const LEGACY_CHALLENGE_COOKIE = "wa_challenge";
@@ -161,21 +160,48 @@ export function decodeChallengePayload(raw: string): ChallengePayload | null {
 
 export type ChallengeConsumeResult = "consumed" | "replayed" | "unavailable";
 
+/** Dev/test only: spent challenge key -> expiry (ms). Production uses webauthn_spent_challenges. */
+const spentChallengesMemory = new Map<string, number>();
+
 /**
- * Marks a challenge as used via the shared Postgres rate limiter, so single use
- * holds across serverless instances. "replayed" = already consumed within the
- * TTL window; "unavailable" = the store could not be checked (callers fail closed).
+ * Marks a challenge as used until it expires. Each challenge gets its own
+ * record with its exact expiry, so single use cannot be split across the
+ * boundary of a fixed rate-limit window. "replayed" = already used;
+ * "unavailable" = the store could not be checked (callers fail closed).
  */
 export async function consumeChallengeOnce(
   kind: "auth" | "reg",
   challenge: string,
+  issuedAt: number,
 ): Promise<ChallengeConsumeResult> {
-  const decision = await getRateLimiter().hit(
-    { bucket: `webauthn-${kind}-challenge`, limit: 1, windowSeconds: CHALLENGE_TTL_SECONDS * 2 },
-    challenge,
-  );
-  if (decision.allowed) return "consumed";
-  return decision.unavailable ? "unavailable" : "replayed";
+  const key = createHash("sha256").update(`${kind}\u0000${challenge}`).digest("hex");
+  const expiresAtMs = (issuedAt + CHALLENGE_TTL_SECONDS) * 1000;
+
+  if (process.env.NODE_ENV !== "production") {
+    const now = Date.now();
+    for (const [existing, expiry] of spentChallengesMemory) {
+      if (expiry <= now) spentChallengesMemory.delete(existing);
+    }
+    if (spentChallengesMemory.has(key)) return "replayed";
+    spentChallengesMemory.set(key, expiresAtMs);
+    return "consumed";
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin.rpc("webauthn_consume_challenge", {
+      _challenge_key: key,
+      _expires_at: new Date(expiresAtMs).toISOString(),
+    });
+    if (error || typeof data !== "boolean") return "unavailable";
+    return data ? "consumed" : "replayed";
+  } catch {
+    return "unavailable";
+  }
+}
+
+/** Test hook: forgets challenges consumed by the in-memory (dev/test) store. */
+export function resetSpentChallengesForTests(): void {
+  spentChallengesMemory.clear();
 }
 
 export type WebAuthnCredentialRow = {

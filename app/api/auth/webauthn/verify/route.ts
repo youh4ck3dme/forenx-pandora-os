@@ -75,7 +75,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // One-time use enforced server-side: deleting the cookie does not stop a
   // client that kept a copy from replaying it within the TTL window.
-  const consumed = await consumeChallengeOnce("auth", challengePayload.challenge);
+  const consumed = await consumeChallengeOnce("auth", challengePayload.challenge, challengePayload.issuedAt);
   if (consumed !== "consumed") {
     const res =
       consumed === "replayed"

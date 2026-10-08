@@ -9,6 +9,7 @@ import {
   CHALLENGE_TTL_SECONDS,
 } from "@/lib/auth/webauthn.server";
 import { resetRateLimiterForTests } from "@/lib/security/rate-limiter.server";
+import { resetSpentChallengesForTests } from "@/lib/auth/webauthn.server";
 
 // ── Unit: challenge payload encode/decode ────────────────────────────────────
 
@@ -127,6 +128,7 @@ describe("POST /api/auth/webauthn/verify", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetRateLimiterForTests();
+    resetSpentChallengesForTests();
     process.env = { ...originalEnv, NEXT_PUBLIC_RP_ID: "localhost" };
   });
 
@@ -182,6 +184,7 @@ describe("POST /api/auth/webauthn/verify", () => {
       SUPABASE_URL: "",
     };
     resetRateLimiterForTests();
+    resetSpentChallengesForTests();
     const { POST } = await import("@/app/api/auth/webauthn/verify/route");
     const cookie = encodeChallengePayload("store-down-challenge");
     const res = await POST(
@@ -526,6 +529,7 @@ describe("POST /api/auth/webauthn/verify", () => {
 describe("Passkey Registration Flow (/api/auth/webauthn/register/*)", () => {
   beforeEach(() => {
     resetRateLimiterForTests();
+    resetSpentChallengesForTests();
   });
 
   it("rejects unauthenticated user requesting registration options", async () => {
