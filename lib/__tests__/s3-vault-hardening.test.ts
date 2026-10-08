@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   clearVaultFallback,
   getPresignedDossierUrl,
+  getS3Config,
   getPresignedUploadUrl,
   uploadCaseDocument,
 } from "../storage/s3-vault";
@@ -14,6 +15,7 @@ describe("S3 vault hardening", () => {
     process.env = { ...originalEnv };
     delete process.env.S3_ACCESS_KEY_ID;
     delete process.env.S3_SECRET_ACCESS_KEY;
+    delete process.env.S3_ENDPOINT;
     clearVaultFallback();
   });
 
@@ -57,6 +59,7 @@ describe("S3 vault hardening", () => {
   });
 
   it("binds content integrity headers into a presigned upload", async () => {
+    process.env.S3_ENDPOINT = "https://s3.test.invalid";
     process.env.S3_ACCESS_KEY_ID = "test-access-key";
     process.env.S3_SECRET_ACCESS_KEY = "test-secret-key";
     const digest = crypto.createHash("sha256").update("evidence").digest("hex");
@@ -73,5 +76,19 @@ describe("S3 vault hardening", () => {
     expect(url).toContain(
       "X-Amz-SignedHeaders=content-type%3Bhost%3Bx-amz-content-sha256%3Bx-amz-meta-case-id%3Bx-amz-meta-sha256-checksum",
     );
+  });
+
+  it("ignores ambient AWS_* credentials and never defaults to the production vault endpoint", () => {
+    delete process.env.S3_ENDPOINT;
+    process.env.AWS_ACCESS_KEY_ID = "AKIAUNRELATED";
+    process.env.AWS_SECRET_ACCESS_KEY = "unrelated-secret";
+    expect(getS3Config()).toBeNull();
+
+    process.env.S3_ACCESS_KEY_ID = "vault-key";
+    process.env.S3_SECRET_ACCESS_KEY = "vault-secret";
+    expect(getS3Config()).toBeNull();
+
+    process.env.S3_ENDPOINT = "https://s3.test.invalid/";
+    expect(getS3Config()).toMatchObject({ endpoint: "https://s3.test.invalid", accessKeyId: "vault-key" });
   });
 });
