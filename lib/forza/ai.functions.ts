@@ -904,6 +904,9 @@ export async function startForensicCaseAnalysisRun(
   saveError?: string;
 }> {
   await assertCaseOwned(context.supabase, data.caseId);
+  // Ownership is checked with the caller's client above. Workflow metadata is
+  // server-managed, so all state mutations use the existing server-only client.
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { buildAutopilotIdempotencyKey } = await import("./autopilot-meta");
   const idempotencyKey =
     data.idempotencyKey ??
@@ -912,11 +915,12 @@ export async function startForensicCaseAnalysisRun(
       documentText: data.documentText,
       retryChunkIndexes: data.retryChunkIndexes,
     }));
-  const db = context.supabase as any;
+  const db = supabaseAdmin as any;
   const { data: existing, error: existingError } = await db
     .from("forensic_workflow_runs")
     .select("*")
     .eq("case_id", data.caseId)
+    .eq("user_id", context.userId)
     .eq("workflow_type", "FORENSIC_CASE_ANALYSIS")
     .eq("idempotency_key", idempotencyKey)
     .maybeSingle();
@@ -930,7 +934,11 @@ export async function startForensicCaseAnalysisRun(
     const { error: resetError } = await db
       .from("forensic_workflow_runs")
       .update({ status: "queued", error_code: null, error_message: null })
-      .eq("id", existing.id);
+      .eq("id", existing.id)
+      .eq("case_id", data.caseId)
+      .eq("user_id", context.userId)
+      .eq("workflow_type", "FORENSIC_CASE_ANALYSIS")
+      .eq("idempotency_key", idempotencyKey);
     if (resetError) throw new Error(`Retry reset failed: ${resetError.message}`);
   }
 
@@ -955,6 +963,7 @@ export async function startForensicCaseAnalysisRun(
         .from("forensic_workflow_runs")
         .select("*")
         .eq("case_id", data.caseId)
+        .eq("user_id", context.userId)
         .eq("workflow_type", "FORENSIC_CASE_ANALYSIS")
         .eq("idempotency_key", idempotencyKey)
         .maybeSingle();
@@ -984,6 +993,10 @@ export async function startForensicCaseAnalysisRun(
       .from("forensic_workflow_runs")
       .update({ workflow_run_id: run.runId })
       .eq("id", recordId)
+      .eq("case_id", data.caseId)
+      .eq("user_id", context.userId)
+      .eq("workflow_type", "FORENSIC_CASE_ANALYSIS")
+      .eq("idempotency_key", idempotencyKey)
       .select("*")
       .single();
     if (updateError) throw new Error(updateError.message);
@@ -1003,7 +1016,11 @@ export async function startForensicCaseAnalysisRun(
         error_code: "START_FAILED",
         error_message: message.slice(0, 2000),
       })
-      .eq("id", recordId);
+      .eq("id", recordId)
+      .eq("case_id", data.caseId)
+      .eq("user_id", context.userId)
+      .eq("workflow_type", "FORENSIC_CASE_ANALYSIS")
+      .eq("idempotency_key", idempotencyKey);
     throw error;
   }
 }

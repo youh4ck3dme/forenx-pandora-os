@@ -135,6 +135,10 @@ Porušenie ktoréhokoľvek z nasledujúcich invariantov predstavuje okamžitý *
 - **Overenie Pôvodu:** Striktná kontrola `rpId` a `origin` voči produkčnej doméne (`pandora.whoiswho.at`).
 - **Detekcia klonovania:** Sledovanie rastúceho počítadla `sign_count`.
 
+### 4.3 Server-managed workflow metadata
+- Tabuľka `forensic_workflow_runs` povoľuje authenticated klientovi iba vlastnícke SELECT/INSERT operácie; serverom riadené polia a stavové zmeny sa zapisujú výhradne cez server-only `supabaseAdmin` po overení vlastníctva prípadu user-scoped klientom.
+- Každý serverový read/update je defensívne viazaný na `case_id`, `user_id`, `workflow_type` a príslušný run alebo idempotency key.
+
 ---
 
 ## 5. Správa dôkazov, S3 Vault a WORM Ledger
