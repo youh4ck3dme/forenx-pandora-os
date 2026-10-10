@@ -1,8 +1,8 @@
 {
-  "name": "pandora-browser",
+  "name": "pandora-web",
   "version": "2.0.0",
   "private": true,
-  "description": "PANDORA Browser - Official Build",
+  "description": "PANDORA Browser - Next.js fullstack web application",
   "author": "PΛND0RΛ Team",
   "scripts": {
     "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next build",
@@ -203,6 +203,7 @@
     "zustand": "^5.0.9"
   },
   "overrides": {
-    "uuid": "11.1.0"
+    "uuid": "11.1.0",
+    "shell-quote": "^1.11.0"
   }
 }

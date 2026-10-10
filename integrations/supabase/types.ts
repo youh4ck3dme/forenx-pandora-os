@@ -1354,6 +1354,10 @@ export type Database = {
         };
         Returns: Json;
       };
+      webauthn_consume_challenge: {
+        Args: { _challenge_key: string; _expires_at: string };
+        Returns: boolean;
+      };
       reserve_ai_call: {
         Args: {
           _case: string;

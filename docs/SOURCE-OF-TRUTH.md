@@ -14,7 +14,7 @@ Tento dokument je jediný kanonický a normatívny kontrakt pre systém **PANDOR
 Platí bez výnimky pre:
 - **Web / Next.js 15 App Router** (`app/`, `components/`, `lib/forza/`)
 - **PWA & Offline state** (`lib/forza/idb.ts`, service workers)
-- **Capacitor Mobile** (`mobile/capacitor.config.json`, `mobile/scripts/mobile/`)
+- **Capacitor Mobile** (isolated package: `mobile/`, profile scripts: `mobile/scripts/mobile/`; native platform projects are not committed)
 - **Electron Desktop Shell** (`electron/`, Chromium v152 / Node v24 LTS baseline)
 - **Supabase Auth / PostgreSQL / RLS / Edge Functions** (`supabase/`, `db/cleanroom/`)
 - **Hetzner S3 Object Storage / Evidence Vault** (WORM, Object Lock)
@@ -60,7 +60,7 @@ PANDORA / ForenX je jednotný forenzný systém s viacerými runtime adaptérmi:
 |---|---|---|
 | **Web** | Hlavné vyšetrovateľské UI, API, serverové funkcie | `app/`, `components/`, `lib/forza/` |
 | **PWA** | Web UI, lokálna offline cache, synchronizácia | Web runtime + `lib/forza/idb.ts` |
-| **Capacitor Mobile** | Triage obal pre mobilné prostredie (Android/iOS) | `mobile/capacitor.config.json`, `mobile/scripts/mobile/` |
+| **Capacitor Mobile** | Oddelená konfigurácia a závislosti mobilného obalu; native projekty nie sú súčasťou repozitára | `mobile/`, `mobile/scripts/mobile/` |
 | **Electron** | Bezpečný desktopový browser shell | `electron/` + web UI |
 | **Supabase** | Autentifikácia, PostgreSQL 15, RLS, WORM Ledger | `supabase/`, `db/cleanroom/` |
 | **ForenZX MCP Hub** | Izolovaná forenzná analýza a worker procesy | `forenzx-mcp-hub/` |
@@ -130,7 +130,8 @@ Porušenie ktoréhokoľvek z nasledujúcich invariantov predstavuje okamžitý *
 
 ### 4.2 WebAuthn / Passkeys (FIDO2)
 - Implementácia cez `@simplewebauthn/server` bez mockov a demo režimov.
-- **Výzva (Challenge):** Kryptograficky generovaná jednorazová hodnota (32 bajtov) v `httpOnly` cookie s expiráciou 120 sekúnd, okamžite spotrebovaná pri verifikácii (prevencia replay útokov).
+- **Výzva (Challenge):** Kryptograficky generovaná hodnota v `httpOnly` cookie s expiráciou 120 sekúnd. Cookie je podpísaný HMAC-SHA-256 (`WEBAUTHN_CHALLENGE_SECRET`, inak kľúč odvodený zo `SUPABASE_SERVICE_ROLE_KEY`; v produkcii bez neho fail-closed), takže klient si nemôže vyrobiť cookie okolo zachytenej starej výzvy. Jednorazovosť sa vynucuje na serveri cez tabuľku `webauthn_spent_challenges` a RPC `webauthn_consume_challenge` (migrácia `20261008100000_webauthn_spent_challenges.sql`). Každá výzva má vlastný záznam s presnou expiráciou (`issuedAt + 120 s`), nie fixné okno, takže sa nedá zopakovať ani tesne okolo hranice okna. Platí naprieč inštanciami; pri nedostupnej DB fail-closed (HTTP 503). Zmazanie cookie samo osebe replay nebráni.
+- **Synchronizované passkeys:** iCloud/Google passkeys majú `sign_count` trvalo 0, preto ochrana počítadlom pri nich neplatí a replay bráni výhradne podpísaná a jednorazová výzva.
 - **Overenie Pôvodu:** Striktná kontrola `rpId` a `origin` voči produkčnej doméne (`pandora.whoiswho.at`).
 - **Detekcia klonovania:** Sledovanie rastúceho počítadla `sign_count`.
 
@@ -140,7 +141,7 @@ Porušenie ktoréhokoľvek z nasledujúcich invariantov predstavuje okamžitý *
 
 ### 5.1 Životný cyklus dôkazu (Evidence Lifecycle)
 1. **Presign fáza (`POST /api/vault/presign`):** Overenie relácie vyšetrovateľa a platnosti `case_id`. Server vygeneruje náhodný, izolovaný storage kľúč vo formáte `cases/{caseId}/{uuid}-{filename}`.
-2. **Priamy upload do Hetzner S3:** Upload prebieha priamo na zabezpečený S3 Trezor (`hel1.your-objectstorage.com`) mimo aplikačného servera.
+2. **Priamy upload do Hetzner S3:** Konfigurácia trezoru sa číta výhradne z `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (bez fallbacku na generické `AWS_*` a bez predvoleného produkčného endpointu); chýbajúca hodnota = trezor nenakonfigurovaný. Upload prebieha priamo na zabezpečený S3 Trezor (`hel1.your-objectstorage.com`) mimo aplikačného servera.
 3. **Commit a overenie integrity (`POST /api/vault/commit`):** Server načíta skutočné bajty z S3, vypočíta SHA-256 hash a skutočnú veľkosť. Ak hash sedí s klientskym pre-flight hashom, záznam sa zapíše do `evidence_items` v stave `verified`. Pri nesúlade sa dôkaz označí ako `compromised` a zaloguje sa auditné varovanie.
 
 ### 5.2 WORM a Immutability Triggers
@@ -253,7 +254,15 @@ npm run test:regression:forenzx
 - [x] **ForenZX Client/Server Boundary Isolation:** `lib/forenzx/capability.ts`, `lib/forza/forenzx-evidence-presign.server.ts` a `lib/forza/forenzx-mcp.server.ts` vynucujú `server-only`. UI komponenty (`Assistant.tsx`, `ForenzXAnalysisPanel.tsx`) čítajú joby výhradne cez overený Route Handler `GET /api/forenzx/jobs` a bezpečný klient `lib/forenzx/client.ts`. Webpack bundle pre klienta je 100% čistý bez pokusov o import `node:crypto` (`createHmac`, `timingSafeEqual`).
 - [x] **Court Pack Generator API & Route (`POST /api/cases/[id]/court-pack`):** Export forenzného Court Packu s Ed25519 podpisom manifestu, reportom, WORM dôkazmi, STIX threat-intel overením a voliteľným RFC 3161 TSA tokenom.
 
+- [x] **Passkey replay (P0):** Podpísaná a serverovo jednorazová WebAuthn výzva (`lib/auth/webauthn.server.ts`), testy `lib/__tests__/webauthn-routes.test.ts`.
+- [x] **Auditná IP (P1):** `/api/audit/access` zapisuje IP cez `getTrustedClientIp` (posledný hop proxy / `x-real-ip`), nie klientom podvrhnuteľný prvý hop `x-forwarded-for`; test `lib/__tests__/audit-access-ip.test.ts`.
+- [x] **S3 bez ambientných AWS kľúčov (P0):** `getS3Config` nepoužíva `AWS_*` ani predvolený produkčný endpoint; testy už neposielajú cudzie kľúče do produkčného trezoru.
+- [x] **Critical npm advisory `shell-quote` (GHSA-pqg4-j6r4-53mv):** override `shell-quote@^1.11.0`, `npm audit --audit-level=critical` čistý.
+
 ### 9.2 OPEN (Architektonické úlohy v kóde)
+- **P0 — nasadenie passkey ochrany (blokuje prihlásenie passkey, fail-closed):** na hosted Supabase musí byť aplikované `supabase/migrations/20260929000000_shared_rate_limit.sql` (zdieľaný limiter pre CSP a health) a `supabase/migrations/20261008100000_webauthn_spent_challenges.sql` (jednorazové výzvy). Bez nich `/api/auth/webauthn/verify` vracia 503 pre každé overenie. Overenie po aplikácii (ako `service_role`): `select public.webauthn_consume_challenge(repeat('a',64), now() + interval '2 minutes')` vráti `true` a druhé volanie s rovnakým kľúčom vráti `false`. Pôvodný záznam tejto úlohy bol v `docs/BACKLOG-SOURCE-OF-TRUTH.md`, ktorý bol zrušený, a preto bol bez tohto riadku ľahko prehliadnuteľný.
+- **P1:** CI audit je stále iba `--audit-level=critical`; `npm audit` hlási 24 high (najmä `workflow`, `eslint-config-next`, `postcss`, `sharp`). Zvýšiť na `high` až po ich vyriešení.
+- **P2:** `getRpId` bez `NEXT_PUBLIC_RP_ID` odvodzuje rpId z `x-forwarded-host`; v produkcii má byť env povinný.
 - **P2:** `has_role`-based RLS politiky (`ai_feature_logs`, `error_logs`, storage private-bucket) nie sú po revoke z 2026-10-03 použiteľné `authenticated` klientom (EXECUTE sa kontroluje aj vo vyhodnotení RLS politiky). Admin dáta preto čítať service klientom; prípadné ďalšie priame čítania týchto tabuliek user klientom treba revidovať.
 
 ### 9.3 BLOCKED (Externé operačné závislosti)

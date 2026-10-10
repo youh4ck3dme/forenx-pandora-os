@@ -61,7 +61,7 @@ When information conflicts, trust in this order:
 2. Current Git diff
 3. Current Git history
 4. Current database migrations
-5. docs/BACKLOG-SOURCE-OF-TRUTH.md
+5. docs/SOURCE-OF-TRUTH.md
 6. executable tests
 7. all other documentation
 

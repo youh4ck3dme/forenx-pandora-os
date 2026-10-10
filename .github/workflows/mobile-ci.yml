@@ -4,10 +4,14 @@ on:
   push:
     branches: [main]
     paths:
+      - "package.json"
+      - "package-lock.json"
       - "mobile/**"
       - ".github/workflows/mobile-ci.yml"
   pull_request:
     paths:
+      - "package.json"
+      - "package-lock.json"
       - "mobile/**"
       - ".github/workflows/mobile-ci.yml"
   workflow_dispatch:
@@ -35,6 +39,33 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+
+      - name: Verify Capacitor dependencies are isolated
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const root = JSON.parse(fs.readFileSync("package.json", "utf8"));
+          const rootLock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+          const mobile = JSON.parse(fs.readFileSync("mobile/package.json", "utf8"));
+          const mobileLock = JSON.parse(fs.readFileSync("mobile/package-lock.json", "utf8"));
+          const capacitorPackages = [
+            "@capacitor/android",
+            "@capacitor/cli",
+            "@capacitor/core",
+            "@capacitor/ios",
+          ];
+          for (const name of capacitorPackages) {
+            if (root.dependencies?.[name] || root.devDependencies?.[name]) {
+              throw new Error(`${name} must not be a root dependency`);
+            }
+            if (rootLock.packages[""].dependencies?.[name] || rootLock.packages[""].devDependencies?.[name]) {
+              throw new Error(`${name} must not be recorded in the root lockfile`);
+            }
+            if (!mobile.devDependencies?.[name] || !mobileLock.packages[""].devDependencies?.[name]) {
+              throw new Error(`${name} must remain in the isolated mobile package`);
+            }
+          }
+          NODE
 
       - name: Generate and validate every profile
         run: |

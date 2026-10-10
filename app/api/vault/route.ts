@@ -426,7 +426,12 @@ async function handlePost(request: NextRequest): Promise<NextResponse> {
     }
 
     // ─── 5. DEV BEZ LEDGERA: len pamäťový register procesu ────────────────
-    await upload();
+    // P0-08: obchvat nesmie zapisovať do živého S3. Build-time placeholder
+    // kľúče (napr. endpoint *.invalid) by inak spustili PUT a z overeného
+    // odtlačku spravili 500. Bez kľúčov upload() použije in-memory fallback.
+    if (!isS3Configured()) {
+      await upload();
+    }
     const evidenceItemRaw: unknown = {
       id: EvidenceIdSchema.parse(randomUUID()),
       caseId,

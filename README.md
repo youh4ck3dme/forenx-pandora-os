@@ -1112,12 +1112,14 @@ allowRunningInsecureContent: false
 
 ## Capacitor
 
-Mobilný shell používa Capacitor pre:
+Capacitor configuration and dependencies are isolated in `mobile/`; the root package is the Next.js fullstack web application. Profile generation is available through the root `mobile:profile:*` scripts.
 
 ```text
-Android
-iOS
+mobile/package.json
+mobile/capacitor.config.json
 ```
+
+No Android or iOS native project is currently committed. The mobile CI validates configuration profiles only; it does not run a native build or `cap sync`.
 
 ---
 
@@ -1148,7 +1150,7 @@ Forenzné production operácie však nesmú predstierať úspech bez backendovej
 | AI Review | Gemini API / `@google/genai` |
 | State | Zustand, TanStack Query |
 | Desktop | Electron 39 |
-| Mobile | Capacitor 8 |
+| Mobile package | Capacitor 8 (`mobile/`) |
 | Graphs | `@xyflow/react` |
 | Documents | PDF, DOCX, XLSX a ďalšie parsery |
 | Testing | Vitest, Playwright |
@@ -1696,9 +1698,9 @@ Pred production použitím Evidence Vaultu treba overiť:
 PANDORA / ForenX môže byť nasadená ako:
 
 ```text
-Web / PWA
+Next.js web / PWA
 Electron desktop
-Capacitor mobile
+Capacitor mobile configuration (isolated in `mobile/`; native projects not committed)
 ```
 
 Backendové production funkcie vyžadujú správne nakonfigurované:

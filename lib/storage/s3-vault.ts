@@ -78,16 +78,18 @@ function requireExpiresIn(expiresIn: number): number {
  * Vracia null, ak chýbajú kľúče (pre bezpečný fallback).
  */
 export function getS3Config(): S3Config | null {
-  const accessKeyId =
-    process.env.S3_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
-  const secretAccessKey =
-    process.env.S3_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
-  const endpoint =
-    process.env.S3_ENDPOINT || "https://hel1.your-objectstorage.com";
+  // Only the vault's own S3_* variables count. Generic AWS_* credentials are
+  // ambient on many dev machines and CI runners; signing vault requests with
+  // them would send an unrelated AWS key id to the evidence vault provider.
+  // The endpoint has no default for the same reason: an unconfigured process
+  // must never reach the production vault.
+  const accessKeyId = process.env.S3_ACCESS_KEY_ID?.trim();
+  const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY?.trim();
+  const endpoint = process.env.S3_ENDPOINT?.trim();
   const bucket = process.env.S3_BUCKET || "forenx-vault-sk";
   const region = process.env.S3_REGION || "hel1";
 
-  if (!accessKeyId || !secretAccessKey) {
+  if (!accessKeyId || !secretAccessKey || !endpoint) {
     return null;
   }
 
@@ -142,7 +144,7 @@ function isProduction(): boolean {
 function fallbackSecret(): Buffer {
   if (isProduction()) {
     throw new Error(
-      "S3 úložisko nie je nakonfigurované (S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY). In-memory fallback je v produkcii zakázaný.",
+      "S3 úložisko nie je nakonfigurované (S3_ENDPOINT / S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY). In-memory fallback je v produkcii zakázaný.",
     );
   }
   const configured = process.env.VAULT_FALLBACK_SECRET;
