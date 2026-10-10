@@ -1,6 +1,11 @@
 import type { ForensicAssetCorrelationReport } from "./asset-timeline-schema";
+import { redactPii } from "./pii-redactor";
 
 export type AuthoritativeEvidenceBinding = { evidenceId: string; sha256: string };
+
+export function redactEvidenceDocumentsForModel<T extends { evidenceId: string; text: string }>(documents: readonly T[]): T[] {
+  return documents.map((document) => ({ ...document, text: redactPii(document.text).text }));
+}
 
 export type TemporalSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 export type TemporalResult = {
