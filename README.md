@@ -63,7 +63,7 @@ Schéma Supabase/PostgreSQL je verzovaná v `supabase/migrations/`. Produkčný 
 - Pred aplikáciou migrácie skontroluj stav migrácií a presný plán zmien.
 - `supabase db reset` nikdy nepoužívaj v produkcii.
 - Neupravuj produkčnú schému ručne ani históriu migrácií bez dôkazov.
-- Migrácia Asset Timeline `20261010120000_asset_timeline_forensics.sql` je zatiaľ iba v PR #61 a **nie je aplikovaná v produkcii**.
+- Migrácia Asset Timeline `20261010120000_asset_timeline_forensics.sql` je po zlúčení PR #61 súčasťou vetvy `main`, ale **nie je aplikovaná v produkcii**.
 
 ## AI
 
@@ -102,8 +102,9 @@ Správanie databázy vyžaduje overenie migrácií a RLS voči zamýšľanej dat
 
 - **Produkčný runtime:** Verejná aplikácia aj `/api/healthz` v čase aktualizácie README vrátili HTTP 200.
 - **Oprava Autopilot 403:** Overená: HTTP 200 a dokončený workflow.
-- **Produkčný baseline:** vetva `main`, commit `2a8caca485467bbc09ecbd3e49e98a727ce78a1c`.
-- **Asset Timeline Forensics PR #61:** otvorený, nezlúčený a nenasadený; migrácia nie je aplikovaná v produkcii.
+- **Aktuálny `main`:** merge commit PR #61 `f08cdb839aa7d9312138d9735bdf55c930ce7868`.
+- **Produkčný baseline:** pred nasadením PR #61 zostáva `2a8caca485467bbc09ecbd3e49e98a727ce78a1c`.
+- **Asset Timeline Forensics PR #61:** zlúčený do `main`, ale ešte nenasadený; migrácia nie je aplikovaná v produkcii.
 - **Secrets:** V README nie sú uvedené žiadne prihlasovacie údaje ani kľúče.
 
 ## Licencia
