@@ -1,7 +1,7 @@
 # PΛND0RΛ / ForenX — CANONICAL SYSTEM SOURCE OF TRUTH
 
 > **Status:** CANONICAL / NORMATIVE  
-> **Version:** 2.0  
+> **Version:** 2.1
 > **Authority:** CANONICAL CONTRACT — Najvyššia autorita pre architektúru, bezpečnosť, forenznú integritu a release validáciu.  
 > **Target:** Production-Grade Forensic System (PANDORA Browser & ForenZX Engine)
 
@@ -118,7 +118,7 @@ Porušenie ktoréhokoľvek z nasledujúcich invariantov predstavuje okamžitý *
 - **INV-021 (Webhook Untrusted Payload):** Webhook payload nesmie určovať autoritatívny hash, veľkosť ani interný storage key. Volajúci nesmie podvrhnúť ľubovoľnú download URL.
 - **INV-022 (SSRF Deny Loopback):** Všetky serverové požiadavky na externé URL musia odmietať loopback (`127.0.0.1`, `localhost`), link-local, privátne RFC1918 rozsahy a cloud metadata endpointy.
 - **INV-023 (Audited Destruction):** Zničenie prípadu alebo dôkazu je povolené výhradne cez kontrolované RPC s overením administrátorskej roly a povinným auditným záznamom.
-- **INV-024 (Automated Regression Proof):** Každý z invariantov INV-001 až INV-023 musí mať aspoň jeden automatizovaný test v testovacej sade repozitára.
+- **INV-024 (Automated Regression Proof):** Každý z invariantov INV-001 až INV-036 musí mať automatizovaný test alebo explicitný databázový verifikačný dôkaz; stav bez takéhoto dôkazu nesmie byť označený ako `VERIFIED`.
 
 ---
 
@@ -238,6 +238,10 @@ npm run test:regression:forenzx
 | **INV-030** | STIX integrita: analýza akceptuje iba threat-intel s digestom v `FORENZX_TRUSTED_STIX_DIGESTS`; nesúlad = fail-closed | **NORMATIVE** | runtime enforcement patrí do Python Hubu (`forenzx-mcp-hub/core/threat_intel.py`); Next utilita `lib/court/stix.ts` (pure, unit-tested) INV-030 NEreklasifikuje |
 | **INV-031** | RFC 3161: TSA token (`timestamp.tsr`) nad Merkle root sa uchováva ako súčasť Court Packu | **NORMATIVE** | build + offline verify implementované (`lib/court/timestamp.ts`, pkijs; `pack-builder` ukladá `timestamp.tsr`); live-TSA round-trip + full chain trust + standalone-node TSR verify = pending |
 | **INV-032** | Local AI boundary: v court-grade/air-gapped režime dôkazový obsah NESMIE fallbacknúť na cloud AI (`FORENZX_LOCAL_AI_BASE_URL` povinné) | **NORMATIVE** | guard `lib/court/ai-boundary.ts` + env relax (`MISTRAL_API_KEY` nepovinný v court-grade) implementované+tested; zapojenie na evidence-AI call-site = pending |
+| **INV-033** | Asset timeline retry používa kanonickú identitu; failed/cancelled metadata sa resetuje s inkrementovaným pokusom a queued/running sa nespúšťa duplicitne | **VERIFIED** | `lib/forza/asset-timeline.functions.ts`, `lib/forza/asset-timeline-retry.ts`, `lib/forza/__tests__/asset-timeline.functions.test.ts` |
+| **INV-034** | Asset timeline source hash je autoritatívne prevzatý z verified evidence ledgeru; modelový hash sa neukladá ako dôveryhodný | **VERIFIED** | `lib/forza/ai/asset-timeline-engine.ts`, `lib/forza/__tests__/asset-timeline.functions.test.ts` |
+| **INV-035** | Page/paragraph lokátory sa neukladajú ako overené metadata bez verifikácie extraction pipeline | **VERIFIED** | `lib/forza/ai/asset-timeline-engine.ts`, `lib/forza/__tests__/asset-timeline.functions.test.ts` |
+| **INV-036** | Asset timeline lineage musí odkazovať na existujúci záznam s rovnakým case/user/analysis type; self-reference a cross-case/cross-user lineage sú zakázané | **IMPLEMENTED_UNVERIFIED** | `supabase/migrations/20261010120000_asset_timeline_forensics.sql`; migrácia nebola aplikovaná do produkcie |
 
 > **Court-grade signing contract (INV-025–029):** vynútené fail-closed cez `config/env.ts` (`FORENZX_COURT_GRADE=true` vyžaduje `FORENZX_SIGNING_KEY_ID`, `FORENZX_SIGNING_PRIVATE_KEY_REF`, `FORENZX_TRUSTED_PUBLIC_KEYS`, `FORENZX_KEYRING_VERSION`, `FORENZX_LOCAL_AI_BASE_URL`). Implementácia: `lib/court/{manifest,signing}.ts`; offline verifier `lib/court/verify.mjs`. Prechod `file:` → `vault:`/`kms:` NESMIE zmeniť formát manifestu, podpisu ani verifiera.
 
@@ -262,6 +266,9 @@ npm run test:regression:forenzx
 - [x] **Auditná IP (P1):** `/api/audit/access` zapisuje IP cez `getTrustedClientIp` (posledný hop proxy / `x-real-ip`), nie klientom podvrhnuteľný prvý hop `x-forwarded-for`; test `lib/__tests__/audit-access-ip.test.ts`.
 - [x] **S3 bez ambientných AWS kľúčov (P0):** `getS3Config` nepoužíva `AWS_*` ani predvolený produkčný endpoint; testy už neposielajú cudzie kľúče do produkčného trezoru.
 - [x] **Critical npm advisory `shell-quote` (GHSA-pqg4-j6r4-53mv):** override `shell-quote@^1.11.0`, `npm audit --audit-level=critical` čistý.
+- [x] **Asset Timeline canonical retry:** zlyhané/cancelled workflow metadata sa pri rovnakom kanonickom vstupe znovu použije bez duplicitného INSERTu; queued/running stav sa deduplikuje.
+- [x] **Asset Timeline provenance hardening:** source hash sa viaže na verified ledger a neoverené page/paragraph lokátory sa pred persistenciou odstránia.
+- [x] **Asset Timeline lineage guard:** feature migrácia obsahuje databázový trigger proti neexistujúcemu, self-referencovanému alebo cross-case/cross-user lineage.
 
 ### 9.2 OPEN (Architektonické úlohy v kóde)
 - **P0 — nasadenie passkey ochrany (blokuje prihlásenie passkey, fail-closed):** na hosted Supabase musí byť aplikované `supabase/migrations/20260929000000_shared_rate_limit.sql` (zdieľaný limiter pre CSP a health) a `supabase/migrations/20261008100000_webauthn_spent_challenges.sql` (jednorazové výzvy). Bez nich `/api/auth/webauthn/verify` vracia 503 pre každé overenie. Overenie po aplikácii (ako `service_role`): `select public.webauthn_consume_challenge(repeat('a',64), now() + interval '2 minutes')` vráti `true` a druhé volanie s rovnakým kľúčom vráti `false`. Pôvodný záznam tejto úlohy bol v `docs/BACKLOG-SOURCE-OF-TRUTH.md`, ktorý bol zrušený, a preto bol bez tohto riadku ľahko prehliadnuteľný.
@@ -279,7 +286,7 @@ npm run test:regression:forenzx
 
 ## 10. Záverečný release verdikt
 
-Systém spĺňa všetkých 24 bezpečnostných a forenzných invariantov.  
+Systém definuje 36 bezpečnostných a forenzných invariantov. INV-033 až INV-035 sú implementované a pokryté cielenými testami; INV-036 je implementovaný v feature migrácii, ktorá ešte nebola aplikovaná do produkcie.
 Pre lokálne prostredie a desktopový runtime je stav:
 
 $$\mathbf{RELEASE\_WITH\_CONDITIONS}$$

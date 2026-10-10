@@ -5,6 +5,7 @@ export const FORENSIC_WORKFLOW_TYPES = [
   "EVIDENCE_VALIDATION",
   "DOSSIER_GENERATION",
   "REPORT_EXPORT",
+  "ASSET_TIMELINE_FORENSICS",
 ] as const;
 
 export type ForensicWorkflowType = (typeof FORENSIC_WORKFLOW_TYPES)[number];
