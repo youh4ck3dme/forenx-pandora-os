@@ -85,7 +85,7 @@ Database behavior requires migration/RLS verification against the intended datab
 
 1. Review the code and migration on the intended branch; run typecheck, targeted tests, the applicable full test suite, and build.
 2. Review migration ordering and the remote migration state. Apply migrations only through the approved, explicit database procedure; the VPS deploy script never applies them.
-3. Merge the reviewed release to `main).
+3. Merge the reviewed release to `main`.
 4. Run `scripts/deploy/staging-update.sh` to inspect the plan. Use `--apply` only for the intended release; if new migrations are present, explicitly acknowledge that script guard and apply the migration separately according to the database procedure.
 5. Verify the deployed commit, PM2 process, HTTP health endpoint, application smoke checks, and any changed end-to-end workflow. Record evidence for each result.
 
