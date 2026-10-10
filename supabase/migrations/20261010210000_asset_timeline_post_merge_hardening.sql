@@ -20,6 +20,8 @@ end;
 $$;
 
 -- 2) Atomic execution claim. Exactly one caller owns a fresh/retried/stale run.
+-- attempt_count is the fencing token: every reclaim increments it, invalidating
+-- all older workers that still hold the same workflow id.
 create or replace function public.claim_asset_timeline_workflow(
   _case_id uuid,
   _user_id uuid,
@@ -37,7 +39,7 @@ declare
   _lease interval;
   _claimed boolean := false;
 begin
-  if _lease_seconds is null or _lease_seconds < 60 or _lease_seconds > 3600 then
+  if _lease_seconds is null or _lease_seconds < 60 or _lease_seconds > 86400 then
     raise exception 'invalid asset timeline lease';
   end if;
   _lease := make_interval(secs => _lease_seconds);
@@ -132,11 +134,13 @@ grant execute on function public.claim_asset_timeline_workflow(uuid, uuid, text,
   to service_role;
 
 -- 3) Atomic terminal success: immutable result + workflow completion in one transaction.
+-- _attempt_count fences the terminal transition to the exact execution claim.
 create or replace function public.complete_asset_timeline_analysis(
   _workflow_id uuid,
   _case_id uuid,
   _user_id uuid,
   _idempotency_key text,
+  _attempt_count integer,
   _supersedes_run_id uuid,
   _input_sha256 text,
   _prompt_version text,
@@ -164,10 +168,11 @@ begin
      and user_id = _user_id
      and workflow_type = 'ASSET_TIMELINE_FORENSICS'
      and idempotency_key = _idempotency_key
+     and attempt_count = _attempt_count
    for update;
 
   if not found then
-    raise exception 'asset timeline workflow not found'
+    raise exception 'asset timeline workflow claim is stale or missing'
       using errcode = 'P0002';
   end if;
 
@@ -222,10 +227,12 @@ begin
      and case_id = _case_id
      and user_id = _user_id
      and workflow_type = 'ASSET_TIMELINE_FORENSICS'
-     and idempotency_key = _idempotency_key;
+     and idempotency_key = _idempotency_key
+     and attempt_count = _attempt_count
+     and status = 'running';
 
   if not found then
-    raise exception 'asset timeline terminal workflow update failed';
+    raise exception 'asset timeline terminal workflow update lost execution ownership';
   end if;
 
   return to_jsonb(_run);
@@ -233,18 +240,19 @@ end;
 $$;
 
 revoke all on function public.complete_asset_timeline_analysis(
-  uuid, uuid, uuid, text, uuid, text, text, text, text, text, jsonb, jsonb, text
+  uuid, uuid, uuid, text, integer, uuid, text, text, text, text, text, jsonb, jsonb, text
 ) from public, anon, authenticated;
 grant execute on function public.complete_asset_timeline_analysis(
-  uuid, uuid, uuid, text, uuid, text, text, text, text, text, jsonb, jsonb, text
+  uuid, uuid, uuid, text, integer, uuid, text, text, text, text, text, jsonb, jsonb, text
 ) to service_role;
 
--- 4) Checked terminal failure transition.
+-- 4) Checked terminal failure transition, fenced to the exact claimed attempt.
 create or replace function public.fail_asset_timeline_workflow(
   _workflow_id uuid,
   _case_id uuid,
   _user_id uuid,
   _idempotency_key text,
+  _attempt_count integer,
   _error_code text,
   _error_message text
 )
@@ -264,15 +272,20 @@ begin
      and user_id = _user_id
      and workflow_type = 'ASSET_TIMELINE_FORENSICS'
      and idempotency_key = _idempotency_key
+     and attempt_count = _attempt_count
    for update;
 
   if not found then
-    raise exception 'asset timeline workflow not found'
+    raise exception 'asset timeline workflow claim is stale or missing'
       using errcode = 'P0002';
   end if;
 
   if _workflow.status = 'completed' then
     return false;
+  end if;
+
+  if _workflow.status <> 'running' then
+    raise exception 'asset timeline workflow is not execution-owned';
   end if;
 
   update public.forensic_workflow_runs
@@ -284,15 +297,21 @@ begin
      and case_id = _case_id
      and user_id = _user_id
      and workflow_type = 'ASSET_TIMELINE_FORENSICS'
-     and idempotency_key = _idempotency_key;
+     and idempotency_key = _idempotency_key
+     and attempt_count = _attempt_count
+     and status = 'running';
 
-  return found;
+  if not found then
+    raise exception 'asset timeline failure transition lost execution ownership';
+  end if;
+
+  return true;
 end;
 $$;
 
 revoke all on function public.fail_asset_timeline_workflow(
-  uuid, uuid, uuid, text, text, text
+  uuid, uuid, uuid, text, integer, text, text
 ) from public, anon, authenticated;
 grant execute on function public.fail_asset_timeline_workflow(
-  uuid, uuid, uuid, text, text, text
+  uuid, uuid, uuid, text, integer, text, text
 ) to service_role;
