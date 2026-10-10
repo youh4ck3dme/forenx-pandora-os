@@ -13,6 +13,7 @@ import {
 import {
   bindAuthoritativeEvidenceMetadata,
   enforceDeterminism,
+  redactEvidenceDocumentsForModel,
   validateReportSources,
 } from "./ai/asset-timeline-engine";
 import { canonicalJson, canonicalSha256 } from "./provenance/canonical";
@@ -98,8 +99,9 @@ export const runAssetTimelineForensics = createServerFn({
       throw new Error("Dôkazy neprešli overením.");
     }
 
+    const modelDocuments = redactEvidenceDocumentsForModel(loaded.documents);
     const sources = new Map(
-      loaded.documents.map((document) => [document.evidenceId, document.text]),
+      modelDocuments.map((document) => [document.evidenceId, document.text]),
     );
     const evidenceBindings = loaded.documents
       .map((document) => ({
@@ -116,7 +118,7 @@ export const runAssetTimelineForensics = createServerFn({
       evidenceBindings,
       promptVersion: ASSET_TIMELINE_PROMPT_VERSION,
       promptSha256: ASSET_TIMELINE_PROMPT_SHA256,
-      text: ledgerDocumentsText(loaded.documents),
+      text: ledgerDocumentsText(modelDocuments),
     };
     const inputSha256 = canonicalSha256(input);
     const canonicalKey = canonicalSha256({
