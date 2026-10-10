@@ -9,8 +9,8 @@ describe("asset timeline deterministic engine", () => {
     expect(deterministicTemporalDelta(base, "2026-02-15T00:00:00Z").severity).toBe("LOW");
   });
   it("downgrades date-only and malformed timestamps", () => {
-    expect(deterministicTemporalDelta("2026-01-01", "2026-01-02").precision).toBe("DATE_ONLY");
-    expect(deterministicTemporalDelta("bad", "2026-01-02").precision).toBe("UNKNOWN");
+    expect(deterministicTemporalDelta("2026-01-01", "2026-01-02")).toMatchObject({ precision: "DATE_ONLY", timeDeltaHours: null });
+    expect(deterministicTemporalDelta("bad", "2026-01-02")).toMatchObject({ precision: "UNKNOWN", timeDeltaHours: null });
   });
   it("requires a literal quote in the referenced evidence", () => {
     const sources = new Map([["e1", "Bankový prevod vo výške 1000 EUR na účet spoločnosti."]]);
