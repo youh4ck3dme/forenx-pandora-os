@@ -12,7 +12,7 @@ const binding = [{ evidenceId: "evidence-1", sha256: "a".repeat(64) }];
 const report = {
   caseExecutiveSummary: "test",
   temporalCorridors: [{
-    corridorId: "c1", severity: "LOW", precision: "UNKNOWN", timeDeltaHours: null,
+    corridorId: "c1", severity: null, precision: "UNKNOWN", timeDeltaHours: null,
     forensicPattern: "EXIT_PRED_RAZIOU_A_VYBEROM", forensicDeduction: "test",
     primaryTransaction: {
       date: "2026-01-01", amount: 1, currency: "EUR", sender: "A", receiver: "B", description: "x",
