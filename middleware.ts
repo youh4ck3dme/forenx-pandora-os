@@ -364,9 +364,9 @@ export async function middleware(
   if (pathname === '/') {
     const session = await getSessionFromRequest(request);
     if (session) {
-      return respond(NextResponse.redirect(new URL('/browser/', request.nextUrl)));
+      return respond(NextResponse.redirect(new URL('/browser/', process.env.NEXT_PUBLIC_BASE_URL || request.nextUrl.origin)));
     }
-    return respond(NextResponse.redirect(new URL('/auth/login/?next=%2Fbrowser%2F', request.nextUrl)));
+    return respond(NextResponse.redirect(new URL('/auth/login/?next=%2Fbrowser%2F', process.env.NEXT_PUBLIC_BASE_URL || request.nextUrl.origin)));
   }
 
   // Get route category
@@ -434,7 +434,7 @@ export async function middleware(
       return next();
     }
 
-    const response = NextResponse.redirect(new URL(redirectUrl, request.nextUrl));
+    const response = NextResponse.redirect(new URL(redirectUrl, process.env.NEXT_PUBLIC_BASE_URL || request.nextUrl.origin));
 
     // Clear any potentially stale auth cookies
     // Note: We don't clear the actual Supabase cookies as they're httpOnly
