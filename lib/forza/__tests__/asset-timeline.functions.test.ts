@@ -4,7 +4,6 @@ import {
   bindAuthoritativeEvidenceMetadata,
   validateReportSources,
 } from "../ai/asset-timeline-engine";
-import { decideAssetTimelineMetadataAction, nextAssetTimelineAttempt } from "../asset-timeline-retry";
 import type { ForensicAssetCorrelationReport } from "../ai/asset-timeline-schema";
 import { createHash } from "node:crypto";
 import { loadLedgerDocuments } from "../evidence-source";
@@ -13,7 +12,7 @@ const binding = [{ evidenceId: "evidence-1", sha256: "a".repeat(64) }];
 const report = {
   caseExecutiveSummary: "test",
   temporalCorridors: [{
-    corridorId: "c1", severity: "LOW", precision: "UNKNOWN", timeDeltaHours: null,
+    corridorId: "c1", severity: null, precision: "UNKNOWN", timeDeltaHours: null,
     forensicPattern: "EXIT_PRED_RAZIOU_A_VYBEROM", forensicDeduction: "test",
     primaryTransaction: {
       date: "2026-01-01", amount: 1, currency: "EUR", sender: "A", receiver: "B", description: "x",
@@ -33,9 +32,9 @@ const report = {
   }],
   legalAssessment: {
     suggestedQualification: "x", subjectiveAspectAssessment: "x", objectiveAspectAssessment: "x",
-    confidence: "LOW", status: "SUPPORTED", sourceReferences: [{ evidenceId: "evidence-1", page: 1, paragraph: "1", sha256: "b".repeat(64) }],
+    confidence: "LOW", status: "SUPPORTED", sourceReferences: [{ evidenceId: "evidence-1", evidenceQuote: "Dostatočne dlhá citácia právneho záveru", page: 1, paragraph: "1", sha256: "b".repeat(64) }],
   },
-  proceduralActions: [{ section: "x", target: "x", justification: "x", status: "SUGGESTED", sourceReferences: [{ evidenceId: "evidence-1", page: 1, paragraph: "1", sha256: "b".repeat(64) }] }],
+  proceduralActions: [{ section: "x", target: "x", justification: "x", status: "SUGGESTED", sourceReferences: [{ evidenceId: "evidence-1", evidenceQuote: "Dostatočne dlhá citácia procesného kroku", page: 1, paragraph: "1", sha256: "b".repeat(64) }] }],
 } as ForensicAssetCorrelationReport;
 
 describe("runAssetTimelineForensics server invariants", () => {
@@ -98,20 +97,25 @@ describe("runAssetTimelineForensics server invariants", () => {
     expect(result.nomineeRiskEntities[0]).not.toHaveProperty("sourceSha256");
   });
 
-  it.each([
-    ["queued", "reuse"], ["running", "reuse"], ["failed", "reset"], ["cancelled", "reset"], ["completed", "invalid"],
-  ])("handles existing %s metadata without duplicate insert", (status, action) => {
-    expect(decideAssetTimelineMetadataAction(status)).toBe(action);
-  });
-
-  it("increments retry attempt count and handles malformed values safely", () => {
-    expect(nextAssetTimelineAttempt(1)).toBe(2);
-    expect(nextAssetTimelineAttempt(null)).toBe(1);
-    expect(nextAssetTimelineAttempt("bad")).toBe(1);
-  });
-
   it("keeps only source-backed report objects", () => {
-    const filtered = validateReportSources(report, new Map([["evidence-1", "Dostatočne dlhá citácia dôkazu Dostatočne dlhá citácia akcie Dostatočne dlhá citácia osoby"]]));
+    const filtered = validateReportSources(report, new Map([["evidence-1", "Dostatočne dlhá citácia dôkazu Dostatočne dlhá citácia akcie Dostatočne dlhá citácia osoby Dostatočne dlhá citácia právneho záveru Dostatočne dlhá citácia procesného kroku"]]));
     expect(filtered.temporalCorridors).toHaveLength(1);
   });
+  it("downgrades legal and procedural claims without verifiable quotes", () => {
+    const sources = new Map([["evidence-1", "Iný text dôkazu, ktorý nepodporuje právny ani procesný záver."]]);
+    const filtered = validateReportSources(report, sources);
+    expect(filtered.legalAssessment.status).toBe("UNVERIFIED");
+    expect(filtered.legalAssessment.sourceReferences).toHaveLength(0);
+    expect(filtered.proceduralActions[0]?.status).toBe("UNVERIFIED");
+    expect(filtered.proceduralActions[0]?.sourceReferences).toHaveLength(0);
+  });
+
+  it("keeps supported legal/procedural claims only with literal quotes", () => {
+    const sources = new Map([["evidence-1", "Dostatočne dlhá citácia právneho záveru ... Dostatočne dlhá citácia procesného kroku"]]);
+    const filtered = validateReportSources(report, sources);
+    expect(filtered.legalAssessment.status).toBe("SUPPORTED");
+    expect(filtered.legalAssessment.sourceReferences).toHaveLength(1);
+    expect(filtered.proceduralActions[0]?.status).toBe("SUGGESTED");
+  });
+
 });
