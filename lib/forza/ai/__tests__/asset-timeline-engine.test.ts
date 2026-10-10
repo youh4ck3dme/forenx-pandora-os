@@ -9,10 +9,10 @@ describe("asset timeline deterministic engine", () => {
     expect(deterministicTemporalDelta(base, "2026-02-15T00:00:00Z").severity).toBe("LOW");
   });
   it("downgrades date-only and malformed timestamps", () => {
-    expect(deterministicTemporalDelta("2026-01-01", "2026-01-02")).toMatchObject({ precision: "DATE_ONLY", timeDeltaHours: null });
-    expect(deterministicTemporalDelta("bad", "2026-01-02")).toMatchObject({ precision: "UNKNOWN", timeDeltaHours: null });
+    expect(deterministicTemporalDelta("2026-01-01", "2026-01-02")).toMatchObject({ precision: "DATE_ONLY", timeDeltaHours: null, severity: null });
+    expect(deterministicTemporalDelta("bad", "2026-01-02")).toMatchObject({ precision: "UNKNOWN", timeDeltaHours: null, severity: null });
   });
-  it("requires a literal quote in the referenced evidence", () => {
+  it("does not classify date-only timestamps near severity boundaries", () => {\n    expect(deterministicTemporalDelta("2026-01-01", "2026-01-04")).toMatchObject({ severity: null, timeDeltaHours: null });\n    expect(deterministicTemporalDelta("2026-01-01", "2026-01-15")).toMatchObject({ severity: null, timeDeltaHours: null });\n    expect(deterministicTemporalDelta("2026-01-01", "2026-02-15")).toMatchObject({ severity: null, timeDeltaHours: null });\n  });\n  it("requires a literal quote in the referenced evidence", () => {
     const sources = new Map([["e1", "Bankový prevod vo výške 1000 EUR na účet spoločnosti."]]);
     expect(verifyLiteralQuote("Bankový prevod vo výške 1000 EUR", "e1", sources)).toBe(true);
     expect(verifyLiteralQuote("Vymyslená citácia, ktorá nie je v spise", "e1", sources)).toBe(false);
