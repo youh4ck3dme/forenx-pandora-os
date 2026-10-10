@@ -174,6 +174,11 @@ export function bindAuthoritativeEvidenceMetadata(
       if (authoritative) result.sourceSha256 = authoritative;
       else delete result.sourceSha256;
     }
+    if (typeof result.evidenceId === "string") {
+      const authoritative = hashes.get(result.evidenceId);
+      if (authoritative) result.sha256 = authoritative;
+      else delete result.sha256;
+    }
 
     return result;
   };
