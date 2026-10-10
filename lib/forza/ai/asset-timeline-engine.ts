@@ -1,5 +1,7 @@
 import type { ForensicAssetCorrelationReport } from "./asset-timeline-schema";
 
+export type AuthoritativeEvidenceBinding = { evidenceId: string; sha256: string };
+
 export type TemporalResult = { timeDeltaHours: number | null; precision: "EXACT" | "DATE_ONLY" | "UNKNOWN"; severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" };
 export function deterministicTemporalDelta(transactionDate: string, actionDate: string): TemporalResult {
   const a = Date.parse(transactionDate), b = Date.parse(actionDate);
@@ -25,4 +27,34 @@ export function validateReportSources(report: ForensicAssetCorrelationReport, so
     legalAssessment: (() => { const refs = report.legalAssessment.sourceReferences.filter(r => validRef(r.evidenceId)); return { ...report.legalAssessment, sourceReferences: refs, status: refs.length ? report.legalAssessment.status : "UNVERIFIED" as const }; })(),
     proceduralActions: report.proceduralActions.map(a => ({ ...a, sourceReferences: a.sourceReferences.filter(r => validRef(r.evidenceId)) })).map(a => a.sourceReferences.length ? a : { ...a, status: "UNVERIFIED" as const }),
   };
+}
+
+/** Model supplied hashes and page locators are never trusted as forensic metadata. */
+export function bindAuthoritativeEvidenceMetadata(
+  report: ForensicAssetCorrelationReport,
+  bindings: readonly AuthoritativeEvidenceBinding[],
+): ForensicAssetCorrelationReport {
+  const hashes = new Map(bindings.map((binding) => [binding.evidenceId, binding.sha256]));
+  const bind = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(bind);
+    if (!value || typeof value !== "object") return value;
+    const result: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value)) {
+      if (key === "sourcePage" || key === "sourceParagraph" || key === "page" || key === "paragraph") continue;
+      if (key === "sourceSha256") continue;
+      if (key === "sha256" && typeof (value as Record<string, unknown>).evidenceId === "string") {
+        const authoritative = hashes.get(String((value as Record<string, unknown>).evidenceId));
+        if (authoritative) result[key] = authoritative;
+        continue;
+      }
+      result[key] = bind(child);
+    }
+    if (typeof result.sourceEvidenceId === "string") {
+      const authoritative = hashes.get(result.sourceEvidenceId);
+      if (authoritative) result.sourceSha256 = authoritative;
+      else delete result.sourceSha256;
+    }
+    return result;
+  };
+  return bind(report) as ForensicAssetCorrelationReport;
 }

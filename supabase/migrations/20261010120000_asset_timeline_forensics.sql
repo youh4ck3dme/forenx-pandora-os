@@ -24,6 +24,25 @@ create table public.forensic_asset_timeline_runs (
   created_at timestamptz not null default now(),
   unique (case_id, idempotency_key)
 );
+
+create or replace function public.enforce_asset_timeline_lineage() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare superseded public.forensic_asset_timeline_runs;
+begin
+  if new.supersedes_run_id is null then return new; end if;
+  if new.supersedes_run_id = new.id then raise exception 'supersedes_run_id cannot reference the new row'; end if;
+  select * into superseded from public.forensic_asset_timeline_runs where id = new.supersedes_run_id;
+  if not found then raise exception 'superseded asset timeline run does not exist'; end if;
+  if superseded.case_id <> new.case_id
+     or superseded.user_id <> new.user_id
+     or superseded.analysis_type <> new.analysis_type then
+    raise exception 'invalid asset timeline lineage';
+  end if;
+  return new;
+end;
+$$;
+create trigger forensic_asset_timeline_lineage before insert on public.forensic_asset_timeline_runs
+for each row execute function public.enforce_asset_timeline_lineage();
 alter table public.forensic_asset_timeline_runs enable row level security;
 create policy "Users read own asset timeline runs" on public.forensic_asset_timeline_runs for select to authenticated using (auth.uid() = user_id and exists (select 1 from public.cases c where c.id = case_id and c.user_id = auth.uid()));
 revoke all on public.forensic_asset_timeline_runs from anon, authenticated;
