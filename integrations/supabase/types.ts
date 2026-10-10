@@ -1374,6 +1374,7 @@ export type Database = {
           _case_id: string;
           _user_id: string;
           _idempotency_key: string;
+          _attempt_count: number;
           _supersedes_run_id: string | null;
           _input_sha256: string;
           _prompt_version: string;
@@ -1392,6 +1393,7 @@ export type Database = {
           _case_id: string;
           _user_id: string;
           _idempotency_key: string;
+          _attempt_count: number;
           _error_code: string;
           _error_message: string;
         };
