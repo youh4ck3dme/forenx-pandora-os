@@ -22,13 +22,15 @@ async function claim(
   key: string,
   leaseSeconds = 600,
 ) {
-  const result = await db.query<{ r: {
-    claimed: boolean;
-    workflowId: string;
-    status: string;
-    attemptCount: number;
-    startedAt: string | null;
-  } }>(
+  const result = await db.query<{
+    r: {
+      claimed: boolean;
+      workflowId: string;
+      status: string;
+      attemptCount: number;
+      startedAt: string | null;
+    };
+  }>(
     "select public.claim_asset_timeline_workflow($1,$2,$3,$4) as r",
     [caseId, userId, key, leaseSeconds],
   );
@@ -44,26 +46,30 @@ async function complete(
     caseId: string;
     userId: string;
     key: string;
+    attemptCount: number;
     supersedes?: string | null;
   },
 ) {
   const hash = "a".repeat(64);
   const result = await db.query<{ r: Record<string, unknown> }>(
     `select public.complete_asset_timeline_analysis(
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14
     ) as r`,
     [
       input.workflowId,
       input.caseId,
       input.userId,
       input.key,
+      input.attemptCount,
       input.supersedes ?? null,
       hash,
       "asset-timeline-test",
       hash,
       "mistral",
       "test-model",
-      JSON.stringify([{ evidenceId: "e1", sha256: hash, fileName: "x.txt", fileSize: 1 }]),
+      JSON.stringify([
+        { evidenceId: "e1", sha256: hash, fileName: "x.txt", fileSize: 1 },
+      ]),
       JSON.stringify({ caseExecutiveSummary: "test" }),
       hash,
     ],
@@ -120,6 +126,59 @@ describe("asset timeline PostgreSQL workflow invariants", () => {
     await db.close();
   }, 60_000);
 
+  it("fences stale workers after a lease reclaim", async () => {
+    const db = await freshDatabase();
+    const user = await createUser(db, "asset-fence@test.local");
+    const caseId = await createCase(db, user);
+    const key = "z".repeat(64);
+
+    const first = await claim(db, caseId, user, key);
+    expect(first.attemptCount).toBe(1);
+
+    await db.query(
+      "update public.forensic_workflow_runs set started_at = now() - interval '20 minutes' where id=$1",
+      [first.workflowId],
+    );
+    const second = await claim(db, caseId, user, key, 600);
+    expect(second.attemptCount).toBe(2);
+
+    await expect(
+      complete(db, {
+        workflowId: first.workflowId,
+        caseId,
+        userId: user,
+        key,
+        attemptCount: first.attemptCount,
+      }),
+    ).rejects.toThrow(/stale or missing/i);
+
+    await expect(
+      db.query(
+        "select public.fail_asset_timeline_workflow($1,$2,$3,$4,$5,'STALE','old worker')",
+        [first.workflowId, caseId, user, key, first.attemptCount],
+      ),
+    ).rejects.toThrow(/stale or missing/i);
+
+    const run = await complete(db, {
+      workflowId: second.workflowId,
+      caseId,
+      userId: user,
+      key,
+      attemptCount: second.attemptCount,
+    });
+    expect(run.id).toBeTruthy();
+
+    const state = await db.query<{ status: string; attempt_count: number }>(
+      "select status, attempt_count from public.forensic_workflow_runs where id=$1",
+      [second.workflowId],
+    );
+    expect(state.rows[0]).toMatchObject({
+      status: "completed",
+      attempt_count: 2,
+    });
+    await db.close();
+  }, 60_000);
+
   it("increments attempts after a failed run", async () => {
     const db = await freshDatabase();
     const user = await createUser(db, "asset-failed@test.local");
@@ -128,8 +187,8 @@ describe("asset timeline PostgreSQL workflow invariants", () => {
 
     const first = await claim(db, caseId, user, key);
     const failed = await db.query<{ ok: boolean }>(
-      "select public.fail_asset_timeline_workflow($1,$2,$3,$4,'TEST','failed') as ok",
-      [first.workflowId, caseId, user, key],
+      "select public.fail_asset_timeline_workflow($1,$2,$3,$4,$5,'TEST','failed') as ok",
+      [first.workflowId, caseId, user, key, first.attemptCount],
     );
     expect(failed.rows[0]?.ok).toBe(true);
 
@@ -151,6 +210,7 @@ describe("asset timeline PostgreSQL workflow invariants", () => {
       caseId,
       userId: user,
       key,
+      attemptCount: owned.attemptCount,
     });
     expect(run.id).toBeTruthy();
 
@@ -199,6 +259,7 @@ describe("asset timeline PostgreSQL workflow invariants", () => {
         caseId,
         userId: user,
         key,
+        attemptCount: owned.attemptCount,
       }),
     ).rejects.toThrow(/forced terminal failure/);
 
