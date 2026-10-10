@@ -1359,6 +1359,44 @@ export type Database = {
         };
         Returns: Json;
       };
+      claim_asset_timeline_workflow: {
+        Args: {
+          _case_id: string;
+          _user_id: string;
+          _idempotency_key: string;
+          _lease_seconds: number;
+        };
+        Returns: Json;
+      };
+      complete_asset_timeline_analysis: {
+        Args: {
+          _workflow_id: string;
+          _case_id: string;
+          _user_id: string;
+          _idempotency_key: string;
+          _supersedes_run_id: string | null;
+          _input_sha256: string;
+          _prompt_version: string;
+          _prompt_sha256: string;
+          _provider: string;
+          _model: string;
+          _evidence_bindings: Json;
+          _result: Json;
+          _result_sha256: string;
+        };
+        Returns: Json;
+      };
+      fail_asset_timeline_workflow: {
+        Args: {
+          _workflow_id: string;
+          _case_id: string;
+          _user_id: string;
+          _idempotency_key: string;
+          _error_code: string;
+          _error_message: string;
+        };
+        Returns: boolean;
+      };
       webauthn_consume_challenge: {
         Args: { _challenge_key: string; _expires_at: string };
         Returns: boolean;
