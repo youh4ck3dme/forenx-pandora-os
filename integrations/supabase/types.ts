@@ -205,7 +205,7 @@ export type Database = {
           id: string;
           case_id: string;
           user_id: string;
-          workflow_type: 'FORENSIC_CASE_ANALYSIS' | 'DOCUMENT_ANALYSIS' | 'BULK_IMPORT' | 'EVIDENCE_VALIDATION' | 'DOSSIER_GENERATION' | 'REPORT_EXPORT';
+          workflow_type: 'FORENSIC_CASE_ANALYSIS' | 'DOCUMENT_ANALYSIS' | 'BULK_IMPORT' | 'EVIDENCE_VALIDATION' | 'DOSSIER_GENERATION' | 'REPORT_EXPORT' | 'ASSET_TIMELINE_FORENSICS';
           workflow_run_id: string | null;
           idempotency_key: string;
           status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -221,7 +221,7 @@ export type Database = {
           id?: string;
           case_id: string;
           user_id: string;
-          workflow_type: 'FORENSIC_CASE_ANALYSIS' | 'DOCUMENT_ANALYSIS' | 'BULK_IMPORT' | 'EVIDENCE_VALIDATION' | 'DOSSIER_GENERATION' | 'REPORT_EXPORT';
+          workflow_type: 'FORENSIC_CASE_ANALYSIS' | 'DOCUMENT_ANALYSIS' | 'BULK_IMPORT' | 'EVIDENCE_VALIDATION' | 'DOSSIER_GENERATION' | 'REPORT_EXPORT' | 'ASSET_TIMELINE_FORENSICS';
           workflow_run_id?: string | null;
           idempotency_key: string;
           status?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -236,7 +236,7 @@ export type Database = {
           id?: string;
           case_id?: string;
           user_id?: string;
-          workflow_type?: 'FORENSIC_CASE_ANALYSIS' | 'DOCUMENT_ANALYSIS' | 'BULK_IMPORT' | 'EVIDENCE_VALIDATION' | 'DOSSIER_GENERATION' | 'REPORT_EXPORT';
+          workflow_type?: 'FORENSIC_CASE_ANALYSIS' | 'DOCUMENT_ANALYSIS' | 'BULK_IMPORT' | 'EVIDENCE_VALIDATION' | 'DOSSIER_GENERATION' | 'REPORT_EXPORT' | 'ASSET_TIMELINE_FORENSICS';
           workflow_run_id?: string | null;
           idempotency_key?: string;
           status?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -249,7 +249,12 @@ export type Database = {
         };
         Relationships: [];
       };
-      forenzx_analysis_jobs: {
+      forensic_asset_timeline_runs: {
+        Row: { id: string; case_id: string; user_id: string; workflow_metadata_id: string | null; analysis_type: 'ASSET_TIMELINE_FORENSICS'; status: 'COMPLETED' | 'FAILED'; idempotency_key: string; supersedes_run_id: string | null; input_sha256: string; prompt_version: string; prompt_sha256: string; provider: string; model: string; evidence_bindings: Json; result: Json; result_sha256: string; created_at: string; };
+        Insert: { id?: string; case_id: string; user_id: string; workflow_metadata_id?: string | null; analysis_type?: 'ASSET_TIMELINE_FORENSICS'; status: 'COMPLETED' | 'FAILED'; idempotency_key: string; supersedes_run_id?: string | null; input_sha256: string; prompt_version: string; prompt_sha256: string; provider: string; model: string; evidence_bindings: Json; result: Json; result_sha256: string; created_at?: string; };
+        Update: never;
+        Relationships: [];
+      };      forenzx_analysis_jobs: {
         Row: {
           id: string;
           case_id: string;

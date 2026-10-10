@@ -42,7 +42,7 @@ describe("loadLedgerDocuments — autopilot content derived from the WORM ledger
   it("returns server-extracted text for a verified, hash-matching object", async () => {
     const r = row();
     const res = await loadLedgerDocuments(CASE, [A], deps([r], { [r.s3_object_key]: bytesA }));
-    expect(res).toEqual({ documents: [{ evidenceId: A, fileName: "zapisnica.txt", text: bytesA.toString("utf8") }], rejected: [] });
+    expect(res).toEqual({ documents: [{ evidenceId: A, fileName: "zapisnica.txt", text: bytesA.toString("utf8"), sha256: r.sha256_hash, fileSize: r.file_size }], rejected: [] });
     expect(ledgerDocumentsText(res.documents)).toContain(EVIDENCE_HEADER(A, "zapisnica.txt"));
   });
 
