@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deterministicTemporalDelta, verifyLiteralQuote } from "../asset-timeline-engine";
+import { deterministicTemporalDelta, redactEvidenceDocumentsForModel, verifyLiteralQuote } from "../asset-timeline-engine";
 
 describe("asset timeline deterministic engine", () => {
   it("applies exact boundaries", () => {
@@ -43,6 +43,27 @@ describe("asset timeline deterministic engine", () => {
     expect(
       deterministicTemporalDelta("2026-01-01", "2026-02-15"),
     ).toMatchObject({ severity: null, timeDeltaHours: null });
+  });
+
+  it("verifies quotes against the model-visible redacted evidence", () => {
+    const documents = redactEvidenceDocumentsForModel([
+      {
+        evidenceId: "e1",
+        text: "Platba bola odoslaná na účet SK3112000000198742637541 podľa výpisu.",
+      },
+    ]);
+    const sources = new Map(
+      documents.map((document) => [document.evidenceId, document.text]),
+    );
+    expect(documents[0]?.text).toContain("[IBAN]");
+    expect(documents[0]?.text).not.toContain("SK3112000000198742637541");
+    expect(
+      verifyLiteralQuote(
+        "Platba bola odoslaná na účet [IBAN] podľa výpisu.",
+        "e1",
+        sources,
+      ),
+    ).toBe(true);
   });
 
   it("requires a literal quote in the referenced evidence", () => {
