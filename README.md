@@ -1,77 +1,77 @@
 # PΛND0RΛ / ForenX
 
-## Forensic Intelligence & Evidence Operating System
+## Forenzná inteligencia a správa dôkazov
 
-PANDORA / ForenX is a case-centered platform for preserving, verifying, analyzing, and auditing digital evidence. Its governing rule is:
+PANDORA / ForenX je platforma orientovaná na prípady, ktorá uchováva, overuje, analyzuje a audituje digitálne dôkazy. Základné pravidlo:
 
-> **AI output is not evidence.**
+> **Výstup AI nie je dôkaz.**
 
-AI findings remain hypotheses until bound to a verified source. Runtime behavior, evidence integrity, and auditability take precedence over presentation or model output.
+Zistenia AI zostávajú hypotézami, kým nie sú naviazané na overený zdroj. Správanie runtime, integrita dôkazov a auditovateľnosť majú prednosť pred výstupom modelu.
 
-## Architecture
+## Architektúra
 
-- **Web application:** Next.js, React, and TypeScript; production process runs under PM2 behind nginx.
-- **Identity and data:** Supabase Auth and PostgreSQL, with case-scoped ownership checks, Row Level Security (RLS), constraints, and server-side functions.
-- **Evidence:** S3-compatible object storage plus a PostgreSQL evidence ledger, SHA-256 verification, source snapshots, and append-only audit history.
-- **Analysis:** Forza case workflows and server-side AI integrations. AI output is parsed, schema-validated, and checked against authorized evidence before persistence.
-- **Clients:** Browser/PWA and Electron desktop; mobile configuration is isolated under `mobile/`.
+- **Webová aplikácia:** Next.js, React a TypeScript; produkčný proces beží v PM2 za nginx.
+- **Identita a dáta:** Supabase Auth a PostgreSQL s kontrolou vlastníctva prípadov, Row Level Security (RLS), obmedzeniami a serverovými funkciami.
+- **Dôkazy:** S3-kompatibilné úložisko objektov a PostgreSQL ledger dôkazov, SHA-256 overovanie, zdrojové snapshoty a append-only auditná história.
+- **Analýza:** workflowy prípadov vo Forza a serverové AI integrácie. Výstup AI sa pred uložením parsuje, validuje podľa schémy a kontroluje voči oprávneným dôkazom.
+- **Klienti:** Browser/PWA a desktopová aplikácia Electron; mobilná konfigurácia je oddelená v `mobile/`.
 
-## Forensic invariants
+## Forenzné invarianty
 
-1. **Provenance:** A finding must refer to evidence or a captured source snapshot. AI-generated claims do not become evidence by being stored or repeated.
-2. **Integrity:** Evidence is bound to case, owner, storage reference, and verified SHA-256. Failed verification fails closed.
-3. **Authorization:** Authenticate first, then verify case ownership and evidence ownership. Client-supplied IDs never grant access.
-4. **Append-only history:** Audit events and immutable analysis runs preserve who/what/when and their hash lineage.
-5. **Determinism where required:** Calculated time deltas and severity are computed by application logic, not delegated to a language model.
-6. **No silent downgrade:** Missing authorization, integrity, or persistence guarantees must reject the operation rather than create an apparently valid result.
+1. **Proveniencia:** Zistenie musí odkazovať na dôkaz alebo zachytený snapshot zdroja. Uloženie či opakovanie tvrdenia AI z neho dôkaz neurobí.
+2. **Integrita:** Dôkaz je naviazaný na prípad, vlastníka, referenciu úložiska a overený SHA-256. Neúspešné overenie operáciu zastaví.
+3. **Autorizácia:** Najprv autentifikácia, potom kontrola vlastníctva prípadu a dôkazu. ID dodané klientom samo osebe prístup neudeľuje.
+4. **Append-only história:** Auditné udalosti a nemenné analytické behy uchovávajú kto/čo/kedy aj hashovú nadväznosť.
+5. **Deterministické výpočty:** Časové rozdiely a závažnosť sa počítajú aplikačnou logikou, nie jazykovým modelom.
+6. **Bez tichého zníženia ochrany:** Ak chýba autorizácia, integrita alebo bezpečné uloženie, operácia sa odmietne.
 
-## Key features
+## Kľúčové funkcie
 
-### Asset Timeline Forensics — “Časostroj majetku & Detektor bielych koní”
+### Asset Timeline Forensics — „Časostroj majetku & Detektor bielych koní“
 
-PR [#61](https://github.com/youh4ck3dme/forenx-pandora-os/pull/61) adds an evidence-bound workflow for correlating asset-related events across a case. **It is not yet merged or deployed; its database migration has not been applied to production.** The feature must not be treated as available in the live product until those release steps are completed.
+PR [#61](https://github.com/youh4ck3dme/forenx-pandora-os/pull/61) pridáva workflow na koreláciu udalostí súvisiacich s majetkom v rámci prípadu, naviazaný na dôkazy. **Zmena ešte nie je zlúčená ani nasadená a jej databázová migrácia nebola aplikovaná v produkcii.** Funkciu nemožno považovať za dostupnú v živej aplikácii, kým sa tieto kroky nedokončia.
 
-The workflow is designed to:
+Návrh workflowu:
 
-- Bind each analysis input to owned case evidence and its verified SHA-256; include those verified hashes in the canonical input digest.
-- Validate quoted text against the referenced source and verify source references before accepting a finding. Invalid or unsupported legal/source claims are downgraded rather than presented as verified.
-- Preserve date-only values and unknown times without inventing precision.
-- Compute elapsed time and severity deterministically in application code.
-- Record prompt version/hash and the actual provider/model used, including provider fallback.
-- Store each result as a separate immutable run with result SHA-256, evidence bindings, workflow metadata, and audit event.
-- Enforce canonical idempotency and link reruns through `supersedes_run_id`; client-provided idempotency values cannot redefine the canonical input identity.
-- Restrict writes to the server/service role. Authenticated clients may read only their own case runs under RLS; update and delete are blocked.
+- Každý vstup viaže na dôkazy z vlastneného prípadu a ich overený SHA-256; overené hashe vstupujú do kanonického digestu analýzy.
+- Overuje citované úryvky voči zdroju a kontroluje referencie ešte pred prijatím zistenia. Neplatné alebo nepodložené právne/zdrojové tvrdenia sa degradujú, namiesto toho, aby sa označili za overené.
+- Zachováva sémantiku dátumu bez času a neznámeho času bez vymýšľania presnosti.
+- Časový rozdiel a závažnosť počíta deterministicky v aplikačnej logike.
+- Ukladá verziu a hash promptu aj skutočne použitý provider/model vrátane fallbacku.
+- Každý výsledok ukladá ako samostatný nemenný beh s SHA-256 výsledku, väzbami na dôkazy, metadátami workflowu a auditnou udalosťou.
+- Vynucuje kanonickú idempotenciu a prepája opakované behy cez `supersedes_run_id`; klientský kľúč nemôže zmeniť kanonickú identitu vstupu.
+- Zápisy povoľuje iba server/service role. Autentifikovaní klienti môžu čítať iba behy vlastných prípadov cez RLS; aktualizácie a mazanie sú blokované.
 
-## Production deployment
+## Produkčné nasadenie
 
-| Item | Current production configuration |
+| Položka | Aktuálna produkčná konfigurácia |
 |---|---|
-| Public app | [pandora.whoiswho.at](https://pandora.whoiswho.at) |
+| Verejná aplikácia | [pandora.whoiswho.at](https://pandora.whoiswho.at) |
 | VPS | `2.29.52.59` |
-| Application directory | `/var/www/pandora-browser` |
-| Process | PM2 `pandora-browser`, port `3005` |
+| Adresár aplikácie | `/var/www/pandora-browser` |
+| Proces | PM2 `pandora-browser`, port `3005` |
 | Reverse proxy | nginx |
-| Production database | Supabase project `tlmuvzrgighahnjkxoyw` |
-| Main baseline | `2a8caca485467bbc09ecbd3e49e98a727ce78a1c` |
+| Produkčná databáza | Supabase projekt `tlmuvzrgighahnjkxoyw` |
+| Baseline vetvy main | `2a8caca485467bbc09ecbd3e49e98a727ce78a1c` |
 
-The official VPS release entry point is `scripts/deploy/staging-update.sh`. It defaults to a dry run, builds and smoke-checks a separate release before switching, reloads PM2, and rolls back on failure. It does **not** apply database migrations. Migration deployment is a separate, reviewed operation.
+Oficiálny vstupný bod VPS releasu je `scripts/deploy/staging-update.sh`. Predvolene vykoná dry-run, nový release zostaví a smoke-testuje oddelene ešte pred prepnutím, následne reloadne PM2 a pri zlyhaní vykoná rollback. Databázové migrácie **nespúšťa**; ich nasadenie je samostatný kontrolovaný krok.
 
-## Database
+## Databáza
 
-Supabase/PostgreSQL schema changes are versioned in `supabase/migrations/`. Production uses project `tlmuvzrgighahnjkxoyw`.
+Schéma Supabase/PostgreSQL je verzovaná v `supabase/migrations/`. Produkčný projekt je `tlmuvzrgighahnjkxoyw`.
 
-- Review migration status and the exact pending plan before applying a migration.
-- Never use `supabase db reset` against production.
-- Never apply a migration by editing hosted schema manually or manipulating migration history without evidence.
-- Asset Timeline migration `20261010120000_asset_timeline_forensics.sql` is on PR #61 only and is **not applied to production**.
+- Pred aplikáciou migrácie skontroluj stav migrácií a presný plán zmien.
+- `supabase db reset` nikdy nepoužívaj v produkcii.
+- Neupravuj produkčnú schému ručne ani históriu migrácií bez dôkazov.
+- Migrácia Asset Timeline `20261010120000_asset_timeline_forensics.sql` je zatiaľ iba v PR #61 a **nie je aplikovaná v produkcii**.
 
 ## AI
 
-Provider credentials are server-side. AI is an untrusted analysis component: requests are authenticated, consent and ownership are checked, evidence is bound and verified, and structured output is validated before immutable persistence. Prompt and provider/model provenance are retained with the result. Secrets must never appear in README, source control, browser bundles, URLs, or logs.
+Kľúče providerov zostávajú na serveri. AI je nedôveryhodná analytická súčasť: požiadavky autentifikujeme, kontrolujeme súhlas a vlastníctvo, viažeme a overujeme dôkazy a štruktúrovaný výstup validujeme pred nemenným uložením. Pri výsledku sa zachová proveniencia promptu a provideru/modelu. Secrets nepatria do README, repozitára, browser bundlu, URL ani logov.
 
-## Testing and verification
+## Testovanie a overovanie
 
-Run the checks relevant to the change, and report their results separately:
+Spusti kontroly relevantné pre zmenu a výsledky uvádzaj oddelene:
 
 ```bash
 npm run typecheck
@@ -79,33 +79,33 @@ npx vitest run
 npm run build
 ```
 
-Database behavior requires migration/RLS verification against the intended database. A successful unit test, build, or health endpoint alone does not prove production behavior. The production smoke endpoint is `/api/healthz`.
+Správanie databázy vyžaduje overenie migrácií a RLS voči zamýšľanej databáze. Úspešný unit test, build ani health endpoint samostatne nedokazujú produkčné správanie. Produkčný smoke endpoint je `/api/healthz`.
 
-## Release and deploy procedure
+## Postup release a deploy
 
-1. Review the code and migration on the intended branch; run typecheck, targeted tests, the applicable full test suite, and build.
-2. Review migration ordering and the remote migration state. Apply migrations only through the approved, explicit database procedure; the VPS deploy script never applies them.
-3. Merge the reviewed release to `main`.
-4. Run `scripts/deploy/staging-update.sh` to inspect the plan. Use `--apply` only for the intended release; if new migrations are present, explicitly acknowledge that script guard and apply the migration separately according to the database procedure.
-5. Verify the deployed commit, PM2 process, HTTP health endpoint, application smoke checks, and any changed end-to-end workflow. Record evidence for each result.
+1. Skontroluj kód a migráciu na určenej vetve; spusti typecheck, cielené testy, príslušnú kompletnú testovaciu sadu a build.
+2. Over poradie migrácií a vzdialený stav databázy. Migrácie aplikuj iba cez schválený explicitný postup; VPS deploy skript ich nespúšťa.
+3. Zlúč schválený release do `main`.
+4. Spusti `scripts/deploy/staging-update.sh` na kontrolu plánu. `--apply` použi len pre zamýšľaný release; ak sú prítomné nové migrácie, potvrď ochrannú podmienku skriptu a migráciu aplikuj samostatným databázovým postupom.
+5. Over nasadený commit, PM2 proces, HTTP health endpoint, aplikačné smoke kontroly a každý zmenený end-to-end workflow. Zaznamenaj dôkaz ku každému výsledku.
 
-## Security boundaries
+## Bezpečnostné hranice
 
-- Browser and desktop clients are untrusted. Never expose Supabase service-role, S3, database, or AI-provider credentials to them.
-- Enforce authentication, case ownership, and evidence ownership on the server; RLS provides the database boundary as well.
-- Only trusted server code may write Asset Timeline runs. Client access is read-only and constrained by RLS.
-- Treat uploads, external sources, model responses, and client identifiers as untrusted input.
-- Preserve immutable evidence and audit records; do not silently replace or overwrite previous analysis runs.
-- Do not include secrets or sensitive production configuration values in documentation.
+- Browser a desktop klienti sú nedôveryhodní. Nikdy im nevystavuj Supabase service-role, S3, databázové ani AI provider kľúče.
+- Autentifikáciu, vlastníctvo prípadu a vlastníctvo dôkazu kontroluj na serveri; databázovú hranicu zároveň vynucuje RLS.
+- Behy Asset Timeline môže zapisovať iba dôveryhodný server. Klientsky prístup je iba na čítanie a obmedzuje ho RLS.
+- Uploady, externé zdroje, odpovede modelu a identifikátory od klienta považuj za nedôveryhodný vstup.
+- Zachovaj nemenné dôkazy a auditné záznamy; staršie behy analýzy neprepisuj.
+- Do dokumentácie nezapisuj secrets ani citlivé prevádzkové konfigurácie.
 
-## Current status — 10 October 2026
+## Aktuálny stav — 10. október 2026
 
-- **Production runtime:** The public application and `/api/healthz` both returned HTTP 200 during the README update check.
-- **Autopilot 403 fix:** Verified with HTTP 200 and a completed workflow.
-- **Production baseline:** `main` baseline `2a8caca485467bbc09ecbd3e49e98a727ce78a1c`.
-- **Asset Timeline Forensics PR #61:** Open, not merged, not deployed; its migration is not applied to production.
-- **Secrets:** No credentials are documented here.
+- **Produkčný runtime:** Verejná aplikácia aj `/api/healthz` v čase aktualizácie README vrátili HTTP 200.
+- **Oprava Autopilot 403:** Overená: HTTP 200 a dokončený workflow.
+- **Produkčný baseline:** vetva `main`, commit `2a8caca485467bbc09ecbd3e49e98a727ce78a1c`.
+- **Asset Timeline Forensics PR #61:** otvorený, nezlúčený a nenasadený; migrácia nie je aplikovaná v produkcii.
+- **Secrets:** V README nie sú uvedené žiadne prihlasovacie údaje ani kľúče.
 
-## License
+## Licencia
 
 WTFPL — Do What The Fuck You Want To Public License.
