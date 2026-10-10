@@ -1,5 +1,6 @@
 import * as account from "@/lib/forza/account.functions";
 import * as ai from "@/lib/forza/ai.functions";
+import * as assetTimeline from "@/lib/forza/asset-timeline.functions";
 import * as caseGraph from "@/lib/forza/case-graph.functions";
 import * as caseWrite from "@/lib/forza/case-write.functions";
 import * as dimitri from "@/lib/forza/dimitri.functions";
@@ -16,7 +17,7 @@ import { SERVER_FN_ID_PATTERN } from "@/lib/tanstack-start-shim";
  */
 export const SERVER_FN_MODULES: Record<string, Record<string, unknown>> = {
   account,
-  ai,
+  ai: { ...ai, ...assetTimeline },
   "case-graph": caseGraph,
   "case-write": caseWrite,
   dimitri,
