@@ -164,12 +164,13 @@ export const runAssetTimelineForensics = createServerFn({
     }
 
     const {
-      AI_JOB_DEADLINE_MS,
       callLlm,
       activeProvider,
       preferredLlmModel,
     } = await import("./ai/llm.server");
-    const leaseSeconds = Math.ceil(AI_JOB_DEADLINE_MS / 1000) + 60;
+    const { getEffectiveDeadlineMs } = await import("./ai/execution-budget");
+    const executionBudgetMs = getEffectiveDeadlineMs();
+    const leaseSeconds = Math.ceil(executionBudgetMs / 1000) + 60;
 
     const claimResult = await db.rpc("claim_asset_timeline_workflow", {
       _case_id: data.caseId,
@@ -226,6 +227,7 @@ export const runAssetTimelineForensics = createServerFn({
 
       const llm = await callLlm({
         purpose: "analysis",
+        budgetMs: executionBudgetMs,
         messages: [
           { role: "system", content: ASSET_TIMELINE_SYSTEM_PROMPT },
           {
@@ -256,6 +258,7 @@ export const runAssetTimelineForensics = createServerFn({
         _case_id: data.caseId,
         _user_id: context.userId,
         _idempotency_key: canonicalKey,
+        _attempt_count: claim.attemptCount,
         _supersedes_run_id: previous.data?.id ?? null,
         _input_sha256: inputSha256,
         _prompt_version: ASSET_TIMELINE_PROMPT_VERSION,
@@ -297,6 +300,7 @@ export const runAssetTimelineForensics = createServerFn({
         _case_id: data.caseId,
         _user_id: context.userId,
         _idempotency_key: canonicalKey,
+        _attempt_count: claim.attemptCount,
         _error_code: "ASSET_TIMELINE_FAILED",
         _error_message: "Asset timeline analysis failed",
       });
