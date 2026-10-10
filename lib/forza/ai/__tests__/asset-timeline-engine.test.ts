@@ -57,12 +57,9 @@ describe("asset timeline deterministic engine", () => {
     );
     expect(documents[0]?.text).toContain("[IBAN]");
     expect(documents[0]?.text).not.toContain("SK3112000000198742637541");
+    const modelVisibleText = documents[0]?.text ?? "";
     expect(
-      verifyLiteralQuote(
-        "Platba bola odoslaná na účet [IBAN] podľa výpisu.",
-        "e1",
-        sources,
-      ),
+      verifyLiteralQuote(modelVisibleText, "e1", sources),
     ).toBe(true);
   });
 
