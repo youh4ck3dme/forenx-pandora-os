@@ -115,6 +115,7 @@ export const runAssetTimelineForensics = createServerFn({
       caseId: data.caseId,
       evidenceBindings,
       promptVersion: ASSET_TIMELINE_PROMPT_VERSION,
+      promptSha256: ASSET_TIMELINE_PROMPT_SHA256,
       text: ledgerDocumentsText(loaded.documents),
     };
     const inputSha256 = canonicalSha256(input);
@@ -123,6 +124,7 @@ export const runAssetTimelineForensics = createServerFn({
       caseId: input.caseId,
       evidenceBindings,
       promptVersion: input.promptVersion,
+      promptSha256: input.promptSha256,
     });
 
     const { supabaseAdmin } = await import(
