@@ -13,5 +13,16 @@ export function verifyLiteralQuote(quote: string, evidenceId: string, sources: R
   return quote.length >= 15 && quote.length <= 200 && Boolean(sources.get(evidenceId)?.includes(quote));
 }
 export function enforceDeterminism(report: ForensicAssetCorrelationReport, sources: ReadonlyMap<string, string>): ForensicAssetCorrelationReport {
-  return { ...report, temporalCorridors: report.temporalCorridors.map(c => { const t = deterministicTemporalDelta(c.primaryTransaction.date, c.corporateOrCadastralAction.actionDate); const valid = verifyLiteralQuote(c.primaryTransaction.evidenceQuote, c.primaryTransaction.sourceEvidenceId, sources) && verifyLiteralQuote(c.corporateOrCadastralAction.evidenceQuote, c.corporateOrCadastralAction.sourceEvidenceId, sources); return { ...c, timeDeltaHours: t.timeDeltaHours ?? 0, precision: t.precision, severity: t.severity, forensicDeduction: valid ? c.forensicDeduction : "NEOVERENÉ — citácia nebola nájdená v zdroji." }; }) };
+  return { ...report, temporalCorridors: report.temporalCorridors.map(c => { const t = deterministicTemporalDelta(c.primaryTransaction.date, c.corporateOrCadastralAction.actionDate); const valid = verifyLiteralQuote(c.primaryTransaction.evidenceQuote, c.primaryTransaction.sourceEvidenceId, sources) && verifyLiteralQuote(c.corporateOrCadastralAction.evidenceQuote, c.corporateOrCadastralAction.sourceEvidenceId, sources); return { ...c, timeDeltaHours: t.timeDeltaHours as number, precision: t.precision, severity: t.severity, forensicDeduction: valid ? c.forensicDeduction : "NEOVERENÉ — citácia nebola nájdená v zdroji." }; }) };
+}
+
+export function validateReportSources(report: ForensicAssetCorrelationReport, sources: ReadonlyMap<string, string>): ForensicAssetCorrelationReport {
+  const validRef = (id: string, quote?: string) => Boolean(sources.has(id) && (!quote || verifyLiteralQuote(quote, id, sources)));
+  return {
+    ...report,
+    temporalCorridors: report.temporalCorridors.filter(c => validRef(c.primaryTransaction.sourceEvidenceId, c.primaryTransaction.evidenceQuote) && validRef(c.corporateOrCadastralAction.sourceEvidenceId, c.corporateOrCadastralAction.evidenceQuote)),
+    nomineeRiskEntities: report.nomineeRiskEntities.map(n => validRef(n.sourceEvidenceId, n.sourceEvidenceQuote) ? { ...n, classification: n.classification ?? "INDICATOR" as const } : { ...n, classification: "UNVERIFIED" as const }),
+    legalAssessment: { ...report.legalAssessment, sourceReferences: report.legalAssessment.sourceReferences.filter(r => validRef(r.evidenceId)) },
+    proceduralActions: report.proceduralActions.map(a => ({ ...a, sourceReferences: a.sourceReferences.filter(r => validRef(r.evidenceId)) })).map(a => a.sourceReferences.length ? a : { ...a, status: "UNVERIFIED" as const }),
+  };
 }
