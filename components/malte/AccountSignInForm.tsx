@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
 import { adoptCloudSession } from "@/lib/forza/session";
 import { setAuthCookies } from "@/lib/auth/cookies";
 import { loginWithPasskey } from "@/lib/auth/webauthn.client";
@@ -34,6 +34,8 @@ export function AccountSignInForm({
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [passkeyBusy, setPasskeyBusy] = useState(false);
+  // Fail-closed: bez verejnej Supabase konfigurácie je formulár vypnutý.
+  const [configured] = useState(() => isSupabaseConfigured());
 
   const fieldClass = dark
     ? "h-11 w-full rounded-xl border border-white/20 bg-black/50 px-3.5 text-sm text-white placeholder:text-slate-400 outline-none transition-all focus:border-amber-400 focus:ring-2 focus:ring-amber-400/25"
@@ -41,7 +43,7 @@ export function AccountSignInForm({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || !configured) return;
     setBusy(true);
     try {
       const address = email.trim();
@@ -155,7 +157,22 @@ export function AccountSignInForm({
     typeof window.PublicKeyCredential !== "undefined";
 
   return (
-    <form className="space-y-3" onSubmit={handleSubmit}>
+    <form className="space-y-3" onSubmit={handleSubmit} aria-disabled={!configured || undefined}>
+      {configured ? null : (
+        <p
+          role="alert"
+          data-testid="auth-config-missing"
+          className={cn(
+            "rounded-xl border px-3.5 py-2.5 text-sm",
+            dark
+              ? "border-amber-400/40 bg-amber-400/10 text-amber-100"
+              : "border-destructive/40 bg-destructive/10 text-foreground",
+          )}
+        >
+          Prihlásenie je dočasne nedostupné — chýba konfigurácia autentifikácie. Kontaktujte správcu.
+        </p>
+      )}
+      <fieldset disabled={!configured} className="contents">
       <div>
         <label htmlFor="account-email" className="sr-only">
           E-mail účtu
@@ -261,6 +278,7 @@ export function AccountSignInForm({
           </>
         )}
       </div>
+      </fieldset>
     </form>
   );
 }
