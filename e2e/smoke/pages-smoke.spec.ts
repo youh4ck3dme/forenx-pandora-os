@@ -147,7 +147,7 @@ test.describe(`Pages smoke (${READONLY ? "READ-ONLY" : "full"})`, () => {
     });
   }
 
-  // axe: meta-viewport a serious/critical color-contrast sú na týchto stránkach
+  // axe: meta-viewport, listitem/list a serious/critical color-contrast sú na týchto stránkach
   // regresie (opravené v ui/ux-safe-fixes); ostatné nálezy sa iba reportujú.
   const AXE_PAGES = ["/auth/login/", "/auth/register/", "/blog/", "/blog/bezpecnost-prehliadacov-a-izolacia/"];
   for (const path of AXE_PAGES) {
@@ -163,6 +163,8 @@ test.describe(`Pages smoke (${READONLY ? "READ-ONLY" : "full"})`, () => {
       const regressions = results.violations.filter(
         (v) =>
           v.id === "meta-viewport" ||
+          v.id === "listitem" ||
+          v.id === "list" ||
           (v.id === "color-contrast" && (v.impact === "serious" || v.impact === "critical")),
       );
       const details = regressions.flatMap((v) =>
@@ -171,7 +173,7 @@ test.describe(`Pages smoke (${READONLY ? "READ-ONLY" : "full"})`, () => {
           return `${v.id} ${n.target.join(" ")} ${d.fgColor ?? ""}/${d.bgColor ?? ""} ${d.contrastRatio ?? ""}`.trim();
         }),
       );
-      expect(details, "axe regresie (meta-viewport / serious color-contrast)").toEqual([]);
+      expect(details, "axe regresie (meta-viewport / listitem / serious color-contrast)").toEqual([]);
     });
   }
 
