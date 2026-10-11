@@ -13,7 +13,7 @@ Tento dokument je jediný kanonický a normatívny kontrakt pre systém **PANDOR
 
 Platí bez výnimky pre:
 - **Web / Next.js 15 App Router** (`app/`, `components/`, `lib/forza/`)
-- **PWA & Offline state** (`lib/forza/idb.ts`, service workers)
+- **PWA & Offline state** (`lib/forza/idb.ts` — iba lokálny UI stav; offline režim je READ-ONLY, service worker je kill-switch, pozri §11)
 - **Capacitor Mobile** (isolated package: `mobile/`, profile scripts: `mobile/scripts/mobile/`; native platform projects are not committed)
 - **Electron Desktop Shell** (`electron/`, Chromium v152 / Node v24 LTS baseline)
 - **Supabase Auth / PostgreSQL / RLS / Edge Functions** (`supabase/`, `db/cleanroom/`)
@@ -59,7 +59,7 @@ PANDORA / ForenX je jednotný forenzný systém s viacerými runtime adaptérmi:
 | Runtime | Úloha | Primárna kódová báza |
 |---|---|---|
 | **Web** | Hlavné vyšetrovateľské UI, API, serverové funkcie | `app/`, `components/`, `lib/forza/` |
-| **PWA** | Web UI, lokálna offline cache, synchronizácia | Web runtime + `lib/forza/idb.ts` |
+| **PWA** | Web UI, offline READ-ONLY (bez offline zápisu, bez SW cache, bez synchronizácie) | Web runtime + `lib/forza/idb.ts` (UI stav), `public/sw.js` (kill-switch) |
 | **Capacitor Mobile** | Oddelená konfigurácia a závislosti mobilného obalu; native projekty nie sú súčasťou repozitára | `mobile/`, `mobile/scripts/mobile/` |
 | **Electron** | Bezpečný desktopový browser shell | `electron/` + web UI |
 | **Supabase** | Autentifikácia, PostgreSQL 15, RLS, WORM Ledger | `supabase/`, `db/cleanroom/` |
@@ -146,7 +146,15 @@ Porušenie ktoréhokoľvek z nasledujúcich invariantov predstavuje okamžitý *
 ### 5.1 Životný cyklus dôkazu (Evidence Lifecycle)
 1. **Presign fáza (`POST /api/vault/presign`):** Overenie relácie vyšetrovateľa a platnosti `case_id`. Server vygeneruje náhodný, izolovaný storage kľúč vo formáte `cases/{caseId}/{uuid}-{filename}`.
 2. **Priamy upload do Hetzner S3:** Konfigurácia trezoru sa číta výhradne z `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (bez fallbacku na generické `AWS_*` a bez predvoleného produkčného endpointu); chýbajúca hodnota = trezor nenakonfigurovaný. Upload prebieha priamo na zabezpečený S3 Trezor (`hel1.your-objectstorage.com`) mimo aplikačného servera.
-3. **Commit a overenie integrity (`POST /api/vault/commit`):** Server načíta skutočné bajty z S3, vypočíta SHA-256 hash a skutočnú veľkosť. Ak hash sedí s klientskym pre-flight hashom, záznam sa zapíše do `evidence_items` v stave `verified`. Pri nesúlade sa dôkaz označí ako `compromised` a zaloguje sa auditné varovanie.
+3. **Commit do ledgera (`POST /api/vault/commit`, resp. multipart `POST /api/vault`):** Server overí vlastníctvo prípadu a zapíše záznam do `evidence_items` v stave `hash_verification_status = 'pending'` (multipart cesta zapíše `pending` záznam ešte PRED uploadom do S3). Commit **nevytvára** stav `verified`. *(Opravené 2026-10-11 podľa kódu: `app/api/vault/commit/route.ts`, `lib/storage/evidence-commit.ts`, `app/api/vault/route.ts`.)*
+4. **Serverové overenie integrity (worker `GET|POST /api/vault/verify`, `lib/storage/evidence-verify.ts`):** Worker autorizovaný `CRON_SECRET` stiahne objekt zo S3 ako stream, prepočíta SHA-256 a skutočnú veľkosť a výsledok zapíše cez RPC `record_evidence_verification` (iba `service_role`). Výsledné stavy: `verified` (zhoda hashu aj veľkosti), `mismatch`, `object_missing`, `error`. UI mapovanie `integrityStatus`: `verified` → `verified`; `mismatch`/`object_missing` → `compromised`; `pending`/`error` → `checking`.
+
+### 5.1a UI stavy dôkazu (`lib/forza/evidence-status-labels.ts`) — `VERIFIED` (unit testy)
+- Vault položka (`ledgerRowToItem`) nesie navyše **voliteľné, aditívne** pole `verificationStatus` = surový `hash_verification_status` (`pending | verified | mismatch | object_missing | error`). `integrityStatus` ostáva nezmenený; starší klienti pole môžu ignorovať. Klient priameho uploadu ho preberá z existujúceho poľa `hashVerificationStatus` commit odpovede.
+- Používateľské stavy: **Nahrané**, **Ledger zapísaný** (iba ak server vrátil `persisted: true`), **Čaká na overenie** (`pending`), **Overené** (iba serverový `verified`), **Neoverené** (`mismatch`/`object_missing`), **Overenie zlyhalo** (`error`). Každý stav má vysvetlenie a ďalšiu akciu; technický detail je iba v rozbaľovacom zobrazení.
+- Úspešný upload sa **nesmie** prezentovať ako kryptograficky overený dôkaz. Odstránená bola falošná hláška „Dôkaz úspešne zaistený v S3 a overený!“ aj natvrdo zobrazovaný odznak „INTEGRITA OVERENÁ“ v `evidence-vault-panel.tsx`.
+- Stav **Overuje sa** nemá zdroj v databáze (ledger nerozlišuje „prebieha overenie“), preto sa zo serverového stavu nikdy neodvodzuje.
+- Hashovanie, časové pečiatky, audit log ani RLS sa touto zmenou nemenili.
 
 ### 5.2 WORM a Immutability Triggers
 - Tabuľka `evidence_items` je chránená triggerom `evidence_items_update_guard`.
@@ -271,6 +279,9 @@ npm run test:regression:forenzx
 - [x] **Asset Timeline lineage guard:** feature migrácia obsahuje databázový trigger proti neexistujúcemu, self-referencovanému alebo cross-case/cross-user lineage.
 
 ### 9.2 OPEN (Architektonické úlohy v kóde)
+- **P2 — AI súhlas je viazaný na `"local"` používateľa:** `useAiConsent.ensureConsent` má predvolený `userId = "local"` a všetky volania ho používajú, takže súhlas v `localStorage` platí pre prehliadač + prípad, nie pre používateľa + prípad (ako uvádza `lib/forza/ai-consent.ts`). Serverová kontrola `assertAiConsent(consentVersion)` zostáva fail-closed.
+- **P3 — „Overuje sa“ bez DB zdroja:** ledger nemá stav „prebieha overenie“; ak ho UI má zobrazovať, treba aditívny stav/čas claimu vo worker kontrakte.
+- **P3 — legacy PWA artefakty:** `public/offline.html` a `public/fallback-*.js` ostali po next-pwa; aktuálne nie sú referencované žiadnym registrovaným workerom.
 - **P0 — nasadenie passkey ochrany (blokuje prihlásenie passkey, fail-closed):** na hosted Supabase musí byť aplikované `supabase/migrations/20260929000000_shared_rate_limit.sql` (zdieľaný limiter pre CSP a health) a `supabase/migrations/20261008100000_webauthn_spent_challenges.sql` (jednorazové výzvy). Bez nich `/api/auth/webauthn/verify` vracia 503 pre každé overenie. Overenie po aplikácii (ako `service_role`): `select public.webauthn_consume_challenge(repeat('a',64), now() + interval '2 minutes')` vráti `true` a druhé volanie s rovnakým kľúčom vráti `false`. Pôvodný záznam tejto úlohy bol v `docs/BACKLOG-SOURCE-OF-TRUTH.md`, ktorý bol zrušený, a preto bol bez tohto riadku ľahko prehliadnuteľný.
 - **P1:** CI audit je stále iba `--audit-level=critical`; `npm audit` hlási 24 high (najmä `workflow`, `eslint-config-next`, `postcss`, `sharp`). Zvýšiť na `high` až po ich vyriešení.
 - **P2:** `getRpId` bez `NEXT_PUBLIC_RP_ID` odvodzuje rpId z `x-forwarded-host`; v produkcii má byť env povinný.
@@ -292,3 +303,26 @@ Pre lokálne prostredie a desktopový runtime je stav:
 $$\mathbf{RELEASE\_WITH\_CONDITIONS}$$
 
 *(Podmienka: Vykonanie externých staging testov s dodanými produkčnými secretmi pred nasadením na ostrú infraštruktúru).*
+
+---
+
+## 11. PWA, offline režim a UI/UX kontrakty (2026-10-11, vetva `ui/ux-safe-fixes`)
+
+### 11.1 Offline = READ-ONLY — `VERIFIED` (unit testy)
+- Aplikácia nemá offline write queue, Background Sync, retry frontu offline zápisov ani riešenie konfliktov (`lib/services/forensic-sync.ts` obsahuje iba nepoužitú in-memory frontu). Offline režim je preto **read-only**.
+- Hláška `OFFLINE_READONLY_MESSAGE` (`lib/hooks/useOnlineStatus.ts`): „Ste offline. Prehliadanie je dostupné. Zápis bude možný po obnovení pripojenia.“ — offline banner (`components/malte/Shell.tsx`, `role="status"`, `aria-live="polite"`) a `app/offline/page.tsx`. AI-špecifické miesta ďalej používajú `OFFLINE_AI_MESSAGE`.
+- Žiadna falošná fronta v `localStorage`. Stavy zápisu (`lib/forza/write-status.ts`): Čaká na odoslanie / Odosiela sa / Uložené na serveri / Odoslanie zlyhalo — použité iba tam, kde existuje odpoveď servera (uloženie AI pracovnej analýzy v Autopilote). „Uložené na serveri“ sa zobrazí až po úspešnej odpovedi servera; tlačidlo uloženia je offline zablokované.
+
+### 11.2 Service worker = kill-switch — `VERIFIED` (unit test), správanie v reálnych prehliadačoch `IMPLEMENTED_UNVERIFIED`
+- `components/core/providers/service-worker-registration.tsx` naďalej odregistruje všetky service workery; next-pwa je vypnutý.
+- `public/sw.js` je kill-switch: `skipWaiting`, pri aktivácii zmaže všetky Cache Storage cache, `clients.claim()`, sám sa odregistruje; **nemá `fetch` handler**. Starý Workbox súbor `public/workbox-4754cb34.js` bol odstránený.
+- **NESMIE** sa obnoviť SW cache pre citlivé forenzné dáta (stav workflow, audit log, overenie dôkazov, prípady, ledger, autentifikácia, oprávnenia) ani pre cross-origin Supabase odpovede. Pôvodný worker ich cachoval stratégiou NetworkFirst s fallbackom na stale cache (24 h / 1 h).
+
+### 11.3 Forenzný Autopilot — 5 krokov — `VERIFIED` (unit + regresné testy)
+- `components/malte/assistant/AutopilotStepper.tsx` + `lib/forza/autopilot-steps.ts`: Vybrať prípad → Pridať dokument → Skontrolovať náhľad → Udeliť AI súhlas → Spustiť a sledovať workflow. Stav je odvodený z existujúceho stavu UI; backend kontrakt, `consentVersion` (`AI_CONSENT_VERSION`) ani logika súhlasu sa nemenili (hook iba navyše vystavuje `awaitingConsent` na zobrazenie).
+- `ForensicWorkflowInspector` zobrazuje stavy workflow po slovensky (`lib/forza/workflow-status-labels.ts`: Vo fronte / Prebieha / Dokončené / Zlyhalo / Zrušené) v live regióne `role="status" aria-live="polite"`; hodnoty kontraktu (`queued|running|completed|failed|cancelled`) sú nezmenené.
+
+### 11.4 Navigácia a prístupnosť — `VERIFIED` (unit testy)
+- `NavItem.subtitle` (voliteľné): Forenzný Autopilot — „Sprievodca analýzou prípadu“, AI Sandbox — „Dávková AI analýza spisov“, Agentné API (MCP) — „Technické pripojenia“. Route sa nemenili; WORM položka ani route sa nepridali.
+- Tlačidlo Späť (`components/malte/back-navigation.ts`, `BackButton` v `Shell.tsx`): explicitný `backHref` → `PARENT_ROUTE` → `history.back()` iba pri same-origin referreri → fallback `/forza/prehlad`. Cieľ 44 × 44 px, `aria-label="Späť"`, `focus-visible` prstenec.
+- Ikonové tlačidlá (kopírovanie MCP URL, kopírovanie SHA-256, obnovenie zoznamu dôkazov) majú `aria-label` a `focus-visible`.
