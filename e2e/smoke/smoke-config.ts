@@ -26,6 +26,12 @@ export const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 /** Pauza medzi požiadavkami (nízka záťaž na produkcii). */
 export const REQUEST_DELAY_MS = Number(process.env.SMOKE_DELAY_MS ?? (READONLY ? 750 : 0));
 
+/**
+ * Očakávaný <html lang>. Default "sk"; SMOKE_EXPECT_LANG umožní napr. prod beh
+ * pred nasadením vetvy (SMOKE_EXPECT_LANG=en), bez úpravy testov.
+ */
+export const EXPECT_LANG = process.env.SMOKE_EXPECT_LANG?.trim() || "sk";
+
 export const DUMMY_UUID = "00000000-0000-4000-8000-000000000000";
 export const DUMMY_UUID_2 = "11111111-1111-4111-8111-111111111111";
 

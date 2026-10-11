@@ -9,7 +9,7 @@
  */
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { BASE_URL, READONLY, REQUEST_DELAY_MS, SAFE_METHODS } from "./smoke-config";
+import { BASE_URL, EXPECT_LANG, READONLY, REQUEST_DELAY_MS, SAFE_METHODS } from "./smoke-config";
 
 type PageCase = {
   path: string;
@@ -139,7 +139,7 @@ test.describe(`Pages smoke (${READONLY ? "READ-ONLY" : "full"})`, () => {
         const strip = (v: string) => v.replace(/\/+$/, "");
         expect.soft(strip(finalUrl.pathname)).toBe(strip(pc.finalPath ?? pc.path));
       }
-      expect.soft(ssrLang, '<html lang="sk"> v SSR HTML').toBe("sk");
+      expect.soft(ssrLang, `<html lang="${EXPECT_LANG}"> v SSR HTML (SMOKE_EXPECT_LANG)`).toBe(EXPECT_LANG);
       expect.soft(title.length > 0 || h1Count > 0, "titulok alebo h1").toBe(true);
       expect.soft(appError, "klientsky pád (Next.js Application error)").toBe(0);
       expect.soft(g.pageErrors, "nezachytené chyby stránky").toEqual([]);
@@ -147,16 +147,31 @@ test.describe(`Pages smoke (${READONLY ? "READ-ONLY" : "full"})`, () => {
     });
   }
 
-  for (const path of ["/auth/login/", "/auth/register/", "/blog/"]) {
-    test(`axe report ${path}`, async ({ page }) => {
+  // axe: meta-viewport a serious/critical color-contrast sú na týchto stránkach
+  // regresie (opravené v ui/ux-safe-fixes); ostatné nálezy sa iba reportujú.
+  const AXE_PAGES = ["/auth/login/", "/auth/register/", "/blog/", "/blog/bezpecnost-prehliadacov-a-izolacia/"];
+  for (const path of AXE_PAGES) {
+    test(`axe ${path}`, async ({ page }) => {
       if (REQUEST_DELAY_MS > 0) await page.waitForTimeout(REQUEST_DELAY_MS);
       await guard(page);
       await page.goto(path, { waitUntil: "load" });
+      await page.waitForTimeout(1000);
       const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
       const summary = results.violations.map((v) => `${v.impact ?? "?"}:${v.id}(${v.nodes.length})`).join(", ");
       test.info().annotations.push({ type: "axe", description: summary || "0 violations" });
-      // Iba report — existujúce nálezy nezlyhávajú smoke beh.
-      expect(results).toBeTruthy();
+
+      const regressions = results.violations.filter(
+        (v) =>
+          v.id === "meta-viewport" ||
+          (v.id === "color-contrast" && (v.impact === "serious" || v.impact === "critical")),
+      );
+      const details = regressions.flatMap((v) =>
+        v.nodes.map((n) => {
+          const d = (n.any?.[0]?.data ?? {}) as Record<string, unknown>;
+          return `${v.id} ${n.target.join(" ")} ${d.fgColor ?? ""}/${d.bgColor ?? ""} ${d.contrastRatio ?? ""}`.trim();
+        }),
+      );
+      expect(details, "axe regresie (meta-viewport / serious color-contrast)").toEqual([]);
     });
   }
 });

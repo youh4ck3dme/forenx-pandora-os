@@ -28,6 +28,8 @@ type Case = {
   failClosed503?: boolean;
   sse?: boolean;
   json?: boolean;
+  /** Každá odpoveď (aj 2xx a 503/429) musí mať neprázdne JSON telo. */
+  alwaysJson?: boolean;
 };
 
 const UNAUTH = [401];
@@ -47,7 +49,8 @@ const CASES: Case[] = [
     method: "GET",
     path: "/api/auth/webauthn/challenge/",
     expect: [200],
-    failClosed503: true,
+    failClosed503: true, // bez WEBAUTHN_CHALLENGE_SECRET (a fallbacku) → 503 JSON
+    alwaysJson: true,
     note: "verejná výzva (bez userId, bez DB zápisu)",
   },
   { method: "GET", path: "/api/auth/webauthn/register/options/", expect: UNAUTH, note: "registrácia passkey bez session" },
@@ -58,9 +61,10 @@ const CASES: Case[] = [
     method: "POST",
     path: "/api/csp-report/",
     data: {},
-    expect: [204, 400],
+    expect: [200, 400],
     rateLimited429: true,
     failClosed503: true, // zdieľaný limiter nedostupný → 503 (P0-09)
+    alwaysJson: true,
     note: "verejný; prázdny report (nevalidný → nič sa neuloží)",
   },
   { method: "POST", path: "/api/fn/nonexistent-fn-id/", data: {}, expect: UNAUTH, note: "server fn bez session" },
@@ -139,8 +143,18 @@ test.describe(`API smoke (${READONLY ? "READ-ONLY" : "full"})`, () => {
         expect(ctype, "chybová odpoveď API má byť JSON").toMatch(/application\/(problem\+)?json/);
         expect(() => JSON.parse(body)).not.toThrow();
       }
-      if (c.json) {
+      if (c.json || c.alwaysJson) {
         expect(ctype).toMatch(/application\/json/);
+      }
+      if (c.alwaysJson) {
+        expect(body.length, "telo nesmie byť prázdne").toBeGreaterThan(0);
+        const parsed = JSON.parse(body) as Record<string, unknown>;
+        if (status >= 400) expect(parsed.ok, "odmietnutie má ok:false").toBe(false);
+        if (status === 503 && c.path.includes("webauthn")) {
+          expect(parsed.error).toBe("WEBAUTHN_CHALLENGE_SECRET is not configured");
+          expect(headers["set-cookie"] ?? "", "503 nesmie nastaviť challenge cookie").not.toContain("webauthn");
+        }
+        if (status === 200 && c.path.includes("csp-report")) expect(parsed).toEqual({ ok: true });
       }
 
       // 4. Bezpečnostné hlavičky z next.config / middleware.
