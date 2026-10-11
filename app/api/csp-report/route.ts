@@ -108,19 +108,21 @@ async function handlePost(
   // P0-09: zdieľaný limit naprieč inštanciami; nedostupný limiter = odmietnutie.
   const rate = await checkCspReportRateLimit(ip);
   if (!rate.allowed) {
-    return new NextResponse(null, { status: rate.unavailable ? 503 : 429 });
+    return rate.unavailable
+      ? NextResponse.json({ ok: false, error: "rate_limiter_unavailable" }, { status: 503 })
+      : NextResponse.json({ ok: false, error: "rate_limited" }, { status: 429 });
   }
 
   const raw = await request.text().catch(() => "");
   if (!raw || raw.length > MAX_BODY_BYTES) {
-    return NextResponse.json({ error: "Prázdny alebo príliš veľký report." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "Prázdny alebo príliš veľký report." }, { status: 400 });
   }
 
   let body: unknown;
   try {
     body = await new Response(raw).json();
   } catch {
-    return NextResponse.json({ error: "Report nie je platný JSON." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "Report nie je platný JSON." }, { status: 400 });
   }
 
   // Report Report-Only rozhrania príde aj ako pole (application/reports+json).
@@ -131,9 +133,10 @@ async function handlePost(
     if (report && (await storeCspReport(traceId, report))) stored += 1;
   }
 
-  // Violácie sa vždy príjmu s 204 (browser report-uri nečaká telo),
+  // Violácie sa vždy príjmu s 200 {ok:true} (browser report-uri telo ignoruje),
   // aj keď sa zápis nepodaril — log na serveri už zachytil detail.
-  return new NextResponse(null, { status: 204 });
+  // Každá odpoveď je JSON (aj odmietnutia), aby klienti/monitoring nedostali prázdne telo.
+  return NextResponse.json({ ok: true }, { status: 200 });
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
