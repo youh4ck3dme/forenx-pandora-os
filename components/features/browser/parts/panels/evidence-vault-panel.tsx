@@ -24,6 +24,18 @@ import {
   Sha256Hash,
 } from "@/lib/forza/vault-types";
 import { useActiveCase } from "@/lib/hooks/useActiveCase";
+import {
+  evidenceStatusInfo,
+  ingestStatusTrail,
+  type EvidenceStatusTone,
+} from "@/lib/forza/evidence-status-labels";
+
+const STATUS_TONE_CLASS: Record<EvidenceStatusTone, string> = {
+  neutral: "text-zinc-300",
+  pending: "text-amber-300",
+  success: "text-emerald-400",
+  danger: "text-rose-400",
+};
 
 export interface EvidenceVaultPanelProps {
   readonly caseId?: string;
@@ -66,6 +78,8 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const [isLoadingList, setIsLoadingList] = useState<boolean>(false);
   const [vaultConfigError, setVaultConfigError] = useState<string | null>(null);
+  // Server potvrdil zápis posledného nahratého dôkazu do ledgera (persisted: true).
+  const [lastIngestLedgerRecorded, setLastIngestLedgerRecorded] = useState<boolean>(false);
 
   const activeAbortControllerRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -211,10 +225,14 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
                   uploadedBy: "investigator-session-user",
                   // Stav zo servera: "checking", kým worker neoverí hash v S3.
                   integrityStatus: direct.integrityStatus,
+                  ...(direct.verificationStatus
+                    ? { verificationStatus: direct.verificationStatus }
+                    : {}),
                   aiAnalyzed: false,
                   tags: [file.name.endsWith(".csv") ? "vypis" : file.name.endsWith(".pdf") ? "zmluva" : "ine"],
                 };
 
+                setLastIngestLedgerRecorded(direct.persisted);
                 setIngestState({ status: "ready", item });
                 setItems((prev) => [item, ...prev.filter((p) => p.s3StorageKey !== item.s3StorageKey)]);
                 directS3Success = true;
@@ -254,8 +272,13 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
             throw new Error(errData?.error ?? `Upload zlyhal s HTTP ${response.status}`);
           }
 
-          const data = (await response.json()) as { success: boolean; item: ForensicEvidenceItem };
+          const data = (await response.json()) as {
+            success: boolean;
+            persisted?: boolean;
+            item: ForensicEvidenceItem;
+          };
 
+          setLastIngestLedgerRecorded(data.persisted === true);
           setIngestState({ status: "ready", item: data.item });
           setItems((prev) => [data.item, ...prev]);
         }
@@ -415,9 +438,26 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
           )}
 
           {ingestState.status === "ready" && (
-            <div className="flex items-center gap-2 text-emerald-400 font-medium text-xs">
-              <ShieldCheck className="w-4 h-4" />
-              <span>Dôkaz úspešne zaistený v S3 a overený!</span>
+            <div
+              role="status"
+              aria-live="polite"
+              data-testid="ingest-status"
+              className="space-y-1 text-xs"
+            >
+              <ol className="flex flex-wrap items-center gap-1.5 font-medium">
+                {ingestStatusTrail(ingestState.item, {
+                  ledgerRecorded: lastIngestLedgerRecorded,
+                }).map((info, index) => (
+                  <li key={info.state} className={`flex items-center gap-1 ${STATUS_TONE_CLASS[info.tone]}`}>
+                    {index > 0 ? <span aria-hidden className="text-zinc-500">→</span> : null}
+                    {info.label}
+                  </li>
+                ))}
+              </ol>
+              <p className="text-[11px] text-zinc-400">
+                {evidenceStatusInfo(ingestState.item).explanation}{" "}
+                {evidenceStatusInfo(ingestState.item).nextAction}
+              </p>
             </div>
           )}
         </div>
@@ -432,10 +472,11 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
           <button
             type="button"
             onClick={() => void loadVaultItems(effectiveCaseId)}
-            className="text-zinc-500 hover:text-zinc-300 p-1"
+            className="text-zinc-500 hover:text-zinc-300 p-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
             title="Obnoviť zoznam z S3"
+            aria-label="Obnoviť zoznam dôkazov a stav overenia"
           >
-            <RefreshCw className={`w-3 h-3 ${isLoadingList ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-3 h-3 ${isLoadingList ? "animate-spin" : ""}`} aria-hidden />
           </button>
         </div>
 
@@ -489,8 +530,9 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
                   <button
                     type="button"
                     onClick={() => handleCopyHash(item.sha256Hash)}
-                    className="p-0.5 hover:text-white rounded hover:bg-white/10 shrink-0"
+                    className="p-0.5 hover:text-white rounded hover:bg-white/10 shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
                     title="Kopírovať SHA-256 hash"
+                    aria-label="Kopírovať SHA-256 hash"
                   >
                     {copiedHash === item.sha256Hash ? (
                       <Check className="w-3 h-3 text-emerald-400" />
@@ -502,10 +544,7 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
 
                 {/* Status integrity a akčné tlačidlá */}
                 <div className="flex items-center justify-between pt-1 border-t border-zinc-800/50">
-                  <span className="flex items-center gap-1 text-[9px] font-semibold text-emerald-400">
-                    <ShieldCheck className="w-3 h-3" />
-                    INTEGRITA OVERENÁ
-                  </span>
+                  <EvidenceStatusBadge item={item} />
 
                   <div className="flex items-center gap-1">
                     <button
@@ -544,3 +583,28 @@ export const EvidenceVaultPanel: React.FC<EvidenceVaultPanelProps> = ({
     </div>
   );
 };
+
+function EvidenceStatusBadge({ item }: { item: ForensicEvidenceItem }) {
+  const info = evidenceStatusInfo(item);
+  const Icon =
+    info.tone === "success" ? ShieldCheck : info.tone === "danger" ? AlertTriangle : Loader2;
+  return (
+    <details className="group text-[9px]" data-testid="evidence-status" data-state={info.state}>
+      <summary
+        className={`flex cursor-pointer list-none items-center gap-1 font-semibold uppercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 rounded ${STATUS_TONE_CLASS[info.tone]}`}
+        aria-label={`Stav dôkazu: ${info.label}. Zobraziť podrobnosti`}
+      >
+        <Icon className="w-3 h-3" aria-hidden />
+        {info.label}
+      </summary>
+      <div className="mt-1 space-y-0.5 normal-case text-[10px] text-zinc-400">
+        <p>{info.explanation}</p>
+        <p className="text-zinc-300">{info.nextAction}</p>
+        <p className="font-mono text-[9px] text-zinc-500">
+          Technický stav: integrityStatus={item.integrityStatus}
+          {item.verificationStatus ? ` · ledger=${item.verificationStatus}` : ""}
+        </p>
+      </div>
+    </details>
+  );
+}
