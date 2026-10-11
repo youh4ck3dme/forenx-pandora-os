@@ -172,7 +172,7 @@ export function AccountSignInForm({
           Prihlásenie je dočasne nedostupné — chýba konfigurácia autentifikácie. Kontaktujte správcu.
         </p>
       )}
-      <fieldset disabled={!configured} className="contents">
+      <fieldset disabled={!configured} className="contents m-0 min-w-0 space-y-3 border-0 p-0">
       <div>
         <label htmlFor="account-email" className="sr-only">
           E-mail účtu

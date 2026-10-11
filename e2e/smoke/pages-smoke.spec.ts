@@ -174,4 +174,38 @@ test.describe(`Pages smoke (${READONLY ? "READ-ONLY" : "full"})`, () => {
       expect(details, "axe regresie (meta-viewport / serious color-contrast)").toEqual([]);
     });
   }
+
+  // Prihlasovací formulár: medzery medzi poliami (regresia fieldset display:contents)
+  // a stav vypnutia pri chýbajúcej Supabase konfigurácii.
+  for (const width of [390, 1280]) {
+    test(`login form layout @${width}px`, async ({ page }) => {
+      if (REQUEST_DELAY_MS > 0) await page.waitForTimeout(REQUEST_DELAY_MS);
+      await guard(page);
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/auth/login/", { waitUntil: "load" });
+      await page.waitForTimeout(1000);
+      const m = await page.evaluate(() => {
+        const r = (sel: string) => document.querySelector(sel)?.getBoundingClientRect() ?? null;
+        const email = r("#account-email");
+        const password = r("#account-password");
+        const submit = r('form button[type="submit"]');
+        const controls = Array.from(document.querySelectorAll("form input, form button")) as HTMLElement[];
+        return {
+          gapEmailPassword: email && password ? password.top - email.bottom : null,
+          gapPasswordSubmit: password && submit ? submit.top - password.bottom : null,
+          notice: Boolean(document.querySelector('[data-testid="auth-config-missing"]')),
+          disabled: controls.filter((c) => c.matches(":disabled")).length,
+          total: controls.length,
+        };
+      });
+      test.info().annotations.push({
+        type: "result",
+        description: `gaps=${m.gapEmailPassword}/${m.gapPasswordSubmit}px notice=${m.notice} disabled=${m.disabled}/${m.total}`,
+      });
+      expect.soft(m.gapEmailPassword ?? -1, "medzera e-mail → heslo").toBeGreaterThanOrEqual(8);
+      expect.soft(m.gapPasswordSubmit ?? -1, "medzera heslo → tlačidlo").toBeGreaterThanOrEqual(8);
+      // Bez konfigurácie musia byť vypnuté všetky prvky, s konfiguráciou žiadny.
+      expect.soft(m.disabled, "vypnuté ovládacie prvky").toBe(m.notice ? m.total : 0);
+    });
+  }
 });
