@@ -94,7 +94,7 @@ export default async function RootLayout({
   // Nonce is set by middleware (x-nonce request header) for CSP compliance.
   const nonce = (await headers()).get('x-nonce') ?? '';
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="sk" suppressHydrationWarning>
       <head>
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/icons/icon.svg" />

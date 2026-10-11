@@ -1,7 +1,7 @@
 {
   "name": "PΛND0RΛ | Browser",
   "short_name": "PANDORA",
-  "description": "Next-generation secure browser with biometric authentication and privacy-first design",
+  "description": "Bezpečný forenzný prehliadač a vyšetrovacia platforma s biometrickým prihlásením a ochranou súkromia.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
