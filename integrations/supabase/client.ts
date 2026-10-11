@@ -98,7 +98,8 @@ function createSupabaseClient() {
     if (!configWarningLogged) {
       configWarningLogged = true;
       // Jeden diagnostický riadok — iba názvy premenných, nikdy hodnoty.
-      console.warn(
+      // console.error: produkčný build odstraňuje ostatné console.* (removeConsole v next.config).
+      console.error(
         `[Supabase] Supabase configuration missing: ${missing.join(", ")} — prihlásenie je vypnuté.`,
       );
     }

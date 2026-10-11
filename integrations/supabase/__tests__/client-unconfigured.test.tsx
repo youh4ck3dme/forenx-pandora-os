@@ -99,8 +99,9 @@ describe.each(CASES)("browser Supabase klient — $name", ({ set, missing }) => 
     await supabase.auth.getSession();
     await supabase.auth.getSession();
     void supabase.auth;
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    const line = String(warnSpy.mock.calls[0]?.[0]);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy).not.toHaveBeenCalled();
+    const line = String(errorSpy.mock.calls[0]?.[0]);
     expect(line).toContain("Supabase configuration missing");
     for (const name of missing) expect(line).toContain(name);
     for (const value of Object.values(set)) expect(line).not.toContain(value);
