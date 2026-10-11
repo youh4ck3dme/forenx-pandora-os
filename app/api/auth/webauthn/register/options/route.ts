@@ -4,6 +4,8 @@ import {
   encodeChallengePayload,
   REG_CHALLENGE_COOKIE,
   CHALLENGE_TTL_SECONDS,
+  isChallengeSecretConfigured,
+  CHALLENGE_SECRET_MISSING_ERROR,
 } from "@/lib/auth/webauthn.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
@@ -30,12 +32,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Unauthorized: invalid session." }, { status: 401 });
   }
 
+  // Fail-closed pred tvorbou options / čítaním credentials z DB; žiadna cookie.
+  if (!isChallengeSecretConfigured()) {
+    return NextResponse.json({ ok: false, error: CHALLENGE_SECRET_MISSING_ERROR }, { status: 503 });
+  }
+
   const user = userData.user;
   const userEmail = user.email || `user-${user.id.slice(0, 8)}@pandora.os`;
   const displayName = (user.user_metadata?.["name"] as string | undefined) || userEmail;
 
   const options = await buildRegistrationOptions(user.id, userEmail, displayName, request);
-  const cookieValue = encodeChallengePayload(options.challenge);
+  let cookieValue: string;
+  try {
+    cookieValue = encodeChallengePayload(options.challenge);
+  } catch {
+    return NextResponse.json({ ok: false, error: CHALLENGE_SECRET_MISSING_ERROR }, { status: 503 });
+  }
 
   const isProd = process.env.NODE_ENV === "production" || request.url.startsWith("https:");
 

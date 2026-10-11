@@ -120,6 +120,73 @@ describe("GET /api/auth/webauthn/challenge", () => {
   });
 });
 
+// ── Fail-closed: chýbajúci HMAC kľúč pre challenge cookie (produkcia) ─────────
+
+describe("WebAuthn challenge secret missing in production → 503 JSON", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("WEBAUTHN_CHALLENGE_SECRET", "");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("GET /challenge vráti 503 JSON, nenastaví cookie a nečíta DB (ani s userId)", async () => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { GET } = await import("@/app/api/auth/webauthn/challenge/route");
+    const res = await GET(new NextRequest("http://localhost/api/auth/webauthn/challenge?userId=user-uuid-x"));
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    const text = await res.text();
+    expect(JSON.parse(text)).toEqual({ ok: false, error: "WEBAUTHN_CHALLENGE_SECRET is not configured" });
+    expect(text).not.toMatch(/\bat\s|\.ts:|\.js:|challenge"\s*:/);
+    expect(res.headers.get("set-cookie")).toBeNull();
+    expect(vi.mocked(supabaseAdmin.from)).not.toHaveBeenCalled();
+  });
+
+  it("GET /register/options po overení session vráti 503 JSON bez cookie a bez čítania credentials", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: "user-uuid-r", email: "r@example.test" } }, error: null });
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { GET } = await import("@/app/api/auth/webauthn/register/options/route");
+    const res = await GET(
+      new NextRequest("http://localhost/api/auth/webauthn/register/options", {
+        headers: { authorization: "Bearer test-token" },
+      }),
+    );
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ ok: false, error: "WEBAUTHN_CHALLENGE_SECRET is not configured" });
+    expect(res.headers.get("set-cookie")).toBeNull();
+    expect(mockGenerateRegOptions).not.toHaveBeenCalled();
+    expect(vi.mocked(supabaseAdmin.from)).not.toHaveBeenCalled();
+  });
+
+  it("bez session register/options stále vráti 401 (auth check je prvý)", async () => {
+    const { GET } = await import("@/app/api/auth/webauthn/register/options/route");
+    const res = await GET(new NextRequest("http://localhost/api/auth/webauthn/register/options"));
+    expect(res.status).toBe(401);
+  });
+
+  it("so zdokumentovaným fallbackom (SUPABASE_SERVICE_ROLE_KEY) challenge funguje → 200 + cookie", async () => {
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-only-fallback-secret");
+    const { GET } = await import("@/app/api/auth/webauthn/challenge/route");
+    const res = await GET(new NextRequest("http://localhost/api/auth/webauthn/challenge"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie") ?? "").toContain(CHALLENGE_COOKIE);
+  });
+
+  it("s WEBAUTHN_CHALLENGE_SECRET challenge funguje → 200 + cookie", async () => {
+    vi.stubEnv("WEBAUTHN_CHALLENGE_SECRET", "test-only-challenge-secret");
+    const { GET } = await import("@/app/api/auth/webauthn/challenge/route");
+    const res = await GET(new NextRequest("http://localhost/api/auth/webauthn/challenge"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie") ?? "").toContain(CHALLENGE_COOKIE);
+  });
+});
+
 // ── Integration: POST /api/auth/webauthn/verify ──────────────────────────────
 
 describe("POST /api/auth/webauthn/verify", () => {
