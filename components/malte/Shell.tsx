@@ -18,7 +18,7 @@ import { severityLabel } from "@/lib/forza/forensic";
 import { useActiveCase } from "@/lib/hooks/useActiveCase";
 import { BRAND } from "@/config/brand";
 import {
-  OFFLINE_AI_MESSAGE,
+  OFFLINE_READONLY_MESSAGE,
   useOnlineStatus,
 } from "@/lib/hooks/useOnlineStatus";
 
@@ -175,10 +175,12 @@ function OfflineBanner() {
   return (
     <div
       role="status"
+      aria-live="polite"
+      data-testid="offline-readonly-banner"
       className="z-50 flex items-start gap-2 border-b border-risk-medium/30 bg-risk-medium/15 px-4 pt-[calc(env(safe-area-inset-top)+0.5rem)] pb-2 text-xs font-medium leading-relaxed text-risk-medium"
     >
       <WifiOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-      <span>{OFFLINE_AI_MESSAGE}</span>
+      <span>{OFFLINE_READONLY_MESSAGE}</span>
     </div>
   );
 }
