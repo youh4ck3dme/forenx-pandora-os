@@ -106,7 +106,7 @@ export default async function BlogPostPage({ params }: PageProps) {
                             </div>
                             <div>
                                 <p className="text-foreground font-medium">{post.author.name}</p>
-                                <p className="text-foreground/40 text-sm">Autor</p>
+                                <p className="text-foreground/60 text-sm">Autor</p>
                             </div>
                         </div>
                         <button className="flex items-center gap-2 px-4 py-2 bg-foreground/5 border border-border rounded-lg hover:bg-foreground/10 transition-colors text-foreground/60 hover:text-foreground">

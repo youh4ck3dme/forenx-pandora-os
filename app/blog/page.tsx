@@ -71,7 +71,7 @@ export default function BlogPage() {
                                 </p>
 
                                 {/* Meta */}
-                                <div className="flex items-center justify-between text-xs text-foreground/40">
+                                <div className="flex items-center justify-between text-xs text-foreground/60">
                                     <div className="flex items-center gap-3">
                                         <span className="flex items-center gap-1">
                                             <Calendar className="w-3 h-3" />

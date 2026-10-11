@@ -11,7 +11,7 @@ import { loginWithPasskey } from "@/lib/auth/webauthn.client";
 import { cn } from "@/lib/utils";
 
 const inputClass =
-  "h-11 w-full rounded-xl border border-border bg-card text-card-foreground px-3 text-sm outline-none focus:ring-2 focus:ring-ring";
+  "h-11 w-full rounded-xl border border-border bg-card text-card-foreground px-3 text-base md:text-sm outline-none focus:ring-2 focus:ring-ring";
 
 type Mode = "signin" | "signup" | "reset";
 
@@ -38,7 +38,7 @@ export function AccountSignInForm({
   const [configured] = useState(() => isSupabaseConfigured());
 
   const fieldClass = dark
-    ? "h-11 w-full rounded-xl border border-white/20 bg-black/50 px-3.5 text-sm text-white placeholder:text-slate-400 outline-none transition-all focus:border-amber-400 focus:ring-2 focus:ring-amber-400/25"
+    ? "h-11 w-full rounded-xl border border-white/20 bg-black/50 px-3.5 text-base md:text-sm text-white placeholder:text-slate-400 outline-none transition-all focus:border-amber-400 focus:ring-2 focus:ring-amber-400/25"
     : inputClass;
 
   async function handleSubmit(event: React.FormEvent) {

@@ -78,11 +78,11 @@ export const metadata: Metadata = {
   },
 };
 
+// WCAG 1.4.4: zoom sa nesmie vypínať (žiadne maximumScale / userScalable).
+// iOS auto-zoom na inputoch rieši text-base (16px) na mobile, nie zákaz zoomu.
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
   themeColor: "#000000",
 };
 
