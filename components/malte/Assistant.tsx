@@ -30,7 +30,15 @@ import { Badge } from "@/components/ui/badge";
 import { Globe } from "@/components/ui/Globe";
 import { Progress } from "@/components/ui/progress";
 import { useActiveCase } from "@/hooks/useActiveCase";
-import { OFFLINE_AI_MESSAGE, useOnlineStatus } from "@/hooks/useOnlineStatus";
+import {
+  OFFLINE_AI_MESSAGE,
+  OFFLINE_READONLY_MESSAGE,
+  useOnlineStatus,
+} from "@/hooks/useOnlineStatus";
+import {
+  SERVER_WRITE_LABELS,
+  deriveServerWriteState,
+} from "@/lib/forza/write-status";
 import { useAiConsent } from "@/hooks/useAiConsent";
 import {
   AI_CONSENT_MISSING_MESSAGE,
@@ -74,6 +82,7 @@ import { AssistantExportCard } from "./assistant/AssistantExportCard";
 import { QuickTasksSection } from "./assistant/QuickTasksSection";
 import { AutopilotTabsView } from "./assistant/AutopilotTabsView";
 import { ForensicWorkflowInspector } from "./assistant/ForensicWorkflowInspector";
+import { AutopilotStepper } from "./assistant/AutopilotStepper";
 import { exportDossierToPDF } from "@/lib/export-pdf";
 
 export function Assistant() {
@@ -102,7 +111,7 @@ export function Assistant() {
   const analysisBlocked = !hasCase
     ? "Najprv vyberte prípad."
     : aiUnavailableReason(status, "analysis", isOnline);
-  const { ensureConsent, consentDialog } = useAiConsent();
+  const { ensureConsent, consentDialog, awaitingConsent } = useAiConsent();
   const [mainMode, setMainMode] = useState<"autopilot" | "quick_tasks">(
     "autopilot",
   );
@@ -156,6 +165,11 @@ export function Assistant() {
     demoMode,
     saveCaseDossierFn,
     knownEvidence,
+  });
+  const dossierWriteState = deriveServerWriteState({
+    isSaving: isSavingDossier,
+    lastSavedAt,
+    saveError,
   });
 
   // Hook pre rýchle triážne úlohy
@@ -878,6 +892,15 @@ export function Assistant() {
                 )}
               </Card>
 
+              <AutopilotStepper
+                hasCase={hasCase}
+                queuedFileCount={bulkFiles.length}
+                awaitingConsent={Boolean(awaitingConsent)}
+                stage={stage}
+                hasResult={Boolean(dossier && !demoMode)}
+                failed={Object.keys(fileErrors).length > 0}
+              />
+
               {hasCase ? (
                 <ForensicWorkflowInspector
                   caseId={activeCase.id}
@@ -1134,16 +1157,28 @@ export function Assistant() {
                       ) : null}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                      {!demoMode ? (
+                        <span
+                          role="status"
+                          aria-live="polite"
+                          data-testid="dossier-write-state"
+                          className="text-[10px] font-medium text-muted-foreground"
+                        >
+                          {SERVER_WRITE_LABELS[dossierWriteState]}
+                        </span>
+                      ) : null}
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={handleSaveDossier}
-                        disabled={isSavingDossier || demoMode}
+                        disabled={isSavingDossier || demoMode || !isOnline}
                         className="h-8 text-xs gap-1.5 cursor-pointer border-primary/30 hover:bg-primary/10"
                         title={
                           demoMode
                             ? "Demo sa neukladá do produkčného prípadu"
-                            : "Uložiť analýzu do prípadu"
+                            : !isOnline
+                              ? OFFLINE_READONLY_MESSAGE
+                              : "Uložiť analýzu do prípadu"
                         }
                       >
                         {isSavingDossier ? (
