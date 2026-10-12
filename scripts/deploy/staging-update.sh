@@ -69,7 +69,7 @@ ENV_MODE="$(stat -c '%a' .env.production 2>/dev/null || echo '?')"
 [ "$ENV_MODE" = "600" ] || [ "$ENV_MODE" = "400" ] || die ".env.production má práva $ENV_MODE — nastav chmod 600"
 
 if [ -n "$(git status --porcelain)" ]; then
-  git status --short | head -n 20
+  git status --short | awk 'NR <= 20'   # awk číta celý vstup → žiadny SIGPIPE pod pipefail
   die "pracovný strom v $APP_DIR nie je čistý (lokálne zmeny by sa prepísali)"
 fi
 
@@ -96,7 +96,7 @@ git merge-base --is-ancestor "$CURRENT" "$TARGET" \
   || die "cieľ nie je fast-forward od aktuálneho commitu (lokálne commity alebo prepísaná história)"
 
 info "nové commity: $(git rev-list --count "$CURRENT..$TARGET")"
-git log --oneline --no-decorate "$CURRENT..$TARGET" | head -n 30 | sed 's/^/      /'
+git log --oneline --no-decorate -n 30 "$CURRENT..$TARGET" | sed 's/^/      /'
 
 NEW_MIGRATIONS="$(git diff --name-only --diff-filter=A "$CURRENT" "$TARGET" -- supabase/migrations/ || true)"
 CHANGED_MIGRATIONS="$(git diff --name-only --diff-filter=MR "$CURRENT" "$TARGET" -- supabase/migrations/ || true)"
