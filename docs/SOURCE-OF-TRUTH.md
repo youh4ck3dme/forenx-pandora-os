@@ -239,7 +239,7 @@ npm run test:regression:forenzx
 | **INV-021** | Validácia webhook secretu cez safeEqual | **VERIFIED** | `app/api/forenzx/dispatch-outbox/route.ts` |
 | **INV-022** | SSRF ochrana a zákaz loopbacku | **VERIFIED** | `electron/__tests__/network-security.test.ts` |
 | **INV-023** | Auditované deštruktívne RPC | **VERIFIED** | `db/cleanroom/tests/03-privileged-rpc-authorization.test.ts` |
-| **INV-024** | 100% automatizované testovacie pokrytie | **VERIFIED** | 152 testovacích súborov PASS (1 preskočený), 1377 unit/integration testov PASS, 3 skipped (`npx vitest run --pool=forks --maxWorkers=2`, 2026-10-11) |
+| **INV-024** | 100% automatizované testovacie pokrytie | **VERIFIED** | 162 testovacích súborov PASS (1 preskočený), 1423 unit/integration testov PASS, 3 skipped (`npx vitest run --pool=forks --maxWorkers=2`, main `18e4d99`) |
 | **INV-025** | Court Pack podpis: Ed25519 nad kanonickým manifestom; private key NESMIE byť v env ako plaintext, iba referencia (`file:`/`vault:`/`kms:`) cez `SigningKeyProvider` | **VERIFIED** | `lib/court/__tests__/signing.test.ts` |
 | **INV-026** | Offline verifikácia Court Packu funguje bez PANDORA backendu a bez akéhokoľvek secretu — iba public key + kid | **VERIFIED** | `lib/court/__tests__/signing.test.ts` (`lib/court/verify.mjs`) |
 | **INV-027** | Key rotation: každý signing kľúč má `kid` + `version` + `status` + `validFrom` + `revokedAt`; signing kľúč MUSÍ zodpovedať aktívnemu public-key recordu pre daný kid | **VERIFIED** | `lib/court/__tests__/signing.test.ts` |
@@ -251,7 +251,7 @@ npm run test:regression:forenzx
 | **INV-033** | Asset timeline execution používa kanonickú identitu, atomický DB claim, lease/stale recovery a transakčné dokončenie bez duplicitného provider ownership | **IMPLEMENTED_UNVERIFIED** | `supabase/migrations/20261010210000_asset_timeline_post_merge_hardening.sql`, `supabase/tests/asset-timeline-forensics.test.ts`; status sa smie prepnúť na VERIFIED až po úspešnom PostgreSQL/CI dôkaze |
 | **INV-034** | Asset timeline source hash je autoritatívne prevzatý z verified evidence ledgeru; modelový hash sa neukladá ako dôveryhodný | **VERIFIED** | `lib/forza/ai/asset-timeline-engine.ts`, `lib/forza/__tests__/asset-timeline.functions.test.ts` |
 | **INV-035** | Page/paragraph lokátory sa neukladajú ako overené metadata bez verifikácie extraction pipeline | **VERIFIED** | `lib/forza/ai/asset-timeline-engine.ts`, `lib/forza/__tests__/asset-timeline.functions.test.ts` |
-| **INV-036** | Asset timeline lineage musí odkazovať na existujúci záznam s rovnakým case/user/analysis type; self-reference a cross-case/cross-user lineage sú zakázané | **IMPLEMENTED_UNVERIFIED** | `supabase/migrations/20261010120000_asset_timeline_forensics.sql`; migrácia nebola aplikovaná do produkcie |
+| **INV-036** | Asset timeline lineage musí odkazovať na existujúci záznam s rovnakým case/user/analysis type; self-reference a cross-case/cross-user lineage sú zakázané | **IMPLEMENTED_UNVERIFIED** | `supabase/migrations/20261010120000_asset_timeline_forensics.sql`; migrácia je aplikovaná v produkčnom Supabase projekte, ale samostatný produkčný lineage workflow dôkaz je stále otvorený |
 
 > **Court-grade signing contract (INV-025–029):** vynútené fail-closed cez `config/env.ts` (`FORENZX_COURT_GRADE=true` vyžaduje `FORENZX_SIGNING_KEY_ID`, `FORENZX_SIGNING_PRIVATE_KEY_REF`, `FORENZX_TRUSTED_PUBLIC_KEYS`, `FORENZX_KEYRING_VERSION`, `FORENZX_LOCAL_AI_BASE_URL`). Implementácia: `lib/court/{manifest,signing}.ts`; offline verifier `lib/court/verify.mjs`. Prechod `file:` → `vault:`/`kms:` NESMIE zmeniť formát manifestu, podpisu ani verifiera.
 
@@ -276,7 +276,7 @@ npm run test:regression:forenzx
 - [x] **Auditná IP (P1):** `/api/audit/access` zapisuje IP cez `getTrustedClientIp` (posledný hop proxy / `x-real-ip`), nie klientom podvrhnuteľný prvý hop `x-forwarded-for`; test `lib/__tests__/audit-access-ip.test.ts`.
 - [x] **S3 bez ambientných AWS kľúčov (P0):** `getS3Config` nepoužíva `AWS_*` ani predvolený produkčný endpoint; testy už neposielajú cudzie kľúče do produkčného trezoru.
 - [x] **Critical npm advisory `shell-quote` (GHSA-pqg4-j6r4-53mv):** override `shell-quote@^1.11.0`, `npm audit --audit-level=critical` čistý.
-- [x] **Asset Timeline canonical retry hardening (implementované, čaká na DB verification):** service-role-only RPC atomicky claimuje workflow, chráni pred concurrent provider execution a umožňuje stale lease recovery.
+- [x] **Asset Timeline canonical retry hardening (implementované; produkčné migrácie potvrdené):** service-role-only RPC atomicky claimuje workflow, chráni pred concurrent provider execution a umožňuje stale lease recovery. Samostatný produkčný workflow dôkaz zostáva otvorený.
 - [x] **Asset Timeline provenance hardening:** source hash sa viaže na verified ledger a neoverené page/paragraph lokátory sa pred persistenciou odstránia.
 - [x] **Asset Timeline lineage guard:** feature migrácia obsahuje databázový trigger proti neexistujúcemu, self-referencovanému alebo cross-case/cross-user lineage.
 
@@ -307,11 +307,11 @@ Pre lokálne prostredie a desktopový runtime je stav:
 
 $$\mathbf{RELEASE\_WITH\_CONDITIONS}$$
 
-*(Podmienka: Vykonanie externých staging testov s dodanými produkčnými secretmi pred nasadením na ostrú infraštruktúru).*
+*(Historická podmienka pred prvým produkčným nasadením; aktuálny produkčný dôkaz je vedený v §13 a v `docs/PRODUCTION-STATUS.md`.)*
 
 ---
 
-## 11. PWA, offline režim a UI/UX kontrakty (2026-10-11, vetva `ui/ux-safe-fixes`)
+## 11. PWA, offline režim a UI/UX kontrakty (2026-10-12, vetva `ui/ux-safe-fixes`)
 
 ### 11.1 Offline = READ-ONLY — `VERIFIED` (unit testy)
 - Aplikácia nemá offline write queue, Background Sync, retry frontu offline zápisov ani riešenie konfliktov (`lib/services/forensic-sync.ts` obsahuje iba nepoužitú in-memory frontu). Offline režim je preto **read-only**.
