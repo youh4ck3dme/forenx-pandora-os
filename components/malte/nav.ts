@@ -21,7 +21,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export type NavItem = { to: string; label: string; icon: LucideIcon };
+export type NavItem = {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  /** Voliteľný krátky podtitul, ktorý vysvetľuje skutočnú funkciu sekcie. */
+  subtitle?: string;
+};
 export type NavGroup = { title: string; items: NavItem[] };
 
 /** Spodná navigácia na mobile — denný tok (Spisy → Autopilot → Sandbox → Sieť → Viac). */
@@ -40,8 +46,18 @@ export const navGroups: NavGroup[] = [
     items: [
       { to: "/forza/prehlad", label: "Prehľad", icon: LayoutGrid },
       { to: "/forza/pripady", label: "Prípady", icon: FolderKanban },
-      { to: "/forza/asistent", label: "Forenzný Autopilot", icon: Bot },
-      { to: "/forza/sandbox", label: "AI Sandbox", icon: Sparkles },
+      {
+        to: "/forza/asistent",
+        label: "Forenzný Autopilot",
+        subtitle: "Sprievodca analýzou prípadu",
+        icon: Bot,
+      },
+      {
+        to: "/forza/sandbox",
+        label: "AI Sandbox",
+        subtitle: "Dávková AI analýza spisov",
+        icon: Sparkles,
+      },
       { to: "/forza/import-csv", label: "Import CSV", icon: FileUp },
     ],
   },
@@ -64,7 +80,12 @@ export const navGroups: NavGroup[] = [
 
       { to: "/forza/predplatne", label: "Predplatné", icon: CreditCard },
       { to: "/forza/sukromie", label: "Súkromie", icon: ShieldCheck },
-      { to: "/forza/mcp-info", label: "Agentné API", icon: Plug },
+      {
+        to: "/forza/mcp-info",
+        label: "Agentné API",
+        subtitle: "Technické pripojenia",
+        icon: Plug,
+      },
       { to: "/forza/stav", label: "Stav systému", icon: Activity },
     ],
   },

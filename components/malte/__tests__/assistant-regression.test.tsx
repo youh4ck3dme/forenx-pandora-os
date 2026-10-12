@@ -44,6 +44,7 @@ vi.mock("@/hooks/useActiveCase", () => ({
 vi.mock("@/hooks/useOnlineStatus", () => ({
   useOnlineStatus: () => mocks.online,
   OFFLINE_AI_MESSAGE: "offline",
+  OFFLINE_READONLY_MESSAGE: "offline-readonly",
 }));
 vi.mock("@/hooks/useAiConsent", () => ({
   useAiConsent: () => ({ ensureConsent: mocks.consent, consentDialog: null }),
@@ -322,6 +323,31 @@ describe("Assistant regression: rendered UI with mocked server boundary", () => 
     await render();
     expect(host.textContent).not.toContain("Regresný test");
     expect(mocks.save).not.toHaveBeenCalled();
+  });
+
+  it("shows the 5-step Autopilot stepper and still requires consent before running", async () => {
+    mocks.consent.mockResolvedValue(null);
+    await render();
+    const status = () =>
+      host.querySelector("[data-testid='autopilot-step-status']")?.textContent;
+    expect(status()).toMatch(/Krok 2 z 5: Pridať dokument/);
+    expect(host.querySelectorAll("nav[aria-label='Kroky Forenzného Autopilota'] li")).toHaveLength(5);
+    await uploadAndRun();
+    expect(mocks.consent).toHaveBeenCalledTimes(1);
+    expect(mocks.extract).not.toHaveBeenCalled();
+    expect(mocks.run).not.toHaveBeenCalled();
+    expect(status()).toMatch(/Krok 3 z 5: Skontrolovať náhľad/);
+  });
+
+  it("shows the server write state only after the server confirmed the save", async () => {
+    mocks.load.mockResolvedValue({ success: true, dossier: regressionDossier() });
+    await render();
+    const writeState = () =>
+      host.querySelector("[data-testid='dossier-write-state']")?.textContent;
+    expect(writeState()).toBe("Čaká na odoslanie");
+    await click("Uložiť do prípadu");
+    expect(mocks.save).toHaveBeenCalledTimes(1);
+    expect(writeState()).toBe("Uložené na serveri");
   });
 
   it("does not extract or call AI without consent", async () => {

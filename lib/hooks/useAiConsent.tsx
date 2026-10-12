@@ -58,5 +58,6 @@ export function useAiConsent() {
     />
   );
 
-  return { ensureConsent, consentDialog };
+  // Iba na zobrazenie kroku „Udeliť AI súhlas“; logiku súhlasu nemení.
+  return { ensureConsent, consentDialog, awaitingConsent: pending !== null };
 }

@@ -58,15 +58,22 @@ export default function More() {
           <div key={group.title} className="space-y-1.5">
             <SectionTitle className="text-zinc-200 font-bold">{group.title}</SectionTitle>
             <Card className="divide-y divide-white/10 p-0 bg-black/85 border-white/20">
-              {group.items.map(({ to, label, icon: Icon }) => (
+              {group.items.map(({ to, label, subtitle, icon: Icon }) => (
                 <Link
                   key={to}
                   href={to}
-                  className="flex items-center gap-3 p-3.5 text-xs font-semibold text-zinc-100 hover:bg-white/10 transition-colors"
+                  className="flex min-h-11 items-center gap-3 p-3.5 text-xs font-semibold text-zinc-100 hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-400"
                 >
                   <Icon className="h-4 w-4 text-zinc-300" aria-hidden />
-                  <span>{label}</span>
-                  <ChevronRight className="ml-auto h-4 w-4 text-zinc-400" />
+                  <span className="flex min-w-0 flex-col">
+                    <span>{label}</span>
+                    {subtitle ? (
+                      <span className="text-[11px] font-normal text-zinc-400">
+                        {subtitle}
+                      </span>
+                    ) : null}
+                  </span>
+                  <ChevronRight className="ml-auto h-4 w-4 text-zinc-400" aria-hidden />
                 </Link>
               ))}
             </Card>

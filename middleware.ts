@@ -109,6 +109,8 @@ function getRouteCategory(pathname: string): { category: RouteCategory; pattern:
 // ============================================================================
 
 const SIGN_IN_ROUTE = '/auth/login/';
+/** Jediná cesta kill-switch service workera, ktorá obchádza autentifikáciu. */
+export const SERVICE_WORKER_PATH = '/sw.js';
 
 // ============================================================================
 // SESSION VALIDATION
@@ -357,6 +359,14 @@ export async function middleware(
   };
 
   const pathname = request.nextUrl.pathname;
+
+  // Kill-switch service worker (public/sw.js) musí byť verejný: prehliadač pri
+  // kontrole aktualizácie starého workera nesmie dostať redirect na login
+  // (SW skript za redirectom = chyba aktualizácie, starý Workbox worker by ostal).
+  // Povolená je IBA presná cesta /sw.js; všetky ostatné cesty ostávajú chránené.
+  if (pathname === SERVICE_WORKER_PATH) {
+    return next();
+  }
 
   // 1. Root route: directed navigation according to blueprint invariant
   // - Neprihlásený vstup na / smeruje na /auth/login/?next=%2Fbrowser%2F

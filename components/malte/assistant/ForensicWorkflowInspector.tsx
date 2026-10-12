@@ -4,6 +4,7 @@ import { Card } from "@/components/malte/Shell";
 import type { ForensicWorkflowRun } from "@/lib/forza/forensic-workflow.types";
 import type { ForenZXJob } from "@/lib/forenzx/client";
 import { ForenzxJobProgress } from "@/components/malte/ForenzxJobProgress";
+import { workflowStatusLabel } from "@/lib/forza/workflow-status-labels";
 
 type Props = {
   caseId: string;
@@ -99,14 +100,14 @@ export function ForensicWorkflowInspector({ caseId, loadRuns, loadForenZXJobs, o
         <Clock3 className="h-3.5 w-3.5 text-primary" /> Trvalý forenzný priebeh
       </div>
       {error ? <p role="alert" className="text-xs text-rose-300">{error}</p> : null}
-      <div className="space-y-1.5">
+      <div className="space-y-1.5" role="status" aria-live="polite">
         {runs.map((run) => {
           const active = run.status === "queued" || run.status === "running";
           return (
             <div key={run.id} className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 p-2 text-xs">
               <div className="min-w-0">
                 <p className="font-mono text-[10px] text-primary">{run.workflowType}</p>
-                <p className="capitalize text-foreground">{run.status} · pokus {run.attemptCount}</p>
+                <p className="text-foreground" data-status={run.status}>{workflowStatusLabel(run.status)} · pokus {run.attemptCount}</p>
                 {run.errorMessage ? <p className="mt-1 text-rose-300">{run.errorMessage}</p> : null}
               </div>
               <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
