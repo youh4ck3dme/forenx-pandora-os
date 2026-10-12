@@ -43,6 +43,14 @@ export const ForensicEvidenceItemSchema = z.object({
   uploadedAt: z.string().datetime(),
   uploadedBy: z.string().min(1),
   integrityStatus: z.enum(["verified", "compromised", "checking"]),
+  /**
+   * Surový stav serverového overenia z ledgera (`hash_verification_status`).
+   * Voliteľný a aditívny — starší klienti ho môžu ignorovať; `integrityStatus`
+   * zostáva nezmenený. Umožňuje odlíšiť „Overenie zlyhalo“ od „Čaká na overenie“.
+   */
+  verificationStatus: z
+    .enum(["pending", "verified", "mismatch", "object_missing", "error"])
+    .optional(),
   aiAnalyzed: z.boolean().default(false),
   tags: z.array(EvidenceTagSchema).default(["ine"]),
 });

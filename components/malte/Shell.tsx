@@ -14,11 +14,15 @@ import { ThemeToggle } from "@/components/malte/ThemeToggle";
 import { NotificationsBell } from "@/components/malte/NotificationsBell";
 import { AccountMenu } from "@/components/malte/AccountMenu";
 import { navItems, navGroups } from "@/components/malte/nav";
+import {
+  resolveBackTarget,
+  resolveStaticBackHref,
+} from "@/components/malte/back-navigation";
 import { severityLabel } from "@/lib/forza/forensic";
 import { useActiveCase } from "@/lib/hooks/useActiveCase";
 import { BRAND } from "@/config/brand";
 import {
-  OFFLINE_AI_MESSAGE,
+  OFFLINE_READONLY_MESSAGE,
   useOnlineStatus,
 } from "@/lib/hooks/useOnlineStatus";
 
@@ -113,13 +117,13 @@ function DesktopSidebar() {
             <p className="px-3 pt-4 pb-1 text-[11px] font-extrabold uppercase tracking-wider text-zinc-300">
               {group.title}
             </p>
-            {group.items.map(({ to, label, icon: Icon }) => (
+            {group.items.map(({ to, label, subtitle, icon: Icon }) => (
               <Link
                 key={to}
                 href={to}
                 prefetch={true}
                 className={cn(
-                  "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/10 hover:text-white",
+                  "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400",
                   pathname === to &&
                     "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 shadow-xs",
                 )}
@@ -131,7 +135,16 @@ function DesktopSidebar() {
                   )}
                   aria-hidden
                 />
-                {label}
+                {subtitle ? (
+                  <span className="flex min-w-0 flex-col">
+                    <span>{label}</span>
+                    <span className="text-[11px] font-normal text-zinc-400">
+                      {subtitle}
+                    </span>
+                  </span>
+                ) : (
+                  label
+                )}
                 {to === "/forza/prehlad" && criticalCount > 0 ? (
                   <span className="ml-auto rounded-full bg-red-500/25 border border-red-500/50 px-1.5 text-[10px] font-black text-red-200 tnum">
                     {criticalCount}
@@ -175,11 +188,54 @@ function OfflineBanner() {
   return (
     <div
       role="status"
+      aria-live="polite"
+      data-testid="offline-readonly-banner"
       className="z-50 flex items-start gap-2 border-b border-risk-medium/30 bg-risk-medium/15 px-4 pt-[calc(env(safe-area-inset-top)+0.5rem)] pb-2 text-xs font-medium leading-relaxed text-risk-medium"
     >
       <WifiOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-      <span>{OFFLINE_AI_MESSAGE}</span>
+      <span>{OFFLINE_READONLY_MESSAGE}</span>
     </div>
+  );
+}
+
+const BACK_BUTTON_CLASS =
+  "flex h-11 w-11 items-center justify-center rounded-full text-header-foreground/90 transition-colors hover:bg-accent hover:text-header-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+
+export function BackButton({ backHref }: { backHref?: string }) {
+  const pathname = usePathname();
+  const known = resolveStaticBackHref({ pathname, backHref });
+
+  if (known) {
+    return (
+      <Link
+        href={known.href}
+        aria-label="Späť"
+        data-back-source={known.source}
+        className={BACK_BUTTON_CLASS}
+      >
+        <ChevronLeft className="h-5 w-5 opacity-90" aria-hidden />
+      </Link>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      aria-label="Späť"
+      onClick={() => {
+        const target = resolveBackTarget({
+          pathname,
+          referrer: document.referrer,
+          origin: window.location.origin,
+          historyLength: window.history.length,
+        });
+        if (target.kind === "history") window.history.back();
+        else window.location.assign(target.href);
+      }}
+      className={BACK_BUTTON_CLASS}
+    >
+      <ChevronLeft className="h-5 w-5 opacity-90" aria-hidden />
+    </button>
   );
 }
 
@@ -188,12 +244,15 @@ export function AppHeader({
   brand,
   actions,
   back,
+  backHref,
   children,
 }: {
   title: string;
   brand?: boolean;
   actions?: ReactNode;
   back?: boolean;
+  /** Explicitný nadradený route; má prednosť pred PARENT_ROUTE aj históriou. */
+  backHref?: string;
   children?: ReactNode;
 }) {
   return (
@@ -201,16 +260,7 @@ export function AppHeader({
       <div className="liquid-glass-header sticky top-0 z-20 rounded-b-(--forenx-control-radius) pt-[env(safe-area-inset-top)]">
         <div className="relative z-1 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-5 pt-3 pb-3 lg:pt-4">
           <div className="flex shrink-0 items-center gap-2">
-            {back ? (
-              <button
-                type="button"
-                onClick={() => window.history.back()}
-                aria-label="Späť"
-                className="flex h-8 w-8 items-center justify-center rounded-full text-header-foreground/90 transition-colors hover:bg-accent hover:text-header-foreground"
-              >
-                <ChevronLeft className="h-5 w-5 opacity-90" aria-hidden />
-              </button>
-            ) : null}
+            {back ? <BackButton backHref={backHref} /> : null}
             {brand ? (
               <Image
                 src="/branding/forenx-icon-256.png"

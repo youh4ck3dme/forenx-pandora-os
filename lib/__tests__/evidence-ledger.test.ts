@@ -11,6 +11,7 @@ import {
   type LedgerDeps,
   type LedgerRow,
 } from "../storage/evidence-ledger";
+import { ForensicEvidenceItemSchema } from "../forza/vault-types";
 
 const CASE = "11111111-1111-4111-8111-111111111111";
 const USER = "22222222-2222-4222-8222-222222222222";
@@ -83,6 +84,33 @@ describe("integrityStatusOf", () => {
   it("maps a ledger row to a UI item without claiming verification", () => {
     const item = ledgerRowToItem(row(), CASE, "forenx-vault-sk", USER);
     expect(item).toMatchObject({ caseId: CASE, integrityStatus: "checking", tags: ["zmluva"], s3Bucket: "forenx-vault-sk" });
+  });
+
+  it("adds the raw ledger status as optional verificationStatus without changing integrityStatus", () => {
+    const cases = [
+      ["pending", "checking"],
+      ["verified", "verified"],
+      ["mismatch", "compromised"],
+      ["object_missing", "compromised"],
+      ["error", "checking"],
+    ] as const;
+    for (const [raw, integrity] of cases) {
+      const item = ledgerRowToItem(row({ hash_verification_status: raw }), CASE, "b", USER);
+      expect(item.verificationStatus).toBe(raw);
+      expect(item.integrityStatus).toBe(integrity);
+      expect(ForensicEvidenceItemSchema.safeParse(item).success).toBe(true);
+    }
+  });
+
+  it("omits verificationStatus for an unknown raw status", () => {
+    const item = ledgerRowToItem(
+      row({ hash_verification_status: "bogus" as LedgerRow["hash_verification_status"] }),
+      CASE,
+      "b",
+      USER,
+    );
+    expect("verificationStatus" in item).toBe(false);
+    expect(item.integrityStatus).toBe("checking");
   });
 });
 

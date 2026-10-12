@@ -32,6 +32,8 @@ export type DirectUploadResult =
       evidenceId: string | null;
       persisted: boolean;
       integrityStatus: "verified" | "compromised" | "checking";
+      /** Surový stav ledgera z commit odpovede (`hashVerificationStatus`), ak ho server poslal. */
+      verificationStatus?: "pending" | "verified" | "mismatch" | "object_missing" | "error";
     }
   | { ok: false; stage: "s3_put" | "ledger_commit"; status: number; error: string };
 
@@ -92,6 +94,7 @@ export async function uploadEvidenceDirect(input: DirectUploadInput): Promise<Di
     evidenceId?: string | null;
     persisted?: boolean;
     integrityStatus?: "verified" | "compromised" | "checking";
+    hashVerificationStatus?: string;
   };
   if (!commit.ok) {
     return {
@@ -106,5 +109,20 @@ export async function uploadEvidenceDirect(input: DirectUploadInput): Promise<Di
     evidenceId: payload.evidenceId ?? null,
     persisted: payload.persisted === true,
     integrityStatus: payload.integrityStatus ?? "checking",
+    ...(isRawVerificationStatus(payload.hashVerificationStatus)
+      ? { verificationStatus: payload.hashVerificationStatus }
+      : {}),
   };
+}
+
+function isRawVerificationStatus(
+  value: unknown,
+): value is "pending" | "verified" | "mismatch" | "object_missing" | "error" {
+  return (
+    value === "pending" ||
+    value === "verified" ||
+    value === "mismatch" ||
+    value === "object_missing" ||
+    value === "error"
+  );
 }

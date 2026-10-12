@@ -40,6 +40,28 @@ describe("ForensicWorkflowInspector", () => {
     expect(screen.getByText(/pokus 3/)).toBeTruthy();
     expect(screen.getByText("5 s")).toBeTruthy();
     expect(screen.getByText("upstream timeout")).toBeTruthy();
+    expect(screen.getByText(/Zlyhalo · pokus 3/)).toBeTruthy();
+  });
+
+  it("zobrazuje slovenské stavy v live regióne", async () => {
+    render(
+      <ForensicWorkflowInspector
+        caseId="case-1"
+        loadRuns={vi.fn().mockResolvedValue({
+          runs: [
+            { ...RUN_BASE, id: "a", status: "queued" },
+            { ...RUN_BASE, id: "b", status: "running" },
+            { ...RUN_BASE, id: "c", status: "completed" },
+          ],
+        })}
+      />,
+    );
+    expect(await screen.findByText(/Vo fronte · pokus 1/)).toBeTruthy();
+    expect(screen.getByText(/Prebieha · pokus 1/)).toBeTruthy();
+    expect(screen.getByText(/Dokončené · pokus 1/)).toBeTruthy();
+    const live = screen.getByText(/Vo fronte/).closest("[aria-live]");
+    expect(live?.getAttribute("aria-live")).toBe("polite");
+    expect(live?.getAttribute("role")).toBe("status");
   });
 
   it("does not issue overlapping refreshes while one is in flight", async () => {

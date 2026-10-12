@@ -123,6 +123,18 @@ export async function registerEvidence(
   return { ok: true, created: true, row };
 }
 
+const LEDGER_STATUSES: readonly LedgerStatus[] = [
+  "pending",
+  "verified",
+  "mismatch",
+  "object_missing",
+  "error",
+];
+
+export function isLedgerStatus(value: unknown): value is LedgerStatus {
+  return typeof value === "string" && (LEDGER_STATUSES as readonly string[]).includes(value);
+}
+
 /** Stav serverového overenia → stav zobrazovaný v UI. Overený je len `verified`. */
 export function integrityStatusOf(status: string): ForensicEvidenceItem["integrityStatus"] {
   if (status === "verified") return "verified";
@@ -149,6 +161,9 @@ export function ledgerRowToItem(
     uploadedAt: new Date(row.created_at).toISOString(),
     uploadedBy,
     integrityStatus: integrityStatusOf(row.hash_verification_status),
+    ...(isLedgerStatus(row.hash_verification_status)
+      ? { verificationStatus: row.hash_verification_status }
+      : {}),
     aiAnalyzed: false,
     tags: [name.endsWith(".csv") ? "vypis" : name.endsWith(".pdf") ? "zmluva" : "ine"],
   };

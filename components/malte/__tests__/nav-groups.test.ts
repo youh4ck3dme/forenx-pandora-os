@@ -50,3 +50,27 @@ describe("navigácia", () => {
     expect(new Set(targets).size).toBe(targets.length);
   });
 });
+
+describe("podtituly navigácie", () => {
+  const byRoute = new Map(secondaryItems.map((i) => [i.to, i]));
+
+  it("vysvetľujú skutočnú funkciu bez zmeny route", () => {
+    expect(byRoute.get("/forza/asistent")).toMatchObject({
+      label: "Forenzný Autopilot",
+      subtitle: "Sprievodca analýzou prípadu",
+    });
+    expect(byRoute.get("/forza/sandbox")).toMatchObject({
+      label: "AI Sandbox",
+      subtitle: "Dávková AI analýza spisov",
+    });
+    expect(byRoute.get("/forza/mcp-info")).toMatchObject({
+      label: "Agentné API",
+      subtitle: "Technické pripojenia",
+    });
+  });
+
+  it("nepridáva WORM položku ani novú route", () => {
+    expect(secondaryItems.some((i) => /worm/i.test(i.to + i.label))).toBe(false);
+    expect(secondaryItems).toHaveLength(17);
+  });
+});

@@ -81,9 +81,10 @@ function McpInfo() {
             <button
               type="button"
               onClick={copyUrl}
-              className="rounded-lg p-1 text-muted-foreground hover:text-foreground"
+              aria-label={copied ? "URL skopírovaná" : "Kopírovať URL MCP endpointu"}
+              className="flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+              {copied ? <Check className="h-4 w-4 text-emerald-500" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
             </button>
           </div>
         </Card>
