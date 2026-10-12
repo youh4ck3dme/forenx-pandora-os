@@ -44,6 +44,8 @@ Návrh workflowu:
 
 ## Produkčné nasadenie
 
+Aktuálny overovací záznam je v [docs/PRODUCTION-STATUS.md](docs/PRODUCTION-STATUS.md). Historické checkpointy a plánovacie dokumenty zostávajú označené ako historické; normatívny kontrakt je [docs/SOURCE-OF-TRUTH.md](docs/SOURCE-OF-TRUTH.md).
+
 | Položka | Aktuálna produkčná konfigurácia |
 |---|---|
 | Verejná aplikácia | [pandora.whoiswho.at](https://pandora.whoiswho.at) |
