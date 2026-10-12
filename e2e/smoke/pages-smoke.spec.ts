@@ -4,12 +4,14 @@
  * neočakávaných console errors, s <html lang="sk"> a titulkom/h1.
  * Na verejných stránkach beží axe (iba report, nezlyháva na existujúcich nálezoch).
  *
- * Vo všetkých režimoch sa v prehliadači abortuje každá nie-GET/HEAD/OPTIONS
- * požiadavka na cieľový origin (CSP reporty, telemetria …) → žiadne zápisy.
+ * Vo všetkých režimoch auto fixture `netGuard` (guard-fixture.ts) na úrovni kontextu
+ * abortuje každú nie-GET/HEAD/OPTIONS požiadavku na ľubovoľný origin (stránka aj
+ * service worker), loguje všetky požiadavky a zlyhá, ak by zápis skutočne odišiel.
  */
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
-import { BASE_URL, EXPECT_LANG, READONLY, REQUEST_DELAY_MS, SAFE_METHODS } from "./smoke-config";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./guard-fixture";
+import { BASE_URL, EXPECT_LANG, READONLY, REQUEST_DELAY_MS } from "./smoke-config";
 
 type PageCase = {
   path: string;
@@ -65,35 +67,25 @@ const BENIGN_CONSOLE: RegExp[] = [
   /ERR_NAME_NOT_RESOLVED|supabase-ci\.invalid/,
 ];
 
+/** Zbiera console/page chyby; sieťovú poistku zabezpečuje auto fixture `netGuard`. */
 async function guard(page: Page) {
   const consoleErrors: string[] = [];
   const benign: string[] = [];
   const pageErrors: string[] = [];
-  const blockedWrites: string[] = [];
-  const origin = new URL(BASE_URL).origin;
-
-  await page.route("**/*", async (route) => {
-    const req = route.request();
-    if (!SAFE_METHODS.has(req.method()) && new URL(req.url()).origin === origin) {
-      blockedWrites.push(`${req.method()} ${new URL(req.url()).pathname}`);
-      return route.abort("blockedbyclient");
-    }
-    return route.continue();
-  });
   page.on("console", (msg) => {
     if (msg.type() !== "error") return;
     const text = msg.text();
     (BENIGN_CONSOLE.some((re) => re.test(text)) ? benign : consoleErrors).push(text.slice(0, 300));
   });
   page.on("pageerror", (err) => pageErrors.push(`${err.name}: ${err.message}`.slice(0, 300)));
-  return { consoleErrors, benign, pageErrors, blockedWrites };
+  return { consoleErrors, benign, pageErrors };
 }
 
 // Sekvenčne (workers: 1), ale nezávisle — jeden fail nezastaví ostatné.
 
 test.describe(`Pages smoke (${READONLY ? "READ-ONLY" : "full"})`, () => {
   for (const pc of PAGES) {
-    test(`page ${pc.path}`, async ({ page }) => {
+    test(`page ${pc.path}`, async ({ page, netGuard }) => {
       if (REQUEST_DELAY_MS > 0) await page.waitForTimeout(REQUEST_DELAY_MS);
       const g = await guard(page);
       const response = await page.goto(pc.path, { waitUntil: "domcontentloaded" });
@@ -120,8 +112,8 @@ test.describe(`Pages smoke (${READONLY ? "READ-ONLY" : "full"})`, () => {
         description: `status=${status} final=${finalUrl.pathname}${finalUrl.search} ssrLang=${ssrLang} domLang=${domLang} title=${JSON.stringify(title.slice(0, 50))} h1=${h1Count}${appError ? " CLIENT-CRASH" : ""}`,
       });
       if (g.benign.length) test.info().annotations.push({ type: "benign-console", description: g.benign.join(" | ") });
-      if (g.blockedWrites.length)
-        test.info().annotations.push({ type: "blocked-writes", description: g.blockedWrites.join(", ") });
+      if (netGuard.blocked.length)
+        test.info().annotations.push({ type: "blocked-writes", description: netGuard.blocked.join(", ") });
       if (g.pageErrors.length) test.info().annotations.push({ type: "page-errors", description: g.pageErrors.join(" | ") });
       if (g.consoleErrors.length)
         test.info().annotations.push({ type: "console-errors", description: g.consoleErrors.join(" | ") });
@@ -210,4 +202,90 @@ test.describe(`Pages smoke (${READONLY ? "READ-ONLY" : "full"})`, () => {
       expect.soft(m.disabled, "vypnuté ovládacie prvky").toBe(m.notice ? m.total : 0);
     });
   }
+});
+
+// Dôkaz poistky: nie-bezpečné požiadavky zo stránky (cross-origin aj same-origin) sa
+// abortujú pred odoslaním. Cross-origin cieľ je `.invalid` (RFC 2606) — nikdy neexistuje.
+// Cross-origin POST s text/plain telom je „simple request" (bez CORS preflightu), takže
+// sa dostane priamo k poistke; navyše cez navigator.sendBeacon (typický telemetrický kanál).
+test.describe(`Network guard (${READONLY ? "READ-ONLY" : "full"})`, () => {
+  // Sondy (vrátane testovacieho SW) bežia iba proti lokálnemu serveru, nikdy nie proti produkcii.
+  test.skip(
+    !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(BASE_URL),
+    "sondy poistky iba lokálne (BASE_URL nie je localhost)",
+  );
+
+  test("cross-origin a same-origin zápis zo stránky je abortovaný", async ({ page, netGuard }) => {
+    await page.goto("/auth/login/", { waitUntil: "domcontentloaded" });
+    const results = await page.evaluate(async () => {
+      const attempt = async (url: string, method: string) => {
+        try {
+          await fetch(url, { method, body: method === "DELETE" ? undefined : "{}" });
+          return `${method} ${url}: SENT`;
+        } catch {
+          return `${method} ${url}: ABORTED`;
+        }
+      };
+      return [
+        await attempt("https://smoke-guard.invalid/write-probe", "POST"),
+        navigator.sendBeacon("https://smoke-guard.invalid/beacon-probe", "{}") ? "beacon queued" : "beacon rejected",
+        await attempt("/api/csp-report/", "POST"),
+        await attempt("/api/auth/session/", "DELETE"),
+      ];
+    });
+    test.info().annotations.push({ type: "probe", description: results.join(" | ") });
+    await page.waitForTimeout(1000); // sendBeacon je asynchrónny
+    expect(results.filter((r) => r.includes(": ")).every((r) => r.endsWith("ABORTED")), results.join(" | ")).toBe(true);
+    expect(netGuard.blocked).toEqual(
+      expect.arrayContaining([
+        "POST https://smoke-guard.invalid/write-probe",
+        "POST https://smoke-guard.invalid/beacon-probe",
+        expect.stringMatching(/^POST https?:\/\/[^/]+\/api\/csp-report\/$/),
+        expect.stringMatching(/^DELETE https?:\/\/[^/]+\/api\/auth\/session\/$/),
+      ]),
+    );
+    expect(netGuard.sentUnsafe).toEqual([]);
+  });
+
+  // Service worker: testovací SW (servírovaný iba z route fixtúry, nie z app kódu) pošle
+  // cross-origin POST; poistka na úrovni kontextu ho musí zachytiť ako [sw] požiadavku.
+  test("zápis iniciovaný service workerom je abortovaný", async ({ page, context, netGuard }) => {
+    const SW_PATH = "/__smoke-guard-sw-probe.js";
+    const swSource = `
+      self.addEventListener("install", () => self.skipWaiting());
+      self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
+      self.addEventListener("message", (e) => {
+        e.waitUntil((async () => {
+          let r;
+          try { await fetch("https://smoke-guard.invalid/sw-write-probe", { method: "POST", body: "{}" }); r = "SENT"; }
+          catch { r = "ABORTED"; }
+          e.source.postMessage(r);
+        })());
+      });`;
+    // Neskôr registrovaná route má prednosť; iné URL prepadnú do netGuard.
+    await context.route(`**${SW_PATH}`, (route) =>
+      route.request().method() === "GET"
+        ? route.fulfill({ status: 200, contentType: "text/javascript", body: swSource })
+        : route.fallback(),
+    );
+    await page.goto("/auth/login/", { waitUntil: "load" });
+    const result = await page.evaluate(async (path) => {
+      const reg = await navigator.serviceWorker.register(path, { scope: "/" });
+      const sw = reg.installing ?? reg.waiting ?? reg.active;
+      if (!sw) return "NO-SW";
+      if (sw.state !== "activated")
+        await new Promise<void>((res) => sw.addEventListener("statechange", () => sw.state === "activated" && res()));
+      const reply = new Promise<string>((res) =>
+        navigator.serviceWorker.addEventListener("message", (e) => res(String(e.data)), { once: true }),
+      );
+      sw.postMessage("probe");
+      const r = await Promise.race([reply, new Promise<string>((res) => setTimeout(() => res("TIMEOUT"), 10_000))]);
+      await reg.unregister();
+      return r;
+    }, SW_PATH);
+    test.info().annotations.push({ type: "sw-probe", description: `result=${result} blocked=${netGuard.blocked.join(", ")}` });
+    expect(result).toBe("ABORTED");
+    expect(netGuard.blocked).toContain("[sw] POST https://smoke-guard.invalid/sw-write-probe");
+    expect(netGuard.sentUnsafe).toEqual([]);
+  });
 });
