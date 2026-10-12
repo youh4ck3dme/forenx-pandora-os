@@ -1,5 +1,6 @@
 import { getBlogPost, getAllBlogSlugs, generateBlogMetadata } from '@/lib/utils'
 import { notFound } from 'next/navigation'
+import { parseBlogContent } from '@/lib/blog/content-blocks'
 import Link from 'next/link'
 import { Calendar, Clock, ArrowLeft, Share2 } from 'lucide-react'
 import type { Metadata } from 'next'
@@ -80,20 +81,23 @@ export default async function BlogPostPage({ params }: PageProps) {
             <article className="max-w-3xl mx-auto px-4 py-12">
                 <div className="prose prose-invert prose-purple max-w-none">
                     {/* Simple markdown-like rendering */}
-                    {post.content.split('\n').map((line, i) => {
-                        if (line.startsWith('# ')) {
-                            return <h1 key={i} className="text-3xl font-bold mt-8 mb-4 text-foreground">{line.slice(2)}</h1>
+                    {parseBlogContent(post.content).map((block, i) => {
+                        if (block.type === 'h1') {
+                            return <h1 key={i} className="text-3xl font-bold mt-8 mb-4 text-foreground">{block.text}</h1>
                         }
-                        if (line.startsWith('## ')) {
-                            return <h2 key={i} className="text-2xl font-semibold mt-6 mb-3 text-foreground">{line.slice(3)}</h2>
+                        if (block.type === 'h2') {
+                            return <h2 key={i} className="text-2xl font-semibold mt-6 mb-3 text-foreground">{block.text}</h2>
                         }
-                        if (line.startsWith('- ')) {
-                            return <li key={i} className="text-foreground/80 ml-4">{line.slice(2)}</li>
+                        if (block.type === 'ul') {
+                            return (
+                                <ul key={i} className="list-disc ml-4 mb-4">
+                                    {block.items.map((item, j) => (
+                                        <li key={j} className="text-foreground/80">{item}</li>
+                                    ))}
+                                </ul>
+                            )
                         }
-                        if (line.trim()) {
-                            return <p key={i} className="text-foreground/80 mb-4">{line}</p>
-                        }
-                        return null
+                        return <p key={i} className="text-foreground/80 mb-4">{block.text}</p>
                     })}
                 </div>
 
@@ -106,7 +110,7 @@ export default async function BlogPostPage({ params }: PageProps) {
                             </div>
                             <div>
                                 <p className="text-foreground font-medium">{post.author.name}</p>
-                                <p className="text-foreground/40 text-sm">Autor</p>
+                                <p className="text-foreground/60 text-sm">Autor</p>
                             </div>
                         </div>
                         <button className="flex items-center gap-2 px-4 py-2 bg-foreground/5 border border-border rounded-lg hover:bg-foreground/10 transition-colors text-foreground/60 hover:text-foreground">

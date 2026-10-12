@@ -78,11 +78,11 @@ export const metadata: Metadata = {
   },
 };
 
+// WCAG 1.4.4: zoom sa nesmie vypínať (žiadne maximumScale / userScalable).
+// iOS auto-zoom na inputoch rieši text-base (16px) na mobile, nie zákaz zoomu.
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
   themeColor: "#000000",
 };
 
@@ -94,7 +94,7 @@ export default async function RootLayout({
   // Nonce is set by middleware (x-nonce request header) for CSP compliance.
   const nonce = (await headers()).get('x-nonce') ?? '';
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="sk" suppressHydrationWarning>
       <head>
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/icons/icon.svg" />

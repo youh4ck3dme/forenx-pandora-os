@@ -43,11 +43,20 @@ describe("P0-09 — zdieľaný rate limit v produkcii", () => {
     resetCspReportRateLimiter();
     const res = await POST(cspRequest({ "csp-report": { "violated-directive": "script-src" } }));
     expect(res.status).toBe(503);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.json()).toEqual({ ok: false, error: "rate_limiter_unavailable" });
     expect(insertSpy).not.toHaveBeenCalled();
   });
 });
 
 describe("P0-05 — POST /api/csp-report (collector CSP violácií)", () => {
+  it("nevalidný (prázdny objekt) report prijme s 200 {ok:true} a nič nezapíše", async () => {
+    const res = await POST(cspRequest({}));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(insertSpy).not.toHaveBeenCalled();
+  });
+
   it("prijme klasický csp-report a zapíše sanitizovaný záznam", async () => {
     const res = await POST(
       cspRequest({
@@ -60,7 +69,9 @@ describe("P0-05 — POST /api/csp-report (collector CSP violácií)", () => {
       }),
     );
 
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.json()).toEqual({ ok: true });
     expect(insertSpy).toHaveBeenCalledTimes(1);
     const [table, row] = insertSpy.mock.calls[0] as [
       string,
@@ -88,7 +99,7 @@ describe("P0-05 — POST /api/csp-report (collector CSP violácií)", () => {
         },
       }),
     );
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
     expect(insertSpy).toHaveBeenCalledTimes(1);
     const [, row] = insertSpy.mock.calls[0] as [string, Record<string, unknown>];
     expect(String(row.message)).toContain("style-src-elem");
@@ -97,10 +108,12 @@ describe("P0-05 — POST /api/csp-report (collector CSP violácií)", () => {
   it("odmietne neplatný JSON (400) a prázdne telo", async () => {
     const res = await POST(cspRequest("not-json{"));
     expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ ok: false });
     const empty = await POST(
       new NextRequest("http://localhost:3000/api/csp-report", { method: "POST" }),
     );
     expect(empty.status).toBe(400);
+    expect(await empty.json()).toMatchObject({ ok: false });
     expect(insertSpy).not.toHaveBeenCalled();
   });
 
@@ -110,10 +123,11 @@ describe("P0-05 — POST /api/csp-report (collector CSP violácií)", () => {
     };
     for (let i = 0; i < 20; i += 1) {
       const res = await POST(cspRequest(body));
-      expect(res.status).toBe(204);
+      expect(res.status).toBe(200);
     }
     const res = await POST(cspRequest(body));
     expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({ ok: false, error: "rate_limited" });
   });
 
   it("iné IP majú nezávislý rate limit", async () => {
@@ -124,6 +138,7 @@ describe("P0-05 — POST /api/csp-report (collector CSP violácií)", () => {
       await POST(cspRequest(body, "198.51.100.1"));
     }
     const other = await POST(cspRequest(body, "198.51.100.2"));
-    expect(other.status).toBe(204);
+    expect(other.status).toBe(200);
+    expect(await other.json()).toEqual({ ok: true });
   });
 });

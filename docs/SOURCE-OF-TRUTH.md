@@ -130,7 +130,7 @@ Porušenie ktoréhokoľvek z nasledujúcich invariantov predstavuje okamžitý *
 
 ### 4.2 WebAuthn / Passkeys (FIDO2)
 - Implementácia cez `@simplewebauthn/server` bez mockov a demo režimov.
-- **Výzva (Challenge):** Kryptograficky generovaná hodnota v `httpOnly` cookie s expiráciou 120 sekúnd. Cookie je podpísaný HMAC-SHA-256 (`WEBAUTHN_CHALLENGE_SECRET`, inak kľúč odvodený zo `SUPABASE_SERVICE_ROLE_KEY`; v produkcii bez neho fail-closed), takže klient si nemôže vyrobiť cookie okolo zachytenej starej výzvy. Jednorazovosť sa vynucuje na serveri cez tabuľku `webauthn_spent_challenges` a RPC `webauthn_consume_challenge` (migrácia `20261008100000_webauthn_spent_challenges.sql`). Každá výzva má vlastný záznam s presnou expiráciou (`issuedAt + 120 s`), nie fixné okno, takže sa nedá zopakovať ani tesne okolo hranice okna. Platí naprieč inštanciami; pri nedostupnej DB fail-closed (HTTP 503). Zmazanie cookie samo osebe replay nebráni.
+- **Výzva (Challenge):** Kryptograficky generovaná hodnota v `httpOnly` cookie s expiráciou 120 sekúnd. Cookie je podpísaný HMAC-SHA-256 (`WEBAUTHN_CHALLENGE_SECRET`, inak kľúč odvodený zo `SUPABASE_SERVICE_ROLE_KEY`; v produkcii bez neho fail-closed), takže klient si nemôže vyrobiť cookie okolo zachytenej starej výzvy. Jednorazovosť sa vynucuje na serveri cez tabuľku `webauthn_spent_challenges` a RPC `webauthn_consume_challenge` (migrácia `20261008100000_webauthn_spent_challenges.sql`). Každá výzva má vlastný záznam s presnou expiráciou (`issuedAt + 120 s`), nie fixné okno, takže sa nedá zopakovať ani tesne okolo hranice okna. Platí naprieč inštanciami; pri nedostupnej DB fail-closed (HTTP 503). Zmazanie cookie samo osebe replay nebráni. Ak v produkcii chýba `WEBAUTHN_CHALLENGE_SECRET` aj fallback `SUPABASE_SERVICE_ROLE_KEY`, `GET /api/auth/webauthn/challenge` (a po overení session `GET /api/auth/webauthn/register/options`) vráti `503 {"ok":false,"error":"WEBAUTHN_CHALLENGE_SECRET is not configured"}` ešte pred tvorbou options a čítaním DB, bez cookie a bez stacku — `VERIFIED` (`lib/__tests__/webauthn-routes.test.ts`, lokálny smoke `e2e/smoke/api-smoke.spec.ts`). Cesta `200` (secret nastavený) je iba unit-testovaná — produkčne ani runtime neoverená.
 - **Synchronizované passkeys:** iCloud/Google passkeys majú `sign_count` trvalo 0, preto ochrana počítadlom pri nich neplatí a replay bráni výhradne podpísaná a jednorazová výzva.
 - **Overenie Pôvodu:** Striktná kontrola `rpId` a `origin` voči produkčnej doméne (`pandora.whoiswho.at`).
 - **Detekcia klonovania:** Sledovanie rastúceho počítadla `sign_count`.
@@ -205,10 +205,12 @@ Každá zmena kódu musí pred začlenením do hlavnej vetvy (`main`) prejsť ve
 
 ```powershell
 npm run typecheck
-npx vitest run
+npx vitest run --pool=forks --maxWorkers=2
 npm run verify:desktop-security
 npm run test:regression:forenzx
 ```
+
+`npm test` spúšťa vitest vo watch režime; v bráne sa používa `npx vitest run --pool=forks --maxWorkers=2` (obmedzená pamäť na lokálnych strojoch).
 
 ### Kvantitatívna matica zhody (Conformance Status):
 
@@ -237,7 +239,7 @@ npm run test:regression:forenzx
 | **INV-021** | Validácia webhook secretu cez safeEqual | **VERIFIED** | `app/api/forenzx/dispatch-outbox/route.ts` |
 | **INV-022** | SSRF ochrana a zákaz loopbacku | **VERIFIED** | `electron/__tests__/network-security.test.ts` |
 | **INV-023** | Auditované deštruktívne RPC | **VERIFIED** | `db/cleanroom/tests/03-privileged-rpc-authorization.test.ts` |
-| **INV-024** | 100% automatizované testovacie pokrytie | **VERIFIED** | 131 testovacích súborov, 1188 unit/integration testov PASS |
+| **INV-024** | 100% automatizované testovacie pokrytie | **VERIFIED** | 152 testovacích súborov PASS (1 preskočený), 1377 unit/integration testov PASS, 3 skipped (`npx vitest run --pool=forks --maxWorkers=2`, 2026-10-11) |
 | **INV-025** | Court Pack podpis: Ed25519 nad kanonickým manifestom; private key NESMIE byť v env ako plaintext, iba referencia (`file:`/`vault:`/`kms:`) cez `SigningKeyProvider` | **VERIFIED** | `lib/court/__tests__/signing.test.ts` |
 | **INV-026** | Offline verifikácia Court Packu funguje bez PANDORA backendu a bez akéhokoľvek secretu — iba public key + kid | **VERIFIED** | `lib/court/__tests__/signing.test.ts` (`lib/court/verify.mjs`) |
 | **INV-027** | Key rotation: každý signing kľúč má `kid` + `version` + `status` + `validFrom` + `revokedAt`; signing kľúč MUSÍ zodpovedať aktívnemu public-key recordu pre daný kid | **VERIFIED** | `lib/court/__tests__/signing.test.ts` |
@@ -285,6 +287,9 @@ npm run test:regression:forenzx
 - **P0 — nasadenie passkey ochrany (blokuje prihlásenie passkey, fail-closed):** na hosted Supabase musí byť aplikované `supabase/migrations/20260929000000_shared_rate_limit.sql` (zdieľaný limiter pre CSP a health) a `supabase/migrations/20261008100000_webauthn_spent_challenges.sql` (jednorazové výzvy). Bez nich `/api/auth/webauthn/verify` vracia 503 pre každé overenie. Overenie po aplikácii (ako `service_role`): `select public.webauthn_consume_challenge(repeat('a',64), now() + interval '2 minutes')` vráti `true` a druhé volanie s rovnakým kľúčom vráti `false`. Pôvodný záznam tejto úlohy bol v `docs/BACKLOG-SOURCE-OF-TRUTH.md`, ktorý bol zrušený, a preto bol bez tohto riadku ľahko prehliadnuteľný.
 - **P1:** CI audit je stále iba `--audit-level=critical`; `npm audit` hlási 24 high (najmä `workflow`, `eslint-config-next`, `postcss`, `sharp`). Zvýšiť na `high` až po ich vyriešení.
 - **P2:** `getRpId` bez `NEXT_PUBLIC_RP_ID` odvodzuje rpId z `x-forwarded-host`; v produkcii má byť env povinný.
+- **P3 — mŕtve blog dáta:** `@/lib/utils` sa resolvuje na `lib/utils.ts`; `lib/utils/blog-data.ts` (iné slugy) sa nepoužíva a jeho slugy vracajú 404.
+- **P2 — security: dynamický import service-role klienta v browser chunku:** `lib/forza/*.functions.ts` dynamicky importujú `integrations/supabase/client.server`, a tento modul sa cez import graf dostane do browser chunku. V `.next/static` sú iba názvy premenných, žiadna hodnota kľúča (overené grepom buildu). Samostatná úloha: oddeliť server-only cestu (`import "server-only"` / server action hranica). V tejto vetve zámerne nerobené.
+- **P3 — `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` kompatibilita:** browser klient číta iba `NEXT_PUBLIC_SUPABASE_ANON_KEY`; podpora publishable kľúča bola zámerne odložená (samostatné rozhodnutie).
 - **P2:** `has_role`-based RLS politiky (`ai_feature_logs`, `error_logs`, storage private-bucket) nie sú po revoke z 2026-10-03 použiteľné `authenticated` klientom (EXECUTE sa kontroluje aj vo vyhodnotení RLS politiky). Admin dáta preto čítať service klientom; prípadné ďalšie priame čítania týchto tabuliek user klientom treba revidovať.
 
 ### 9.3 BLOCKED (Externé operačné závislosti)
@@ -328,3 +333,12 @@ $$\mathbf{RELEASE\_WITH\_CONDITIONS}$$
 - `NavItem.subtitle` (voliteľné): Forenzný Autopilot — „Sprievodca analýzou prípadu“, AI Sandbox — „Dávková AI analýza spisov“, Agentné API (MCP) — „Technické pripojenia“. Route sa nemenili; WORM položka ani route sa nepridali.
 - Tlačidlo Späť (`components/malte/back-navigation.ts`, `BackButton` v `Shell.tsx`): explicitný `backHref` → `PARENT_ROUTE` → `history.back()` iba pri same-origin referreri → fallback `/forza/prehlad`. Cieľ 44 × 44 px, `aria-label="Späť"`, `focus-visible` prstenec.
 - Ikonové tlačidlá (kopírovanie MCP URL, kopírovanie SHA-256, obnovenie zoznamu dôkazov) majú `aria-label` a `focus-visible`.
+
+## 12. Smoke suite, fail-closed odpovede a prístupnosť (2026-10-11) — `VERIFIED` lokálne (unit testy + lokálny smoke beh A/B na :3007); produkčne neoverené
+- `app/layout.tsx`: `<html lang="sk">`; `public/manifest.json`: `lang: "sk"` a slovenský popis (`lib/__tests__/a11y-lang-manifest.test.ts`).
+- Smoke suite `e2e/smoke/` (`npm run test:smoke`, `npm run test:smoke:prod`): jeden test na route + metódu (iba neautentifikované/neplatné požiadavky), všetky stránky, axe. `SMOKE_READONLY=1` (automaticky pre `pandora.whoiswho.at`) vynucuje v kóde iba GET/HEAD/OPTIONS. `SMOKE_EXPECT_LANG` mení očakávaný `<html lang>` (default `sk`). Test produkčnej read-only poistky je lokálne preskočený (1 skip) a čaká na beh `npm run test:smoke:prod` po nasadení.
+- `POST /api/csp-report`: každá odpoveď je JSON — úspech `200 {"ok":true}` (predtým `204` bez tela), `503 {"ok":false,"error":"rate_limiter_unavailable"}`, `429 {"ok":false,"error":"rate_limited"}`, `400 {"ok":false,...}`. Sanitizácia, limit 20/IP/min, 8 KB strop a zápis do `error_logs` (iba platné reporty) sa nemenili (`lib/__tests__/csp-report.test.ts`). Cesta `200 {"ok":true}` je iba unit-testovaná — lokálny smoke bez Supabase dostane `503`; produkčne ani runtime neoverená (smoke na produkcii POST neposiela).
+- Browser Supabase klient (`integrations/supabase/client.ts`) pri chýbajúcom `NEXT_PUBLIC_SUPABASE_URL` alebo `NEXT_PUBLIC_SUPABASE_ANON_KEY` (v produkcii) zlyhá bezpečne: `isSupabaseConfigured() === false`, `supabase.auth.*` vráti `session/user = null` so `SupabaseConfigError` (žiadna sieťová požiadavka, žiadny TypeError), ostatné API (`from`, `storage`, `rpc`, …) hodia `SupabaseConfigError`; jeden diagnostický riadok cez `console.error` iba s názvami premenných (`console.warn` by produkčný build odstránil — `removeConsole` ponecháva iba `error`). Žiadny fallback kľúč, žiadny service role v klientovi. Prihlasovací formulár je vypnutý so slovenským upozornením (`integrations/supabase/__tests__/client-unconfigured.test.tsx`). `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` browser klient nečíta.
+- Regresia rozostupov prihlasovacieho formulára: `<fieldset className="contents">` (vypínanie polí) zrušil `space-y-3` formulára (polia neboli priame deti). Oprava: `fieldset` má `contents m-0 min-w-0 space-y-3 border-0 p-0`; `space-y-3` cieli margin detí, takže funguje aj pri `display: contents`. Namerané 12 px medzi poliami pri 390 px aj 1280 px, v nekonfigurovanom stave sú vypnuté všetky prvky formulára (smoke `login form layout @390px/@1280px`, prah ≥ 8 px).
+- Článok blogu (`/blog/[slug]`): súvislé riadky `- ` sa zoskupujú do `<ul className="list-disc ml-4 mb-4">` s `<li>` (`lib/blog/content-blocks.ts`, `lib/blog/__tests__/content-blocks.test.ts`); axe `listitem`/`list` je na kontrolovaných stránkach regresia.
+- Root `viewport` nevypína zoom (žiadne `maximumScale`/`userScalable`); prihlasovacie polia majú `text-base md:text-sm` proti iOS auto-zoomu. Metadáta blogu (dátum, čas čítania, „Autor“) `text-foreground/60` namiesto `/40` (bolo 3.81:1). Axe na `/auth/login`, `/auth/register`, `/blog`, `/blog/[slug]`: 0 `meta-viewport`, 0 serious `color-contrast`, 0 `listitem` (`lib/__tests__/a11y-viewport-contrast.test.ts`, smoke axe). Správanie zoomu na reálnom iOS zariadení `IMPLEMENTED_UNVERIFIED`.

@@ -108,9 +108,25 @@ let devChallengeKey: Buffer | null = null;
  * old challenge (synced passkeys keep signCount = 0, so the counter check does
  * not catch it). Production fails closed when no server secret is configured.
  */
+function configuredChallengeSecret(): string | undefined {
+  return process.env.WEBAUTHN_CHALLENGE_SECRET?.trim() || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || undefined;
+}
+
+/** Verejná chybová správa pri chýbajúcom HMAC kľúči (bez hodnôt, bez stacku). */
+export const CHALLENGE_SECRET_MISSING_ERROR = "WEBAUTHN_CHALLENGE_SECRET is not configured";
+
+/**
+ * True, ak sa dajú podpisovať challenge cookies: je nastavený
+ * WEBAUTHN_CHALLENGE_SECRET (alebo zdokumentovaný fallback SUPABASE_SERVICE_ROLE_KEY),
+ * alebo nejde o produkciu (dev/test používa náhodný kľúč procesu).
+ * Routes to volajú PRED tvorbou options / čítaním DB, aby mohli fail-closed vrátiť 503.
+ */
+export function isChallengeSecretConfigured(): boolean {
+  return Boolean(configuredChallengeSecret()) || process.env.NODE_ENV !== "production";
+}
+
 function challengeKey(): Buffer {
-  const secret =
-    process.env.WEBAUTHN_CHALLENGE_SECRET?.trim() || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const secret = configuredChallengeSecret();
   if (secret) return createHash("sha256").update(`pandora-webauthn-challenge\u0000${secret}`).digest();
   if (process.env.NODE_ENV === "production") {
     throw new Error("WEBAUTHN_CHALLENGE_SECRET environment variable is required in production.");
