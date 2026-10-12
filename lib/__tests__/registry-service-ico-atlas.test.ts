@@ -173,4 +173,32 @@ describe('ICO Atlas lookup (lookupCompanyByIco)', () => {
     expect(() => mapIcoAtlasResponse({ ico: '35763469' }, '35763469')).toThrow('legalName')
     expect(() => mapIcoAtlasResponse(null, '35763469')).toThrow('neplatná odpoveď')
   })
+
+  it.each([403, 500])('handles HTTP %i with sanitized warning and no secret', async (status) => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(status, { message: `err with Bearer ${TEST_KEY}` }))
+    const profile = await lookupCompanyByIco('35763469')
+    expect(profile.source.source).not.toBe('ico-atlas')
+    const logs = allLogOutput()
+    expect(logs).toContain(`HTTP ${status}`)
+    expect(logs).not.toContain(TEST_KEY)
+    expect(logs).not.toMatch(/authorization|bearer/i)
+  })
+
+  it('handles timeout (AbortSignal) without leaking secrets', async () => {
+    const timeout = new Error(`The operation timed out (Bearer ${TEST_KEY})`)
+    timeout.name = 'TimeoutError'
+    fetchMock.mockRejectedValueOnce(timeout)
+    await lookupCompanyByIco('35763469')
+    const logs = allLogOutput()
+    expect(logs).toContain('zlyhal: TimeoutError')
+    expect(logs).not.toContain(TEST_KEY)
+  })
+
+  it('request URL contains /atlas/api/v1/companies/sk/35763469 and sends a timeout signal', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, atlasPayload))
+    await lookupCompanyByIco('35763469')
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toContain('/atlas/api/v1/companies/sk/35763469')
+    expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal)
+  })
 })
