@@ -1,7 +1,7 @@
 # PΛND0RΛ / ForenX — CANONICAL SYSTEM SOURCE OF TRUTH
 
 > **Status:** CANONICAL / NORMATIVE  
-> **Version:** 2.1
+> **Version:** 2.2
 > **Authority:** CANONICAL CONTRACT — Najvyššia autorita pre architektúru, bezpečnosť, forenznú integritu a release validáciu.  
 > **Target:** Production-Grade Forensic System (PANDORA Browser & ForenZX Engine)
 
@@ -302,7 +302,7 @@ npm run test:regression:forenzx
 
 ## 10. Záverečný release verdikt
 
-Systém definuje 36 bezpečnostných a forenzných invariantov. INV-033 je po post-merge hardeningu implementovaný, ale zostáva `IMPLEMENTED_UNVERIFIED` do úspešného PostgreSQL/CI dôkazu; INV-034 až INV-035 sú implementované a pokryté cielenými testami; INV-036 je implementovaný v migrácii, ktorá ešte nebola aplikovaná do produkcie.
+Systém definuje 36 bezpečnostných a forenzných invariantov. INV-033 a INV-036 zostávajú `IMPLEMENTED_UNVERIFIED`, kým nebude k dispozícii samostatný PostgreSQL/produkčný workflow dôkaz; obe príslušné migrácie sú však aplikované v produkčnom Supabase projekte. INV-034 až INV-035 sú implementované a pokryté cielenými testami.
 Pre lokálne prostredie a desktopový runtime je stav:
 
 $$\mathbf{RELEASE\_WITH\_CONDITIONS}$$
@@ -318,7 +318,7 @@ $$\mathbf{RELEASE\_WITH\_CONDITIONS}$$
 - Hláška `OFFLINE_READONLY_MESSAGE` (`lib/hooks/useOnlineStatus.ts`): „Ste offline. Prehliadanie je dostupné. Zápis bude možný po obnovení pripojenia.“ — offline banner (`components/malte/Shell.tsx`, `role="status"`, `aria-live="polite"`) a `app/offline/page.tsx`. AI-špecifické miesta ďalej používajú `OFFLINE_AI_MESSAGE`.
 - Žiadna falošná fronta v `localStorage`. Stavy zápisu (`lib/forza/write-status.ts`): Čaká na odoslanie / Odosiela sa / Uložené na serveri / Odoslanie zlyhalo — použité iba tam, kde existuje odpoveď servera (uloženie AI pracovnej analýzy v Autopilote). „Uložené na serveri“ sa zobrazí až po úspešnej odpovedi servera; tlačidlo uloženia je offline zablokované.
 
-### 11.2 Service worker = kill-switch — `VERIFIED` (unit testy + lokálny Chromium test main → PR1 na :3007); produkčne neoverené
+### 11.2 Service worker = kill-switch — `VERIFIED` (unit testy + lokálny Chromium test + produkčný read-only smoke)
 - `components/core/providers/service-worker-registration.tsx` naďalej odregistruje všetky service workery a **potom zmaže všetky Cache Storage cache tohto originu** (osirelé cache po starom Workbox workeri vrátane `/api` odpovedí; rovnako ako odhlásenie v `lib/forza/session.ts`); next-pwa je vypnutý. Bez toho by klient, ktorý otvoril aplikáciu, starý worker odregistroval skôr, než sa nainštaluje kill-switch, a cache by ostali na disku (overené v Chromium, 2026-10-12).
 - `/sw.js` je **verejný**: `middleware.ts` púšťa bez autentifikácie iba presnú cestu `SERVICE_WORKER_PATH = '/sw.js'` (inak by kontrola aktualizácie starého workera dostala redirect na `/auth/login/` a zlyhala). Všetky ostatné chránené cesty (aj `/sw.jsx`, `/sw.js.map`, `/foo/sw.js`) ostávajú za autentifikáciou (`lib/auth/__tests__/middleware-sw-public.test.ts`).
 - Mazanie v kill-switchi aj v registrácii je **celo-originové** (`caches.keys()` vráti všetky cache originu, Cache Storage je per-origin a iné originy nevidí). Na `pandora.whoiswho.at` podľa `deploy/nginx.conf` beží iba Pandora (`/`, `/api/*`) a S3 proxy `/vault-s3/`, ktoré Cache Storage nepoužívajú; skutočná konfigurácia VPS overená nebola.
@@ -334,11 +334,21 @@ $$\mathbf{RELEASE\_WITH\_CONDITIONS}$$
 - Tlačidlo Späť (`components/malte/back-navigation.ts`, `BackButton` v `Shell.tsx`): explicitný `backHref` → `PARENT_ROUTE` → `history.back()` iba pri same-origin referreri → fallback `/forza/prehlad`. Cieľ 44 × 44 px, `aria-label="Späť"`, `focus-visible` prstenec.
 - Ikonové tlačidlá (kopírovanie MCP URL, kopírovanie SHA-256, obnovenie zoznamu dôkazov) majú `aria-label` a `focus-visible`.
 
-## 12. Smoke suite, fail-closed odpovede a prístupnosť (2026-10-11) — `VERIFIED` lokálne (unit testy + lokálny smoke beh A/B na :3007); produkčne neoverené
+## 12. Smoke suite, fail-closed odpovede a prístupnosť (2026-10-12) — `VERIFIED` pre runtime/read-only produkčný smoke, s uvedenými obmedzeniami
 - `app/layout.tsx`: `<html lang="sk">`; `public/manifest.json`: `lang: "sk"` a slovenský popis (`lib/__tests__/a11y-lang-manifest.test.ts`).
-- Smoke suite `e2e/smoke/` (`npm run test:smoke`, `npm run test:smoke:prod`): jeden test na route + metódu (iba neautentifikované/neplatné požiadavky), všetky stránky, axe. `SMOKE_READONLY=1` (automaticky pre `pandora.whoiswho.at`) vynucuje v kóde iba GET/HEAD/OPTIONS. `SMOKE_EXPECT_LANG` mení očakávaný `<html lang>` (default `sk`). Test produkčnej read-only poistky je lokálne preskočený (1 skip) a čaká na beh `npm run test:smoke:prod` po nasadení.
+- Smoke suite `e2e/smoke/` (`npm run test:smoke`, `npm run test:smoke:prod`): jeden test na route + metódu, všetky stránky a axe. Produkčný beh s `SMOKE_READONLY=1` prešiel s výsledkom 45 passed / 0 failed / 20 skipped a 1 018 GET požiadavkami. Write testy a cross-origin/service-worker probe testy boli v produkcii preskočené; lokálny guard ich overil v PR #66.
 - `POST /api/csp-report`: každá odpoveď je JSON — úspech `200 {"ok":true}` (predtým `204` bez tela), `503 {"ok":false,"error":"rate_limiter_unavailable"}`, `429 {"ok":false,"error":"rate_limited"}`, `400 {"ok":false,...}`. Sanitizácia, limit 20/IP/min, 8 KB strop a zápis do `error_logs` (iba platné reporty) sa nemenili (`lib/__tests__/csp-report.test.ts`). Cesta `200 {"ok":true}` je iba unit-testovaná — lokálny smoke bez Supabase dostane `503`; produkčne ani runtime neoverená (smoke na produkcii POST neposiela).
 - Browser Supabase klient (`integrations/supabase/client.ts`) pri chýbajúcom `NEXT_PUBLIC_SUPABASE_URL` alebo `NEXT_PUBLIC_SUPABASE_ANON_KEY` (v produkcii) zlyhá bezpečne: `isSupabaseConfigured() === false`, `supabase.auth.*` vráti `session/user = null` so `SupabaseConfigError` (žiadna sieťová požiadavka, žiadny TypeError), ostatné API (`from`, `storage`, `rpc`, …) hodia `SupabaseConfigError`; jeden diagnostický riadok cez `console.error` iba s názvami premenných (`console.warn` by produkčný build odstránil — `removeConsole` ponecháva iba `error`). Žiadny fallback kľúč, žiadny service role v klientovi. Prihlasovací formulár je vypnutý so slovenským upozornením (`integrations/supabase/__tests__/client-unconfigured.test.tsx`). `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` browser klient nečíta.
 - Regresia rozostupov prihlasovacieho formulára: `<fieldset className="contents">` (vypínanie polí) zrušil `space-y-3` formulára (polia neboli priame deti). Oprava: `fieldset` má `contents m-0 min-w-0 space-y-3 border-0 p-0`; `space-y-3` cieli margin detí, takže funguje aj pri `display: contents`. Namerané 12 px medzi poliami pri 390 px aj 1280 px, v nekonfigurovanom stave sú vypnuté všetky prvky formulára (smoke `login form layout @390px/@1280px`, prah ≥ 8 px).
 - Článok blogu (`/blog/[slug]`): súvislé riadky `- ` sa zoskupujú do `<ul className="list-disc ml-4 mb-4">` s `<li>` (`lib/blog/content-blocks.ts`, `lib/blog/__tests__/content-blocks.test.ts`); axe `listitem`/`list` je na kontrolovaných stránkach regresia.
 - Root `viewport` nevypína zoom (žiadne `maximumScale`/`userScalable`); prihlasovacie polia majú `text-base md:text-sm` proti iOS auto-zoomu. Metadáta blogu (dátum, čas čítania, „Autor“) `text-foreground/60` namiesto `/40` (bolo 3.81:1). Axe na `/auth/login`, `/auth/register`, `/blog`, `/blog/[slug]`: 0 `meta-viewport`, 0 serious `color-contrast`, 0 `listitem` (`lib/__tests__/a11y-viewport-contrast.test.ts`, smoke axe). Správanie zoomu na reálnom iOS zariadení `IMPLEMENTED_UNVERIFIED`.
+
+
+## 13. Aktuálny produkčný záznam (2026-10-12)
+
+- Produkčný `main`: `bf00a3a77ab2069778c97842ad95c40a8c1ce25e`.
+- Produkčný Supabase: `tlmuvzrgighahnjkxoyw`; zakázaný projekt `pptkimvmhekrovsltdqv` sa nesmie použiť.
+- Produkčný read-only smoke: 45 passed, 0 failed, 20 skipped, 1 018 GET požiadaviek, 0 HTTP 5xx.
+- Health: lokálny aj verejný `/api/healthz/` HTTP 200.
+- Obmedzenie dôkazu: write guard, cross-origin probe a service-worker write probe neboli proti produkcii odoslané; výsledok je runtime/read-only dôkaz, nie dôkaz produkčného zápisu.
+- ICO Atlas runtime autentifikácia je otvorená prevádzková kontrola a nesmie sa označiť ako funkčná bez samostatného HTTP testu bez zverejnenia key.
