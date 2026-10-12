@@ -29,7 +29,7 @@ Zistenia AI zostávajú hypotézami, kým nie sú naviazané na overený zdroj. 
 
 ### Asset Timeline Forensics — „Časostroj majetku & Detektor bielych koní“
 
-PR [#61](https://github.com/youh4ck3dme/forenx-pandora-os/pull/61) pridáva workflow na koreláciu udalostí súvisiacich s majetkom v rámci prípadu, naviazaný na dôkazy. **Zmena ešte nie je zlúčená ani nasadená a jej databázová migrácia nebola aplikovaná v produkcii.** Funkciu nemožno považovať za dostupnú v živej aplikácii, kým sa tieto kroky nedokončia.
+PR [#61](https://github.com/youh4ck3dme/forenx-pandora-os/pull/61) pridal workflow na koreláciu udalostí súvisiacich s majetkom v rámci prípadu, naviazaný na dôkazy. Zmeny sú súčasťou produkčného main bf00a3a77ab2069778c97842ad95c40a8c1ce25e a obe Asset Timeline migrácie sú potvrdené v histórii produkčného Supabase projektu. Dostupnosť konkrétneho autentifikovaného workflowu sa overuje samostatným end-to-end testom; read-only produkčný smoke potvrdzuje runtime, routing a bezpečnostné hranice.
 
 Návrh workflowu:
 
@@ -52,7 +52,7 @@ Návrh workflowu:
 | Proces | PM2 `pandora-browser`, port `3005` |
 | Reverse proxy | nginx |
 | Produkčná databáza | Supabase projekt `tlmuvzrgighahnjkxoyw` |
-| Baseline vetvy main | `2a8caca485467bbc09ecbd3e49e98a727ce78a1c` |
+| Produkčný main | `bf00a3a77ab2069778c97842ad95c40a8c1ce25e` |
 
 Oficiálny vstupný bod VPS releasu je `scripts/deploy/staging-update.sh`. Predvolene vykoná dry-run, nový release zostaví a smoke-testuje oddelene ešte pred prepnutím, následne reloadne PM2 a pri zlyhaní vykoná rollback. Databázové migrácie **nespúšťa**; ich nasadenie je samostatný kontrolovaný krok.
 
@@ -63,7 +63,7 @@ Schéma Supabase/PostgreSQL je verzovaná v `supabase/migrations/`. Produkčný 
 - Pred aplikáciou migrácie skontroluj stav migrácií a presný plán zmien.
 - `supabase db reset` nikdy nepoužívaj v produkcii.
 - Neupravuj produkčnú schému ručne ani históriu migrácií bez dôkazov.
-- Migrácia Asset Timeline `20261010120000_asset_timeline_forensics.sql` je po zlúčení PR #61 súčasťou vetvy `main`, ale **nie je aplikovaná v produkcii**.
+- Migrácie Asset Timeline `20261010120000_asset_timeline_forensics.sql` a `20261010210000_asset_timeline_post_merge_hardening.sql` sú súčasťou `main` a ich záznamy sú potvrdené v produkčnej histórii Supabase.
 
 ## AI
 
@@ -79,7 +79,7 @@ npx vitest run
 npm run build
 ```
 
-Správanie databázy vyžaduje overenie migrácií a RLS voči zamýšľanej databáze. Úspešný unit test, build ani health endpoint samostatne nedokazujú produkčné správanie. Produkčný smoke endpoint je `/api/healthz`.
+Správanie databázy vyžaduje overenie migrácií a RLS voči zamýšľanej databáze. Úspešný unit test, build ani health endpoint samostatne nedokazujú produkčné správanie. Produkčný read-only smoke sa spúšťa cez `SMOKE_READONLY=1 npm run test:smoke:prod`; aktuálny dôkaz je vedený v `docs/PRODUCTION-STATUS.md`.
 
 ## Postup release a deploy
 
@@ -98,15 +98,16 @@ Správanie databázy vyžaduje overenie migrácií a RLS voči zamýšľanej dat
 - Zachovaj nemenné dôkazy a auditné záznamy; staršie behy analýzy neprepisuj.
 - Do dokumentácie nezapisuj secrets ani citlivé prevádzkové konfigurácie.
 
-## Aktuálny stav — 10. október 2026
+## Aktuálny stav — 12. október 2026
 
-- **Produkčný runtime:** Verejná aplikácia aj `/api/healthz` v čase aktualizácie README vrátili HTTP 200.
-- **Oprava Autopilot 403:** Overená: HTTP 200 a dokončený workflow.
-- **Aktuálny `main`:** merge commit PR #61 `f08cdb839aa7d9312138d9735bdf55c930ce7868`.
-- **Produkčný baseline:** pred nasadením PR #61 zostáva `2a8caca485467bbc09ecbd3e49e98a727ce78a1c`.
-- **Asset Timeline Forensics PR #61:** zlúčený do `main`, ale ešte nenasadený; migrácia nie je aplikovaná v produkcii.
-- **Secrets:** V README nie sú uvedené žiadne prihlasovacie údaje ani kľúče.
-
+- **Produkčný runtime:** `https://pandora.whoiswho.at` beží na main `bf00a3a77ab2069778c97842ad95c40a8c1ce25e`; lokálny aj verejný `/api/healthz/` vrátili HTTP 200.
+- **Produkčný deploy:** atomický release prebehol cez `scripts/deploy/staging-update.sh`; PM2 proces `pandora-browser` je online.
+- **PWA:** `/sw.js` vracia HTTP 200 a produkčný runtime používa kill-switch service worker bez fetch cache handlera.
+- **Read-only smoke:** 45 testov prešlo, 0 zlyhalo a 20 bolo preskočených; 1 018 požiadaviek bolo GET na produkčnom origin-e. Preskočené boli write/probe testy, preto tento výsledok sám osebe nepotvrdzuje produkčné odoslanie zápisu ani cross-origin obídenie cez service worker.
+- **Oprava Autopilot 403:** predchádzajúci produkčný smoke potvrdil HTTP 200 a vytvorenie workflowu; neskoršie overenia musia používať bezpečný syntetický prípad a normálny AI súhlas.
+- **Asset Timeline Forensics:** obe migrácie (`20261010120000` a `20261010210000`) sú v produkčnej histórii Supabase projektu `tlmuvzrgighahnjkxoyw`.
+- **ICO Atlas:** stav runtime kľúča sa v dokumentácii nepredpokladá ani nezverejňuje; pred použitím ICO workflowu treba samostatne overiť dostupnosť a autentifikáciu `ICO_ATLAS_API_URL`/`ICO_ATLAS_API_KEY`.
+- **Secrets:** README neobsahuje prihlasovacie údaje ani kľúče.
 ## Licencia
 
 WTFPL — Do What The Fuck You Want To Public License.
