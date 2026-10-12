@@ -230,6 +230,114 @@ function parseRpoTextOrHtml(content: string): ExtendedRegistryProfile {
   }
 }
 
+/** Povolený formát IČO: 6–8 číslic (medzery sa ignorujú). */
+const ICO_INPUT_PATTERN = /^\d{6,8}$/
+
+type IcoAtlasConfig = { baseUrl: string; apiKey: string }
+
+/**
+ * Načíta konfiguráciu ICO Atlas zo serverových ENV (ICO_ATLAS_API_URL, ICO_ATLAS_API_KEY).
+ * Fail-closed: bez kľúča alebo bez platnej https:// URL vráti null a online lookup sa nevykoná.
+ */
+export function getIcoAtlasConfig(): IcoAtlasConfig | null {
+  const rawUrl = process.env.ICO_ATLAS_API_URL?.trim()
+  const apiKey = process.env.ICO_ATLAS_API_KEY?.trim()
+  if (!rawUrl || !apiKey) return null
+  let parsed: URL
+  try {
+    parsed = new URL(rawUrl)
+  } catch {
+    return null
+  }
+  if (parsed.protocol !== 'https:') return null
+  return { baseUrl: rawUrl.replace(/\/+$/, ''), apiKey }
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+/**
+ * Mapuje odpoveď ICO Atlas `GET /api/v1/companies/sk/{ico}` na existujúci dátový model.
+ * Vyhodí chybu, ak chýbajú povinné polia (ico, legalName).
+ */
+export function mapIcoAtlasResponse(raw: unknown, requestedIco: string): ExtendedRegistryProfile {
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('ICO Atlas: neplatná odpoveď (nie je objekt).')
+  }
+  const data = raw as Record<string, unknown>
+  const ico = normalizeIco(String(data.ico ?? '')) || requestedIco
+  const legalName = optionalString(data.legalName)
+  if (!legalName) {
+    throw new Error('ICO Atlas: odpoveď neobsahuje legalName.')
+  }
+
+  const statutoryPersons = Array.isArray(data.statutoryPersons)
+    ? data.statutoryPersons
+        .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object' && !!optionalString((p as Record<string, unknown>).name))
+        .map((p) => ({
+          name: optionalString(p.name) as string,
+          role: optionalString(p.role),
+          validFrom: optionalString(p.validFrom),
+          validTo: optionalString(p.validTo),
+        }))
+    : []
+
+  const businessActivities = Array.isArray(data.businessActivities)
+    ? data.businessActivities.map((a) => String(a).trim()).filter(Boolean)
+    : []
+
+  const src = data.source && typeof data.source === 'object' ? (data.source as Record<string, unknown>) : {}
+
+  return {
+    ico,
+    legalName: normalizeCompanyName(legalName) || legalName,
+    legalForm: optionalString(data.legalForm),
+    registeredAddress: optionalString(data.registeredAddress),
+    country: optionalString(data.country) || 'SK',
+    status: optionalString(data.status),
+    incorporatedAt: optionalString(data.incorporatedAt),
+    statutoryPersons,
+    businessActivities,
+    source: {
+      id: `ico-atlas-${ico}-${Date.now()}`,
+      source: 'ico-atlas',
+      sourceVersion: optionalString(src.sourceVersion) ?? optionalString(src.source),
+      sourceUrl: optionalString(src.sourceUrl),
+      capturedAt: optionalString(src.capturedAt) || new Date().toISOString(),
+    },
+  }
+}
+
+/**
+ * Online lookup cez ICO Atlas. Vráti null pri chýbajúcej/nebezpečnej konfigurácii,
+ * pri ne-2xx odpovedi alebo sieťovej chybe. Kľúč ani hlavičky sa nikdy nelogujú.
+ */
+async function fetchIcoAtlasProfile(ico: string): Promise<ExtendedRegistryProfile | null> {
+  const config = getIcoAtlasConfig()
+  if (!config) return null
+
+  const url = `${config.baseUrl}/api/v1/companies/sk/${encodeURIComponent(ico)}`
+  try {
+    const res = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (!res.ok) {
+      console.warn(`[PΛND0RΛ Registry] ICO Atlas lookup pre IČO ${ico} zlyhal: HTTP ${res.status}`)
+      return null
+    }
+    return mapIcoAtlasResponse(await res.json(), ico)
+  } catch (e) {
+    const reason = e instanceof Error ? e.name : 'UnknownError'
+    console.warn(`[PΛND0RΛ Registry] ICO Atlas lookup pre IČO ${ico} zlyhal: ${reason}`)
+    return null
+  }
+}
+
 /**
  * 2. Vyhľadá spoločnosť podľa IČO s využitím lokálnej vyrovnávacej pamäte (IndexedDB / memory).
  * Ak je požiadavka v cache, neťahá dáta zbytočne znova.
@@ -239,7 +347,12 @@ export async function lookupCompanyByIco(ico: string): Promise<ExtendedRegistryP
     throw new Error('IČO je povinné pre vyhľadanie v registri.')
   }
 
-  const normalized = normalizeIco(ico) || ico.trim().replace(/\s/g, '').padStart(8, '0')
+  const digits = ico.replace(/\s/g, '')
+  if (!ICO_INPUT_PATTERN.test(digits)) {
+    throw new Error('IČO musí obsahovať 6 až 8 číslic.')
+  }
+
+  const normalized = normalizeIco(digits) || digits.padStart(8, '0')
 
   // 1. Skontroluj vyrovnávaciu pamäť (in-memory + IndexedDB)
   const cached = await getCachedProfile(normalized)
@@ -247,28 +360,12 @@ export async function lookupCompanyByIco(ico: string): Promise<ExtendedRegistryP
     return cached
   }
 
-  // 2. Skús online lookup cez WhoIsWho / RPO API, ak je zadaná konfigurácia
-  const rpoApiUrl = process.env.RPO_API_URL || process.env.WHOISWHO_API_URL
-  if (rpoApiUrl) {
-    try {
-      const url = `${rpoApiUrl.replace(/\/+$/, '')}/api/v1/company/${encodeURIComponent(normalized)}`
-      const headers: Record<string, string> = { 'Accept': 'application/json' }
-      if (process.env.WHOISWHO_API_KEY) {
-        headers['Authorization'] = `Bearer ${process.env.WHOISWHO_API_KEY}`
-      }
-
-      const res = await fetch(url, { headers })
-      if (res.ok) {
-        const json = await res.json()
-        const parsed = parseRpoExtract(json)
-        await setCachedProfile(normalized, parsed)
-        return parsed
-      }
-    } catch (e) {
-      console.warn(`[PΛND0RΛ Registry] Online RPO lookup zlyhal pre IČO ${normalized}, prepínam na RPO parser engine:`, e)
-    }
+  // 2. Online lookup cez ICO Atlas (GET /api/v1/companies/sk/{ico}, Bearer kľúč), ak je konfigurácia platná
+  const online = await fetchIcoAtlasProfile(normalized)
+  if (online) {
+    await setCachedProfile(normalized, online)
+    return online
   }
-
   // 3. Využitie overeného RPO parsera pre generovanie profilu
   const profile = parseRpoExtract({
     ico: normalized,
