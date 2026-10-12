@@ -1,5 +1,8 @@
 # Produkčné nasadenie (runbook)
 
+> **Aktuálny produkčný záznam (2026-10-12):** Produkcia beží na main `bf00a3a77ab2069778c97842ad95c40a8c1ce25e` v `/var/www/pandora-browser`. Aktívny proces je PM2 `pandora-browser` na porte 3005. Produkčný Supabase projekt je `tlmuvzrgighahnjkxoyw`; projekt `pptkimvmhekrovsltdqv` je zakázaný. Lokálny aj verejný `/api/healthz/` vrátili HTTP 200 a `/sw.js` HTTP 200. Read-only produkčný smoke prešiel s 45 passed / 0 failed / 20 skipped a 1 018 GET požiadavkami. Write/cross-origin/service-worker probe testy boli v produkcii preskočené a musia zostať označené ako neoverené.
+
+
 Pred deploymentom musí byť splnený kanonický kontrakt v [System Source of Truth](SOURCE-OF-TRUTH.md). Tento runbook rieši operácie nasadenia; nenahrádza overenie dátovej integrity, MCP workflowu ani staging regresie.
 
 Poradie krokov: **1. kľúče a ENV → 2. Supabase → 3. S3 → 4. Vercel a/alebo VPS → 5. overenie.**
