@@ -56,6 +56,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const m2mSecret = process.env.FORENZX_M2M_SECRET?.trim();
+  if (
+    process.env.NODE_ENV === "production" &&
+    (!m2mSecret || Buffer.byteLength(m2mSecret, "utf8") < 32)
+  ) {
+    return NextResponse.json({ error: "Signed evidence capabilities are not configured." }, { status: 503 });
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -120,6 +128,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { status: 403 }
     );
   }
+  if (process.env.NODE_ENV === "production" && (!evidenceRow.case_id || !evidenceRow.sha256_hash)) {
+    return NextResponse.json({ error: "Verified evidence metadata is incomplete for capability signing." }, { status: 503 });
+  }
 
   try {
     const presigned = await generateEvidencePresignedUrl(s3_object_key);
@@ -135,9 +146,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const filename = presigned.filename || evidenceRow.file_name || "evidence.bin";
 
-    // Issue a signed capability if FORENZX_M2M_SECRET is configured.
-    // Falls back to legacy response (raw URL only) so existing webhooks keep working
-    // while the secret is not yet provisioned.
+    // Development can retain the legacy response during migration. Production
+    // fails closed above unless the capability can be signed.
     let capability: ReturnType<typeof generateEvidenceCapability> | undefined;
     if (process.env.FORENZX_M2M_SECRET?.trim() && evidenceRow.case_id && evidenceRow.sha256_hash) {
       capability = generateEvidenceCapability(

@@ -20,13 +20,16 @@ export const SECRET = new Set([
   "SUPABASE_SERVICE_ROLE_KEY",
   "S3_ACCESS_KEY_ID",
   "S3_SECRET_ACCESS_KEY",
+  "FORENZX_S3_ACCESS_KEY_ID",
+  "FORENZX_S3_SECRET_ACCESS_KEY",
+  "FORENZX_M2M_SECRET",
+  "FORENZX_WEBHOOK_SECRET",
   "MISTRAL_API_KEY",
   "MISTRAL_API_KEY_CHAT",
   "MISTRAL_API_KEY_ANALYSIS",
   "GEMINI_API_KEY",
   "OPENAI_API_KEY",
-  "STRIPE_SECRET_KEY",
-  "STRIPE_WEBHOOK_SECRET",
+  "SUMUP_API_KEY",
   "WHOISWHO_API_KEY",
   "ICO_ATLAS_API_KEY",
   "FORENX_AI_WORKER_KEY",
@@ -45,6 +48,17 @@ export const REQUIRED = [
   "S3_BUCKET",
   "S3_ACCESS_KEY_ID",
   "S3_SECRET_ACCESS_KEY",
+  "FORENZX_S3_REGION",
+  "FORENZX_S3_BUCKET",
+  "FORENZX_S3_ACCESS_KEY_ID",
+  "FORENZX_S3_SECRET_ACCESS_KEY",
+  "FORENZX_M2M_SECRET",
+  "FORENZX_EVIDENCE_WEBHOOK_URL",
+  "FORENZX_WEBHOOK_SECRET",
+  "SUMUP_API_KEY",
+  "SUMUP_MERCHANT_CODE",
+  "SUMUP_ENVIRONMENT",
+  "CRON_SECRET",
 ];
 
 /**
@@ -62,7 +76,7 @@ export const FORBIDDEN_IN_PRODUCTION = ["VAULT_FALLBACK_SECRET"];
 const PLACEHOLDER = /your[-_]|placeholder|changeme|example\.(com|invalid)|xxx|<[^>]*>|\.\.\.|…/i;
 const isPlaceholder = (key, value) => {
   // Hetzner's documented S3 hostname literally contains "your-objectstorage".
-  if (key === "S3_ENDPOINT" && /^https:\/\/[a-z0-9-]+\.your-objectstorage\.com(?:\/|$)/i.test(value)) {
+  if (["S3_ENDPOINT", "FORENZX_S3_ENDPOINT"].includes(key) && /^https:\/\/[a-z0-9-]+\.your-objectstorage\.com(?:\/|$)/i.test(value)) {
     return false;
   }
   return PLACEHOLDER.test(value);
@@ -137,6 +151,27 @@ export function checkEnv(env, keys) {
   const cron = env.get("CRON_SECRET");
   if (cron && cron.length < 32) {
     problems.push({ level: "error", key: "CRON_SECRET", issue: "musí mať aspoň 32 znakov (kratší endpoint odmietne)" });
+  }
+  const m2mSecret = env.get("FORENZX_M2M_SECRET");
+  if (m2mSecret && m2mSecret.length < 32) {
+    problems.push({ level: "error", key: "FORENZX_M2M_SECRET", issue: "musí mať aspoň 32 znakov" });
+  }
+  const forenzxS3Endpoint = env.get("FORENZX_S3_ENDPOINT");
+  if (forenzxS3Endpoint && !forenzxS3Endpoint.startsWith("https://")) {
+    problems.push({ level: "error", key: "FORENZX_S3_ENDPOINT", issue: "musí začínať https://" });
+  }
+  const evidenceWebhookUrl = env.get("FORENZX_EVIDENCE_WEBHOOK_URL");
+  if (evidenceWebhookUrl && !evidenceWebhookUrl.startsWith("https://")) {
+    problems.push({ level: "error", key: "FORENZX_EVIDENCE_WEBHOOK_URL", issue: "musí začínať https://" });
+  }
+  const sumupKeys = ["SUMUP_API_KEY", "SUMUP_MERCHANT_CODE", "SUMUP_ENVIRONMENT"];
+  if (sumupKeys.some(has)) {
+    for (const key of sumupKeys) {
+      if (!has(key)) problems.push({ level: "error", key, issue: "pri zapnutom SumUp musí byť nastavená celá konfigurácia" });
+    }
+    if (has("SUMUP_ENVIRONMENT") && env.get("SUMUP_ENVIRONMENT") !== "live") {
+      problems.push({ level: "error", key: "SUMUP_ENVIRONMENT", issue: "produkčné predplatné vyžaduje live režim" });
+    }
   }
   const base = env.get("NEXT_PUBLIC_BASE_URL");
   if (base && !base.startsWith("https://")) {

@@ -76,6 +76,32 @@ describe("ForenZX flow: presign-for-hub", () => {
     // Internal metadata must NOT be sent to Hub
     expect(Object.keys(payload)).not.toContain("_presigned_expires_at");
   });
+
+  it("fails closed in production when signed evidence capabilities are not configured", async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalM2mSecret = process.env.FORENZX_M2M_SECRET;
+    process.env.NODE_ENV = "production";
+    delete process.env.FORENZX_M2M_SECRET;
+    try {
+      const { buildForenzxStartPayload } = await import("../forenzx-evidence-presign.server");
+      const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
+
+      await expect(buildForenzxStartPayload({
+        caseId: "case-001",
+        evidenceId: "ev-001",
+        packId: "mobile_compromise",
+        inputType: "ios_backup",
+        s3Key: "evidence/case-001/backup.tar.gz",
+        sha256: "a".repeat(64),
+      })).rejects.toThrow(/Signed evidence capabilities are not configured/);
+      expect(getSignedUrl).not.toHaveBeenCalled();
+    } finally {
+      if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = originalNodeEnv;
+      if (originalM2mSecret === undefined) delete process.env.FORENZX_M2M_SECRET;
+      else process.env.FORENZX_M2M_SECRET = originalM2mSecret;
+    }
+  });
 });
 
 describe("ForenZX flow: webhook header", () => {

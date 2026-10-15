@@ -6,10 +6,10 @@
   "author": "PΛND0RΛ Team",
   "scripts": {
     "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next build",
-    "dev": "next dev",
+    "dev": "next dev -p 3007",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "start": "next start",
+    "start": "next start -p 3007",
     "build:vps": "cross-env NODE_OPTIONS=--max-old-space-size=4096 STANDALONE=true next build",
     "start:vps": "node .next/standalone/server.js",
     "electron:dev": "concurrently \"next dev -p 3001\" \"wait-on http://localhost:3001 && npx tsc -p electron/tsconfig.json && npx tsc -p electron/tsconfig.preload.json && cross-env ELECTRON_START_URL=http://localhost:3001 electron dist-electron/main.mjs\"",
@@ -66,8 +66,8 @@
     "@ghostery/adblocker-electron": "^2.13.2",
     "@monaco-editor/react": "^4.7.0",
     "@mozilla/readability": "^0.6.0",
-    "@stripe/stripe-js": "^9.17.0",
-    "@supabase/supabase-js": "^2.117.2",
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.117.3",
     "@tanstack/react-query": "^5.104.0",
     "@tanstack/react-start": "^1.168.58",
     "@types/jszip": "^3.4.1",
@@ -86,7 +86,7 @@
     "idb-keyval": "^6.2.2",
     "jszip": "^3.10.1",
     "mammoth": "^1.12.3",
-    "next": "15.5.26",
+    "next": "15.5.28",
     "openai": "^6.15.0",
     "pdf-parse": "^2.4.5",
     "pdfjs-dist": "^6.3.289",
@@ -205,6 +205,9 @@
     "zustand": "^5.0.9"
   },
   "overrides": {
+    "next": {
+      "postcss": "8.5.30"
+    },
     "uuid": "11.1.0",
     "shell-quote": "^1.11.0"
   }

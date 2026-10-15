@@ -63,7 +63,7 @@ export default defineConfig({
   webServer: BASE_URL.startsWith('http://localhost')
     ? {
         command: 'npm run dev',
-        url: 'http://localhost:3000',
+        url: 'http://localhost:3007',
         reuseExistingServer: !process.env.CI,
         timeout: 120 * 1000,
       }

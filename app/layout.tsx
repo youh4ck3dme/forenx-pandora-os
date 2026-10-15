@@ -8,6 +8,7 @@ import { ServiceWorkerRegistration } from "@/components/core/providers/service-w
 import { ObservabilityReporter } from "@/components/forza/ObservabilityReporter";
 import { QueryProvider } from "@/components/core/providers/query-provider";
 import { AuthCookieSync } from "@/components/core/providers/auth-cookie-sync";
+import { GoogleAnalyticsConsent } from "@/components/core/providers/google-analytics-consent";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -113,6 +114,7 @@ export default async function RootLayout({
         <QueryProvider>
           <AuthCookieSync />
           <ObservabilityReporter />
+          <GoogleAnalyticsConsent />
           {children}
           <Toaster richColors position="top-right" />
           <ServiceWorkerRegistration />

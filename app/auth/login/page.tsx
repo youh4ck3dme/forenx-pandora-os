@@ -64,6 +64,12 @@ export default function LoginPage() {
           <ArrowLeft className="w-4 h-4" />
           <span className="text-sm">Back</span>
         </Link>
+        <Link
+          href="/pricing"
+          className="absolute top-6 right-6 text-sm text-foreground/60 transition-colors hover:text-foreground"
+        >
+          Cenník
+        </Link>
 
         <div className="flex items-center gap-3 mb-8">
           <div className="relative">

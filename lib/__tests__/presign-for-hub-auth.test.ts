@@ -28,6 +28,8 @@ vi.mock("@/lib/forza/forenzx-download-guard", () => ({
   isValidDownloadUrl: vi.fn().mockReturnValue({ ok: true }),
 }));
 
+import { generateEvidencePresignedUrl } from "@/lib/forza/forenzx-evidence-presign.server";
+
 describe("POST /api/forenzx/presign-for-hub — auth", () => {
   const originalEnv = process.env;
 
@@ -83,6 +85,23 @@ describe("POST /api/forenzx/presign-for-hub — auth", () => {
     });
     const res = await POST(req);
     expect(res.status).toBe(401);
+  });
+
+  it("fails closed in production when the capability signing secret is missing", async () => {
+    process.env.NODE_ENV = "production";
+    delete process.env.FORENZX_M2M_SECRET;
+    const { POST } = await import("@/app/api/forenzx/presign-for-hub/route");
+    const req = new NextRequest("https://pandora.example.com/api/forenzx/presign-for-hub", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer test-secret-value-32chars-exactly!!",
+      },
+      body: JSON.stringify({ s3_object_key: "case/file.pdf" }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(503);
+    expect(generateEvidencePresignedUrl).not.toHaveBeenCalled();
   });
 
   it("rejects caller-supplied downloadUrl", async () => {

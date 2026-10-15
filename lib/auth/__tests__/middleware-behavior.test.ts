@@ -129,6 +129,24 @@ describe('Middleware - Page Routes Redirect to Login', () => {
     expect(location).toContain('/auth');
     expect(location).not.toContain('next=');
   });
+
+  test('allows the SumUp Payment Widget SDK and frame in the CSP', async () => {
+    const request = new NextRequest('http://localhost/forza/predplatne', {
+      method: 'GET',
+    });
+
+    const response = await callMiddleware(request);
+    const csp = response.headers.get('content-security-policy') ?? '';
+    const directives = new Map(
+      csp.split(';').map((directive) => {
+        const value = directive.trim();
+        return [value.split(/\s+/, 1)[0], value];
+      }),
+    );
+
+    expect(directives.get('script-src')).toContain('https://gateway.sumup.com');
+    expect(directives.get('frame-src')).toBe("frame-src 'self' https://gateway.sumup.com");
+  });
 });
 
 describe('Middleware - Public Page Routes Pass Through', () => {

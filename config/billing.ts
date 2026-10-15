@@ -1,6 +1,6 @@
 /**
- * Konfigurácia plánov. Ceny sú TESTOVACIE, nie finálny cenník.
- * price_id sú stabilné identifikátory (rovnaké v testovacom aj živom prostredí).
+ * Konfigurácia plánov. SumUp spracúva každú obnovovaciu platbu cez uložený
+ * platobný token; cenu a interval určuje táto serverová konfigurácia.
  */
 export type PlanId = "free" | "pro";
 
@@ -31,21 +31,21 @@ export const PLANS: Record<PlanId, PlanConfig> = {
     currency: "EUR",
     interval: null,
     priceId: null,
-    quotas: { aiPerDay: 25, importRows: 2000 },
+    quotas: { aiPerDay: 5, importRows: 2000 },
     features: [
       "Neobmedzené prípady a transakcie",
       "Deterministické nálezy a správa so zdrojmi",
-      "25 AI odpovedí denne",
+      "5 AI odpovedí denne",
     ],
   },
   pro: {
     id: "pro",
-    name: "Pro (testovacia cena)",
+    name: "Pro",
     description: "Vyšší limit serverových služieb pre intenzívnu prácu.",
-    amount: 29,
+    amount: 99,
     currency: "EUR",
     interval: "month",
-    priceId: "pro_monthly",
+    priceId: "sumup_pro_monthly",
     quotas: { aiPerDay: 200, importRows: 50000 },
     features: [
       "200 AI odpovedí denne",
