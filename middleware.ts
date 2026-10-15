@@ -319,6 +319,8 @@ function buildCsp(nonce: string, isDev: boolean): string {
   const scriptSrc = [
     "'self'",
     `'nonce-${nonce}'`,
+    // SumUp's Payment Widget SDK is hosted on this origin.
+    "https://gateway.sumup.com",
     ...(process.env.NEXT_PUBLIC_ENABLE_ANALYTICS === 'true' &&
     /^G-[A-Z0-9]+$/.test(process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID ?? '')
       ? ['https://www.googletagmanager.com']
@@ -333,6 +335,7 @@ function buildCsp(nonce: string, isDev: boolean): string {
     "img-src 'self' data: blob: https:",
     "font-src 'self' data:",
     `connect-src ${connectSrc}`,
+    "frame-src 'self' https://gateway.sumup.com",
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
