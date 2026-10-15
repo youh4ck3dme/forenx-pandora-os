@@ -137,10 +137,15 @@ describe('Middleware - Page Routes Redirect to Login', () => {
 
     const response = await callMiddleware(request);
     const csp = response.headers.get('content-security-policy') ?? '';
+    const directives = new Map(
+      csp.split(';').map((directive) => {
+        const value = directive.trim();
+        return [value.split(/\s+/, 1)[0], value];
+      }),
+    );
 
-    expect(csp).toContain("script-src");
-    expect(csp).toContain('https://gateway.sumup.com');
-    expect(csp).toContain("frame-src 'self' https://gateway.sumup.com");
+    expect(directives.get('script-src')).toContain('https://gateway.sumup.com');
+    expect(directives.get('frame-src')).toBe("frame-src 'self' https://gateway.sumup.com");
   });
 });
 
