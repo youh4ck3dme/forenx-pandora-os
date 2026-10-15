@@ -64,6 +64,12 @@ function getRouteCategory(pathname: string): { category: RouteCategory; pattern:
     // Machine-to-machine: cron drains the ForenZX dispatch outbox
     { pattern: '/api/forenzx/dispatch-outbox', category: 'SYSTEM' },
     { pattern: '/api/forenzx/dispatch-outbox/*', category: 'SYSTEM' },
+    // Machine-to-machine: SumUp confirms payment state through its API callback
+    { pattern: '/api/billing/sumup-webhook', category: 'SYSTEM' },
+    { pattern: '/api/billing/sumup-webhook/*', category: 'SYSTEM' },
+    // Machine-to-machine: scheduled SumUp renewals authenticate with CRON_SECRET
+    { pattern: '/api/billing/renewals', category: 'SYSTEM' },
+    { pattern: '/api/billing/renewals/*', category: 'SYSTEM' },
     // Standard system routes
     { pattern: '/.well-known/*', category: 'SYSTEM' },
 
@@ -122,7 +128,10 @@ function getSupabaseClient() {
   if (_middlewareSupabase) return _middlewareSupabase;
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+  const supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_PUBLISHABLE_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
     console.error('[middleware] Supabase configuration missing');
@@ -171,7 +180,7 @@ async function getSessionFromRequest(request: NextRequest): Promise<{
 
     // 2. Check sb-access-token cookie
     let accessToken = request.cookies.get('sb-access-token')?.value;
-    const refreshToken = request.cookies.get('sb-refresh-token')?.value;
+    let refreshToken = request.cookies.get('sb-refresh-token')?.value;
 
     // 3. Check standard Supabase auth cookie (e.g. sb-<project-ref>-auth-token)
     if (!accessToken) {
@@ -184,8 +193,9 @@ async function getSessionFromRequest(request: NextRequest): Promise<{
               : JSON.parse(raw);
             if (parsed?.access_token) {
               accessToken = parsed.access_token;
-              break;
             }
+            if (parsed?.refresh_token) refreshToken = parsed.refresh_token;
+            if (accessToken && refreshToken) break;
           } catch {
             // ignore malformed cookie
           }
@@ -309,6 +319,10 @@ function buildCsp(nonce: string, isDev: boolean): string {
   const scriptSrc = [
     "'self'",
     `'nonce-${nonce}'`,
+    ...(process.env.NEXT_PUBLIC_ENABLE_ANALYTICS === 'true' &&
+    /^G-[A-Z0-9]+$/.test(process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID ?? '')
+      ? ['https://www.googletagmanager.com']
+      : []),
     ...(isDev ? ["'unsafe-eval'"] : []),
   ].join(' ');
 

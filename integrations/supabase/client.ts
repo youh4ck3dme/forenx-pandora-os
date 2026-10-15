@@ -72,7 +72,8 @@ function resolvePublicConfig(): PublicSupabaseConfig {
 
   const key =
     (typeof process !== "undefined" &&
-      (process.env?.["NEXT_PUBLIC_SUPABASE_ANON_KEY"] ||
+      (process.env?.["NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"] ||
+        process.env?.["NEXT_PUBLIC_SUPABASE_ANON_KEY"] ||
         process.env?.["SUPABASE_PUBLISHABLE_KEY"])) ||
     viteEnv?.["VITE_SUPABASE_PUBLISHABLE_KEY"] ||
     (isDev ? "placeholder-publishable-key" : undefined);

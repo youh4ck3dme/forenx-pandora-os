@@ -140,6 +140,75 @@ export type Database = {
         };
         Relationships: [];
       };
+      billing_payment_attempts: {
+        Row: {
+          attempt_number: number;
+          checkout_id: string | null;
+          checkout_reference: string;
+          created_at: string;
+          environment: string;
+          error_code: string | null;
+          id: string;
+          period_end: string;
+          status: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          attempt_number: number;
+          checkout_id?: string | null;
+          checkout_reference: string;
+          created_at?: string;
+          environment: string;
+          error_code?: string | null;
+          id?: string;
+          period_end: string;
+          status?: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          attempt_number?: number;
+          checkout_id?: string | null;
+          checkout_reference?: string;
+          created_at?: string;
+          environment?: string;
+          error_code?: string | null;
+          id?: string;
+          period_end?: string;
+          status?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      billing_payment_methods: {
+        Row: {
+          created_at: string;
+          customer_id: string;
+          environment: string;
+          payment_instrument_token: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          customer_id: string;
+          environment: string;
+          payment_instrument_token: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          customer_id?: string;
+          environment?: string;
+          payment_instrument_token?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       evidence_items: {
         Row: {
           id: string;
@@ -1214,8 +1283,14 @@ export type Database = {
           plan: string;
           price_id: string | null;
           provider: string;
+          recurring_consent_at: string | null;
+          recurring_consent_version: string | null;
+          renewal_attempt_count: number;
+          renewal_claimed_at: string | null;
+          renewal_next_attempt_at: string | null;
           status: string;
           subscription_id: string | null;
+          trial_used: boolean;
           updated_at: string;
           user_id: string;
         };
@@ -1230,8 +1305,14 @@ export type Database = {
           plan?: string;
           price_id?: string | null;
           provider?: string;
+          recurring_consent_at?: string | null;
+          recurring_consent_version?: string | null;
+          renewal_attempt_count?: number;
+          renewal_claimed_at?: string | null;
+          renewal_next_attempt_at?: string | null;
           status?: string;
           subscription_id?: string | null;
+          trial_used?: boolean;
           updated_at?: string;
           user_id: string;
         };
@@ -1246,8 +1327,14 @@ export type Database = {
           plan?: string;
           price_id?: string | null;
           provider?: string;
+          recurring_consent_at?: string | null;
+          recurring_consent_version?: string | null;
+          renewal_attempt_count?: number;
+          renewal_claimed_at?: string | null;
+          renewal_next_attempt_at?: string | null;
           status?: string;
           subscription_id?: string | null;
+          trial_used?: boolean;
           updated_at?: string;
           user_id?: string;
         };
@@ -1341,6 +1428,17 @@ export type Database = {
         Returns: { chain_seq: number; event_id: string; problem: string }[];
       };
       current_plan: { Args: { _user: string }; Returns: string };
+      claim_sumup_due_subscriptions: {
+        Args: { _environment: string; _batch_size?: number };
+        Returns: {
+          user_id: string;
+          customer_id: string | null;
+          period_end: string;
+          status: string;
+          cancel_at_period_end: boolean;
+          renewal_attempt_count: number;
+        }[];
+      };
       db_health_stats: { Args: never; Returns: Json };
       has_role: {
         Args: {

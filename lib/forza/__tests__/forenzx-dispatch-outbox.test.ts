@@ -104,6 +104,8 @@ describe("forenzx dispatch outbox", () => {
     };
     const cron = vercel.crons?.find((entry) => entry.path === "/api/forenzx/dispatch-outbox");
     expect(cron?.schedule).toBe("*/5 * * * *");
+    const billingCron = vercel.crons?.find((entry) => entry.path === "/api/billing/renewals");
+    expect(billingCron?.schedule).toBe("*/5 * * * *");
     const route = readFileSync("app/api/forenzx/dispatch-outbox/route.ts", "utf8");
     expect(route).toContain("export const GET = handle");
     expect(route).toContain("export const POST = handle");

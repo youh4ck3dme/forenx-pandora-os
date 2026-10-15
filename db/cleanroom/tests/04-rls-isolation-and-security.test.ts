@@ -21,6 +21,18 @@ describe("Regression Suite: 04 - RLS Multi-Tenant Isolation & Table Hardening", 
       tx.query("INSERT INTO public.rate_limits (key, count, window_start, expires_at) VALUES ('secret_key', 1, NOW(), NOW() + INTERVAL '1 hour')")
     );
 
+    // SumUp tokens and payment attempts are server-only billing records.
+    await asServiceRole(db, async (tx) => {
+      await tx.query(
+        "INSERT INTO public.billing_payment_methods (user_id, environment, customer_id, payment_instrument_token) VALUES ($1, 'sandbox', 'customer-test', 'token-test')",
+        [user],
+      );
+      await tx.query(
+        "INSERT INTO public.billing_payment_attempts (user_id, environment, period_end, attempt_number, checkout_reference) VALUES ($1, 'sandbox', NOW(), 1, 'fxr-test-1')",
+        [user],
+      );
+    });
+
     // 1. Direct SELECT: anon and authenticated get permission denied (table privilege revoked)
     await expect(
       asAnon(db, (tx) => tx.query("SELECT * FROM public.rate_limits"))
@@ -28,6 +40,13 @@ describe("Regression Suite: 04 - RLS Multi-Tenant Isolation & Table Hardening", 
 
     await expect(
       asAuthenticated(db, user, (tx) => tx.query("SELECT * FROM public.rate_limits"))
+    ).rejects.toThrow(/permission denied/);
+
+    await expect(
+      asAuthenticated(db, user, (tx) => tx.query("SELECT * FROM public.billing_payment_methods"))
+    ).rejects.toThrow(/permission denied/);
+    await expect(
+      asAuthenticated(db, user, (tx) => tx.query("SELECT * FROM public.billing_payment_attempts"))
     ).rejects.toThrow(/permission denied/);
 
     // 2. Direct INSERT: blocked by permission denied
@@ -198,7 +217,7 @@ describe("Regression Suite: 04 - RLS Multi-Tenant Isolation & Table Hardening", 
         "SELECT * FROM public.assert_rls_enabled_on_all_tables()"
       );
 
-      expect(res.rows.length).toBe(21);
+      expect(res.rows.length).toBe(23);
       for (const row of res.rows) {
         expect(row.is_secure, `Table ${row.table_name} must have rowsecurity = true`).toBe(true);
       }

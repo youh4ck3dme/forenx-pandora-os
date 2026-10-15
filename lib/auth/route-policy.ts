@@ -22,6 +22,7 @@ export const PUBLIC_ROUTES = [
   "/blog",
   "/blog/",
   "/blog/[...slug]",
+  "/pricing",
   "/api/csp-report",
   "/api/csp-report/*",
   "/api/healthz",

@@ -93,6 +93,8 @@ describe('Route Classification Logic', () => {
     const systemRoutes = [
       '/healthz',
       '/api/vault/verify',
+      '/api/billing/sumup-webhook',
+      '/api/billing/renewals',
       '/.well-known/security.txt',
     ];
 

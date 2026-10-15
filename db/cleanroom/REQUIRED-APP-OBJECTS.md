@@ -23,8 +23,8 @@
 | **12** | `public.source_snapshots` | Raw HTTP upstream response snapshots, immutable provenance | `lib/forza/import.functions.ts`<br>`case_relations(source_snapshot_id)` | Upstream Provenance |
 | **13** | `public.ai_usage` | LLM token metering, model usage tracking, latency monitoring | `lib/forza/ai.functions.ts`<br>`app/api/health/observe/route.ts` | AI Telemetry |
 | **14** | `public.ai_feature_logs` | AI analysis outputs, prompts, execution timings, error logs | `lib/forza/ai.functions.ts` | AI Telemetry |
-| **15** | `public.subscriptions` | User plan entitlement (`free` vs `pro`), Stripe subscription state | `lib/forza/entitlements.server.ts`<br>`app/account/billing/page.tsx` | Billing & Plans |
-| **16** | `public.billing_events` | Webhook idempotency ledger, Stripe charge events | `app/api/webhooks/stripe/route.ts` | Billing & Plans |
+| **15** | `public.subscriptions` | User plan entitlement, SumUp trial/renewal state and recorded recurring-payment consent | `lib/forza/entitlements.server.ts`<br>`app/api/billing/` | Billing & Plans |
+| **16** | `public.billing_events` | SumUp webhook and setup idempotency ledger | `app/api/billing/sumup-webhook/route.ts` | Billing & Plans |
 | **17** | `public.deletion_requests` | GDPR Art 17 right to erasure requests and tracking | `lib/forza/account.functions.ts`<br>`app/api/account/delete/route.ts` | Compliance |
 | **18** | `public.company_registry_profiles` | ORSR / Commercial register cached snapshots and company profile data | `lib/forza/orsr.functions.ts`<br>`app/api/orsr/route.ts` | Open Source Intelligence |
 | **19** | `public.cross_border_analyses` | International tax routing and shell company structural analysis | `lib/forza/cross-border.functions.ts`<br>`app/cases/[id]/cross-border/` | Graph Intelligence |

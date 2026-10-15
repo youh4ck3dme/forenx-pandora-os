@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS public.subscriptions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   environment TEXT NOT NULL CHECK (environment IN ('sandbox', 'live')),
-  provider TEXT NOT NULL DEFAULT 'stripe',
+  provider TEXT NOT NULL DEFAULT 'sumup',
   customer_id TEXT,
   subscription_id TEXT,
   price_id TEXT,
@@ -155,6 +155,12 @@ CREATE TABLE IF NOT EXISTS public.subscriptions (
   status TEXT NOT NULL DEFAULT 'inactive',
   current_period_end TIMESTAMPTZ,
   cancel_at_period_end BOOLEAN NOT NULL DEFAULT false,
+  trial_used BOOLEAN NOT NULL DEFAULT false,
+  recurring_consent_at TIMESTAMPTZ,
+  recurring_consent_version TEXT,
+  renewal_claimed_at TIMESTAMPTZ,
+  renewal_next_attempt_at TIMESTAMPTZ,
+  renewal_attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (renewal_attempt_count >= 0),
   last_event_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -190,6 +196,7 @@ AS $$
     (SELECT s.plan FROM public.subscriptions s
       WHERE s.user_id = _user
         AND s.status IN ('active', 'trialing', 'past_due')
+        AND s.provider = 'sumup'
         AND (s.current_period_end IS NULL OR s.current_period_end > NOW())
       ORDER BY s.current_period_end DESC NULLS LAST
       LIMIT 1),
@@ -197,11 +204,60 @@ AS $$
   );
 $$;
 
--- 8. BILLING EVENTS (AUDIT / STRIPE WEBHOOKS)
+CREATE OR REPLACE FUNCTION public.claim_sumup_due_subscriptions(
+  _environment TEXT,
+  _batch_size INTEGER DEFAULT 50
+)
+RETURNS TABLE (
+  user_id UUID,
+  customer_id TEXT,
+  period_end TIMESTAMPTZ,
+  status TEXT,
+  cancel_at_period_end BOOLEAN,
+  renewal_attempt_count INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF _environment NOT IN ('sandbox', 'live') THEN
+    RAISE EXCEPTION 'Invalid billing environment';
+  END IF;
+
+  RETURN QUERY
+  WITH due AS (
+    SELECT s.id
+    FROM public.subscriptions s
+    WHERE s.provider = 'sumup'
+      AND s.environment = _environment
+      AND s.plan = 'pro'
+      AND s.status IN ('trialing', 'active', 'past_due')
+      AND s.current_period_end IS NOT NULL
+      AND s.current_period_end <= now()
+      AND (s.renewal_next_attempt_at IS NULL OR s.renewal_next_attempt_at <= now())
+      AND (s.renewal_claimed_at IS NULL OR s.renewal_claimed_at < now() - interval '15 minutes')
+    ORDER BY s.current_period_end
+    LIMIT GREATEST(1, LEAST(COALESCE(_batch_size, 50), 100))
+    FOR UPDATE SKIP LOCKED
+  )
+  UPDATE public.subscriptions s
+  SET renewal_claimed_at = now(),
+      renewal_attempt_count = s.renewal_attempt_count + 1
+  FROM due
+  WHERE s.id = due.id
+  RETURNING s.user_id, s.customer_id, s.current_period_end, s.status,
+            s.cancel_at_period_end, s.renewal_attempt_count;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.claim_sumup_due_subscriptions(TEXT, INTEGER) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_sumup_due_subscriptions(TEXT, INTEGER) TO service_role;
+
+-- 8. BILLING EVENTS (AUDIT / SUMUP PAYMENTS)
 CREATE TABLE IF NOT EXISTS public.billing_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id TEXT NOT NULL UNIQUE,
-  provider TEXT NOT NULL DEFAULT 'stripe',
+  provider TEXT NOT NULL DEFAULT 'sumup',
   type TEXT NOT NULL,
   user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   event_created_at TIMESTAMPTZ,
@@ -214,6 +270,40 @@ CREATE INDEX IF NOT EXISTS idx_billing_events_created ON public.billing_events (
 CREATE INDEX IF NOT EXISTS idx_billing_events_user ON public.billing_events (user_id);
 
 ALTER TABLE public.billing_events ENABLE ROW LEVEL SECURITY;
+
+-- SumUp card tokens are server-only and never exposed through user RLS.
+CREATE TABLE IF NOT EXISTS public.billing_payment_methods (
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  environment TEXT NOT NULL CHECK (environment IN ('sandbox', 'live')),
+  customer_id TEXT NOT NULL,
+  payment_instrument_token TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, environment)
+);
+ALTER TABLE public.billing_payment_methods ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.billing_payment_methods FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.billing_payment_methods TO service_role;
+
+CREATE TABLE IF NOT EXISTS public.billing_payment_attempts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  environment TEXT NOT NULL CHECK (environment IN ('sandbox', 'live')),
+  period_end TIMESTAMPTZ NOT NULL,
+  attempt_number INTEGER NOT NULL CHECK (attempt_number > 0),
+  checkout_reference TEXT NOT NULL UNIQUE,
+  checkout_id TEXT,
+  status TEXT NOT NULL DEFAULT 'prepared' CHECK (status IN ('prepared', 'processing', 'paid', 'failed')),
+  error_code TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, environment, period_end, attempt_number)
+);
+CREATE INDEX IF NOT EXISTS idx_billing_payment_attempts_due
+  ON public.billing_payment_attempts (environment, status, created_at DESC);
+ALTER TABLE public.billing_payment_attempts ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.billing_payment_attempts FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.billing_payment_attempts TO service_role;
 
 -- 9. DELETION REQUESTS (GDPR / COMPLIANCE)
 CREATE TABLE IF NOT EXISTS public.deletion_requests (

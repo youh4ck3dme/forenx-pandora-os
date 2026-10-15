@@ -32,7 +32,8 @@ Internet ──443──▶ nginx (deploy/nginx.conf) ──▶ 127.0.0.1:3005  
 | Supabase | Dashboard → *Project Settings → API Keys* (odporúčané nové `sb_publishable_…` / `sb_secret_…`, potom vypnúť legacy JWT kľúče; rotácia JWT secretu odhlási všetkých) | `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY` |
 | Mistral | console.mistral.ai → *API Keys* (ideálne 2 kľúče: chat / analýza) | `MISTRAL_API_KEY_CHAT` + `MISTRAL_API_KEY_ANALYSIS`, alebo `MISTRAL_API_KEY` |
 | Hetzner S3 | Cloud Console → *Security → S3 credentials* | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` |
-| Stripe (ak sa používa) | Dashboard → *Developers → API keys → Roll key* | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_PAYMENTS_CLIENT_TOKEN` |
+| SumUp API key | SumUp Dashboard → *For Developers → Toolkit → API Keys*; sandbox/live účty majú oddelené kľúče | `SUMUP_API_KEY` |
+| SumUp merchant | Merchant detail v SumUp Dashboarde | `SUMUP_MERCHANT_CODE`, `SUMUP_ENVIRONMENT=live` pre produkciu |
 
 Overenie, že starý kľúč je naozaj zrušený (očakávané `401`):
 
@@ -50,15 +51,21 @@ node scripts/deploy/env.mjs template    # šablóna .env.production s prázdnymi
 node scripts/deploy/env.mjs check <súbor>   # kontrola vyplneného súboru, exit 1 pri chybe
 ```
 
-`check` hlási: chýbajúce povinné premenné, chýbajúci Mistral kľúč, hodnoty, ktoré vyzerajú ako
+`check` vyžaduje aj kompletný live SumUp billing (`SUMUP_API_KEY`, `SUMUP_MERCHANT_CODE`,
+`SUMUP_ENVIRONMENT=live`, `CRON_SECRET` min. 32 znakov a ForenZX webhook URL/secret) a hlási: chýbajúce povinné premenné,
+chýbajúci Mistral kľúč, hodnoty, ktoré vyzerajú ako
 placeholder, tajný kľúč s prefixom `NEXT_PUBLIC_`, nesúlad `SUPABASE_URL` ↔ `NEXT_PUBLIC_SUPABASE_URL`,
 `NEXT_PUBLIC_BASE_URL` bez `https://`, nastavený `VAULT_FALLBACK_SECRET` a na Linuxe práva súboru ≠ 600.
 
 | Skupina | Premenné | Poznámka |
 |---|---|---|
 | **Povinné** | `NEXT_PUBLIC_BASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` + aspoň jeden Mistral kľúč | bez S3 vault v produkcii **zámerne zlyhá** (žiadny in-memory fallback) |
+| **ForenZX dôkazy** | `FORENZX_S3_REGION`, `FORENZX_S3_BUCKET`, `FORENZX_S3_ACCESS_KEY_ID`, `FORENZX_S3_SECRET_ACCESS_KEY`, `FORENZX_M2M_SECRET` (min. 32 znakov) | Samostatné serverové S3 poverenia pre presigned URL; M2M secret podpisuje capabilities. Obe sady S3 poverení musia ukazovať na tie isté objekty |
+| **SumUp predplatné** | `SUMUP_API_KEY`, `SUMUP_MERCHANT_CODE`, `SUMUP_ENVIRONMENT=live`, `CRON_SECRET` (min. 32 znakov) | Povinné pre prísny produkčný preflight. Widget nastaví 14-dňový trial a tokenizovanú kartu; webhook overuje checkout priamym načítaním z SumUp API; `/api/billing/renewals` účtuje obnovy každých 5 minút cez cron |
+| **ForenZX outbox** | `FORENZX_EVIDENCE_WEBHOOK_URL` (HTTPS), `FORENZX_WEBHOOK_SECRET` | Povinné pre päťminútový `/api/forenzx/dispatch-outbox` cron; bez nich sa outbox neodosiela |
 | Verejné `NEXT_PUBLIC_*` | zapečú sa do JS bundlu pri builde | po zmene treba **nový build**, reštart nestačí |
-| Tajné (iba server) | `SUPABASE_SERVICE_ROLE_KEY`, `S3_*_KEY*`, `MISTRAL_API_KEY*`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `STRIPE_*`, `WHOISWHO_API_KEY`, `ICO_ATLAS_API_KEY`, `FORENX_AI_WORKER_KEY` | nikdy s prefixom `NEXT_PUBLIC_` |
+| Tajné (iba server) | `SUPABASE_SERVICE_ROLE_KEY`, `S3_*_KEY*`, `FORENZX_WEBHOOK_SECRET`, `FORENZX_M2M_SECRET`, `MISTRAL_API_KEY*`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `SUMUP_API_KEY`, `WHOISWHO_API_KEY`, `ICO_ATLAS_API_KEY`, `FORENX_AI_WORKER_KEY`, `CRON_SECRET` | nikdy s prefixom `NEXT_PUBLIC_` |
+| SumUp konfigurácia (iba server) | `SUMUP_MERCHANT_CODE`, `SUMUP_ENVIRONMENT` | server cez SumUp Merchant API overí, že sandbox/live nastavenie zodpovedá merchant účtu; cena 99 € je serverová produktová konfigurácia |
 | Nenastavovať v produkcii | `VAULT_FALLBACK_SECRET` | platí len pre vývoj/testy |
 
 Odporúčané hodnoty konfigurácie: `NEXT_PUBLIC_BASE_URL=https://pandora.whoiswho.at`, `S3_ENDPOINT=https://hel1.your-objectstorage.com`,

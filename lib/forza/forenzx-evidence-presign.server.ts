@@ -123,13 +123,21 @@ export async function buildForenzxStartPayload(params: {
   bucket?: string;
   idempotencyKey?: string;
 }): Promise<Record<string, unknown>> {
+  const m2mSecret = process.env.FORENZX_M2M_SECRET?.trim();
+  if (
+    process.env.NODE_ENV === "production" &&
+    (!m2mSecret || Buffer.byteLength(m2mSecret, "utf8") < 32)
+  ) {
+    throw new Error("Signed evidence capabilities are not configured.");
+  }
+
   const { url, filename, expiresAt } = await generateEvidencePresignedUrl(
     params.s3Key,
     params.bucket
   );
 
   let evidenceCapability: SignedEvidenceCapability | undefined;
-  if (process.env.FORENZX_M2M_SECRET?.trim()) {
+  if (m2mSecret) {
     try {
       evidenceCapability = generateEvidenceCapability(
         {
@@ -141,8 +149,9 @@ export async function buildForenzxStartPayload(params: {
         url,
         filename,
       );
-    } catch {
-      // In non-production or when secret is omitted, proceed without capability
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") throw error;
+      // Non-production can retain the legacy unsigned URL response.
     }
   }
 

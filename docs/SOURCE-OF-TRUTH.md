@@ -352,3 +352,20 @@ $$\mathbf{RELEASE\_WITH\_CONDITIONS}$$
 - Health: lokálny aj verejný `/api/healthz/` HTTP 200.
 - Obmedzenie dôkazu: write guard, cross-origin probe a service-worker write probe neboli proti produkcii odoslané; výsledok je runtime/read-only dôkaz, nie dôkaz produkčného zápisu.
 - ICO Atlas runtime autentifikácia je otvorená prevádzková kontrola a nesmie sa označiť ako funkčná bez samostatného HTTP testu bez zverejnenia key.
+
+## 14. Predplatné SumUp — implementácia v release kandidátovi
+
+- Billing API vyžaduje overenú Supabase identitu; identitu plánu nikdy neurčuje klient. Server overuje, že SumUp merchant sandbox/live stav zodpovedá `SUMUP_ENVIRONMENT`.
+- 14-dňový trial používa SumUp Payment Widget s `SETUP_RECURRING_PAYMENT`. SumUp vykoná 1 € autorizačnú platbu na tokenizáciu karty a aplikácia ju následne refunduje. Trial sa aktivuje až po serverovom načítaní zaplateného checkoutu a overení účelu, zákazníka, recurrent mandátu a tokenizovaného platobného prostriedku; surové údaje karty neprechádzajú cez server.
+- Aplikácia každých 5 minút vyhľadá splatné obnovy a vytvorí SumUp checkout pre 99 €. Unikátny checkout reference chráni pred duplicitným spracovaním pri opakovanom jobe. Predplatné spravuje aplikácia; nejde o natívny SumUp subscription objekt.
+- Súhlas s cenou a opakovaným účtovaním, checkouty, pokusy a billing udalosti sa ukladajú idempotentne. Zrušenie vypne obnovu na konci aktuálneho obdobia. Definitívne neúspešná platba sa opakuje najviac trikrát; nejednoznačný výsledok sa najprv overí bez vytvorenia ďalšej platby.
+- SumUp callback sa nepovažuje za dôkaz platby: server načíta checkout z SumUp API a spáruje ho s čakajúcou checkout reláciou používateľa.
+- `SUMUP_API_KEY` je tajný serverový kľúč; `SUMUP_MERCHANT_CODE` a `SUMUP_ENVIRONMENT` určujú účet a režim; `CRON_SECRET` chráni plánované obnovy.
+- Sandbox/live platby, webhook doručenie, refundácia, opakované účtovanie a produkčné oprávnenia nie sú overené. Pred produkciou treba úspešne vykonať sandbox QA, aplikovať databázovú migráciu a následne schválený live test.
+
+## 15. Web analytics a súhlas — implementácia v release kandidátovi
+
+- GA4 je voliteľná funkcia, predvolene vypnutá cez `NEXT_PUBLIC_ENABLE_ANALYTICS=false`.
+- Meranie vyžaduje platné `NEXT_PUBLIC_GA_MEASUREMENT_ID` v tvare `G-...` a výslovný súhlas používateľa. Voľbu možno zmeniť cez tlačidlo „Súkromie“.
+- Kód povoľuje iba page views pre pevný zoznam verejných stránok; query stringy, fragmenty, interné cesty a obsah vyšetrovania sa neposielajú.
+- Kód a lokálne testy nedokazujú produkčné nastavenie GA4, právny základ, retenciu, DPA ani nasadenie; tieto body treba potvrdiť samostatne.

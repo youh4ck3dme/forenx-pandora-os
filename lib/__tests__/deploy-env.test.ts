@@ -15,6 +15,11 @@ function validEnv(): Map<string, string> {
   env.set("NEXT_PUBLIC_SUPABASE_URL", "https://abc.supabase.co");
   env.set("SUPABASE_URL", "https://abc.supabase.co");
   env.set("MISTRAL_API_KEY", "k1");
+  env.set("SUMUP_ENVIRONMENT", "live");
+  env.set("CRON_SECRET", "c".repeat(64));
+  env.set("FORENZX_M2M_SECRET", "m".repeat(64));
+  env.set("FORENZX_EVIDENCE_WEBHOOK_URL", "https://hub.forenzx.sk/evidence-webhook");
+  env.set("FORENZX_WEBHOOK_SECRET", "forenzx-webhook-test-secret");
   return env;
 }
 
@@ -39,6 +44,7 @@ describe("deploy env helper", () => {
     expect(keys).toContain("SUPABASE_SERVICE_ROLE_KEY");
     expect(keys).toContain("MISTRAL_API_KEY_ANALYSIS");
     expect(classify("SUPABASE_SERVICE_ROLE_KEY")).toBe("secret");
+    expect(classify("FORENZX_M2M_SECRET")).toBe("secret");
     expect(classify("NEXT_PUBLIC_SUPABASE_URL")).toBe("public");
     expect(classify("S3_REGION")).toBe("config");
     // No secret may be exposed to the browser bundle.
@@ -52,6 +58,7 @@ describe("deploy env helper", () => {
   it("accepts Hetzner's documented object-storage endpoint", () => {
     const env = validEnv();
     env.set("S3_ENDPOINT", "https://hel1.your-objectstorage.com");
+    env.set("FORENZX_S3_ENDPOINT", "https://hel1.your-objectstorage.com");
     expect(checkEnv(env, exampleKeys()).filter((p) => p.level === "error")).toEqual([]);
   });
 
@@ -77,12 +84,34 @@ describe("deploy env helper", () => {
     expect(checkEnv(env, exampleKeys()).filter((p) => p.level === "error")).toEqual([]);
   });
 
+  it("requires live SumUp billing in production", () => {
+    const env = validEnv();
+    env.set("SUMUP_ENVIRONMENT", "sandbox");
+    expect(checkEnv(env, exampleKeys()).filter((problem) => problem.key === "SUMUP_ENVIRONMENT")).toEqual([
+      expect.objectContaining({
+        level: "error",
+        issue: "produkčné predplatné vyžaduje live režim",
+      }),
+    ]);
+  });
+
+  it("requires a strong ForenZX M2M secret in production", () => {
+    const env = validEnv();
+    env.set("FORENZX_M2M_SECRET", "short");
+    expect(checkEnv(env, exampleKeys()).filter((problem) => problem.key === "FORENZX_M2M_SECRET")).toEqual([
+      expect.objectContaining({
+        level: "error",
+        issue: "musí mať aspoň 32 znakov",
+      }),
+    ]);
+  });
+
   it("reports missing, placeholder, leaked and forbidden values without echoing them", () => {
     const env = validEnv();
     env.delete("S3_SECRET_ACCESS_KEY");
     env.delete("MISTRAL_API_KEY");
     env.set("SUPABASE_SERVICE_ROLE_KEY", "your-service-role-key");
-    env.set("NEXT_PUBLIC_STRIPE_SECRET_KEY", "leak-marker-9f3a2c");
+    env.set("NEXT_PUBLIC_SUMUP_API_KEY", "leak-marker-9f3a2c");
     env.set("VAULT_FALLBACK_SECRET", "x".repeat(40));
     env.set("SUPABASE_URL", "https://other.supabase.co");
     env.set("NEXT_PUBLIC_BASE_URL", "http://pandora.whoiswho.at");
@@ -94,7 +123,7 @@ describe("deploy env helper", () => {
         "S3_SECRET_ACCESS_KEY",
         "MISTRAL_API_KEY | MISTRAL_API_KEY_CHAT | MISTRAL_API_KEY_ANALYSIS",
         "SUPABASE_SERVICE_ROLE_KEY",
-        "NEXT_PUBLIC_STRIPE_SECRET_KEY",
+        "NEXT_PUBLIC_SUMUP_API_KEY",
         "VAULT_FALLBACK_SECRET",
         "SUPABASE_URL",
         "NEXT_PUBLIC_BASE_URL",

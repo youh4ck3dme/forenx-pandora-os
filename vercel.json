@@ -41,6 +41,10 @@
     {
       "path": "/api/forenzx/dispatch-outbox",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/billing/renewals",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
